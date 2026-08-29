@@ -1,0 +1,8 @@
+﻿.venv/
+__pycache__/
+*.py[cod]
+*.log
+config.local.json
+data/item_icons/
+data/champion_icons/
+data/champion_data/
