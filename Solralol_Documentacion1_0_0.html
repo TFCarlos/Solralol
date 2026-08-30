@@ -42,7 +42,7 @@
 
     .shell {
       display: grid;
-      grid-template-columns: 290px minmax(0, 1fr);
+      grid-template-columns: 300px minmax(0, 1fr);
       min-height: 100vh;
     }
 
@@ -116,7 +116,7 @@
       padding: 8px 10px;
       border-radius: 8px;
       color: var(--muted);
-      font-size: .9rem;
+      font-size: .88rem;
       transition: background .18s ease, color .18s ease, transform .18s ease;
     }
 
@@ -128,7 +128,7 @@
     }
 
     main {
-      width: min(1160px, 100%);
+      width: min(1180px, 100%);
       margin: 0 auto;
       padding: 54px 48px 90px;
     }
@@ -169,7 +169,7 @@
       text-transform: uppercase;
     }
 
-    h1, h2, h3 { line-height: 1.18; }
+    h1, h2, h3, h4 { line-height: 1.18; }
 
     h1 {
       margin: 14px 0 10px;
@@ -190,11 +190,17 @@
       font-size: 1.1rem;
     }
 
+    h4 {
+      margin: 18px 0 8px;
+      color: #b9cdf0;
+      font-size: .96rem;
+    }
+
     p { color: var(--muted); }
     strong { color: var(--text); }
 
     .lead {
-      max-width: 780px;
+      max-width: 800px;
       margin: 0;
       color: #bbcae2;
       font-size: 1.08rem;
@@ -223,6 +229,7 @@
 
     .metric.green { color: var(--green); }
     .metric.blue { color: #80bfff; }
+    .metric.red { color: var(--red); }
 
     code {
       padding: .14em .38em;
@@ -231,6 +238,7 @@
       background: rgba(83, 133, 195, .15);
       font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
       font-size: .88em;
+      word-break: break-word;
     }
 
     pre {
@@ -267,7 +275,7 @@
     td { color: var(--muted); }
     tr:last-child td { border-bottom: 0; }
 
-    ul { padding-left: 20px; color: var(--muted); }
+    ul, ol { padding-left: 20px; color: var(--muted); }
     li + li { margin-top: 6px; }
 
     .notice {
@@ -281,6 +289,7 @@
 
     .warning { border-left-color: var(--red); background: rgba(255, 112, 129, .08); }
     .success { border-left-color: var(--green); background: rgba(100, 217, 163, .08); }
+    .info { border-left-color: var(--blue); background: rgba(76, 163, 255, .08); }
 
     .flow {
       display: flex;
@@ -301,6 +310,20 @@
     }
 
     .arrow { color: var(--gold); font-weight: 800; }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      margin: 0 4px 4px 0;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+    .tag.used { color: #0c1322; background: var(--green); }
+    .tag.unused { color: #2a0b0f; background: var(--red); }
+    .tag.review { color: #2a1f06; background: var(--gold); }
+    .tag.new { color: #04203a; background: #80bfff; }
 
     footer {
       margin-top: 70px;
@@ -337,30 +360,47 @@
       <nav>
         <span class="side-label">Documentación</span>
         <a href="#inicio">Visión general</a>
+        <a href="#aviso">✅ Nota sobre el alcance</a>
         <a href="#requisitos">Requisitos e inicio</a>
-        <a href="#estructura">Estructura</a>
+        <a href="#estructura">Estructura del proyecto</a>
         <a href="#flujo">Flujo de datos</a>
-        <span class="side-label">Componentes</span>
+        <a href="#navegacion">Navegación de MainWindow</a>
+
+        <span class="side-label">Partida en vivo</span>
+        <a href="#api">API local de League</a>
         <a href="#game-service">GameService</a>
         <a href="#worker">LiveDataWorker</a>
-        <a href="#ventana">MainWindow</a>
+        <a href="#tracker">LiveMatchTracker</a>
         <a href="#tarjeta">ChampionCard</a>
         <a href="#inventario">Inventario</a>
         <a href="#overlay">Overlay</a>
-        <a href="#estilos">Estilos</a>
-        <span class="side-label">Historial y análisis</span>
-        <a href="#riot-api">Riot API y ajustes</a>
+        <a href="#estilos">Estilos (QSS)</a>
+
+        <span class="side-label">Historial y Riot API</span>
+        <a href="#riot-api">RiotApiService y ajustes</a>
         <a href="#historial">Buscador e historial</a>
+        <a href="#ajustes">Página de Ajustes</a>
         <a href="#inspector">Inspector de partidas</a>
-        <a href="#datadragon">Assets Data Dragon</a>
-        <a href="#analisis">Pestaña Análisis</a>
+
+        <span class="side-label">Análisis con Riot API (nuevo)</span>
+        <a href="#postgame-sync">Sincronización postpartida</a>
+        <a href="#botones">Botones: Buscar Riot / Re-sincronizar / Abrir análisis</a>
+        <a href="#live-analysis-dialog">Diálogo de análisis LIVE</a>
+        <a href="#logros">Logros y métricas derivadas</a>
+        <a href="#esquema-sesion">Esquema de una sesión</a>
+
+        <span class="side-label">Otros servicios</span>
+        <a href="#datadragon">Data Dragon (catálogo y assets)</a>
+        <a href="#analisis">Pestaña Análisis (visor web)</a>
         <a href="#adblock">Visor y bloqueador</a>
+
         <span class="side-label">Operación</span>
-        <a href="#api">API local</a>
         <a href="#hilos">Hilos y señales</a>
-        <a href="#limitaciones">Limitaciones</a>
-        <a href="#errores">Diagnóstico</a>
-        <a href="#mejoras">Mejoras</a>
+        <a href="#limitaciones">Limitaciones y reglas</a>
+        <a href="#errores">Diagnóstico de errores</a>
+        <a href="#limpieza">Archivos duplicados / sin uso</a>
+        <a href="#mejoras">Próximas mejoras</a>
+
         <span class="side-label">Continuidad</span>
         <a href="#para-ia">Para la IA</a>
       </nav>
@@ -370,11 +410,18 @@
       <section id="inicio" class="hero">
         <span class="eyebrow">Snapshot de arquitectura</span>
         <h1>Solralol</h1>
-        <p class="lead">Panel de control, overlay, historial e inspector para League of Legends, desarrollado con Python y PySide6. Lee datos locales de una partida activa, consulta el historial mediante Riot API bajo demanda, muestra detalles postpartida y ofrece un visor de análisis web por campeón.</p>
+        <p class="lead">Panel de control, overlay, historial, inspector y análisis postpartida para League of Legends, desarrollado con Python y PySide6. Lee datos locales de una partida activa, graba su propia telemetría de la partida, la sincroniza con Riot API (Match‑V5) al terminar, y ofrece un diálogo de análisis LIVE comparando cada calle. También consulta el historial oficial bajo demanda y ofrece un visor de análisis web por campeón.</p>
         <div class="badges">
           <div class="card"><div class="metric">PySide6</div><p>Interfaz, layouts, señales, hilos, diálogos y visor web integrado.</p></div>
-          <div class="card"><div class="metric green">Live Client + Riot</div><p>Datos en vivo desde League local e historial autenticado de Riot API.</p></div>
+          <div class="card"><div class="metric green">Live Client + Riot</div><p>Datos en vivo desde League local, grabación de sesión y sincronización con Match‑V5.</p></div>
           <div class="card"><div class="metric blue">Data Dragon</div><p>Catálogo, iconos y caché local de campeones y objetos.</p></div>
+        </div>
+      </section>
+
+      <section id="aviso">
+        <h2>✅ Nota sobre el alcance de esta documentación</h2>
+        <div class="notice success">
+          <p>El export de código inicial no incluía <code>app/ui/main_window.py</code> (la ventana principal actual, importada por <code>main.py</code>). Ese archivo se recibió después y <strong>todo este documento se ha revisado y corregido contra su código real</strong>, línea a línea, en lo que respecta a navegación, botones de análisis y cableado de señales/hilos. Ya no queda contenido "inferido": las secciones <a href="#botones">Botones de análisis</a>, <a href="#navegacion">Navegación de MainWindow</a> y <a href="#adblock">Visor y bloqueador</a> reflejan el código real de <code>main_window.py</code>.</p>
         </div>
       </section>
 
@@ -382,79 +429,119 @@
         <h2>Requisitos e inicio</h2>
         <ul>
           <li>Windows con League of Legends instalado y una partida activa, incluida la herramienta de práctica, para los datos Live Client.</li>
-          <li>Python 3.10 o superior y un entorno virtual recomendado.</li>
-          <li>Dependencias principales: <code>PySide6</code>, <code>requests</code> y <code>urllib3</code>.</li>
-          <li>Para el visor integrado de Análisis debe estar disponible <code>PySide6.QtWebEngineWidgets</code>.</li>
+          <li>Python 3.10 o superior y un entorno virtual recomendado (<code>activate_env.bat</code> activa <code>.venv</code>).</li>
+          <li>Dependencias principales (<code>requirements.txt</code>): <code>requests</code>, <code>urllib3</code>, <code>PySide6</code>, <code>keyboard</code>.</li>
+          <li>Para el visor integrado de Análisis y los diálogos de análisis debe estar disponible <code>PySide6.QtWebEngineWidgets</code> / <code>PySide6.QtWebEngineCore</code>.</li>
+          <li>Una Riot API key propia para el historial y la sincronización postpartida (se guarda desde Ajustes).</li>
         </ul>
         <pre><code>.\.venv\Scripts\Activate.ps1
 python main.py</code></pre>
-        <p>Para validar sintaxis antes de iniciar:</p>
+        <p>Para validar sintaxis antes de iniciar (ampliar esta lista con cualquier archivo que se edite):</p>
         <pre><code>python -m py_compile app\services\game_service.py
 python -m py_compile app\services\live_data_worker.py
+python -m py_compile app\services\live_match_tracker.py
+python -m py_compile app\services\live_analysis_models_and_calculator.py
+python -m py_compile app\services\postgame_sync_service.py
+python -m py_compile app\services\postgame_sync_worker.py
 python -m py_compile app\services\settings_service.py
 python -m py_compile app\services\riot_api_service.py
 python -m py_compile app\services\match_history_cache.py
 python -m py_compile app\services\match_history_worker.py
 python -m py_compile app\services\data_dragon_assets.py
+python -m py_compile app\services\game_calculator.py
 python -m py_compile app\ui\main_window.py
 python -m py_compile app\ui\champion_card.py
 python -m py_compile app\ui\inventory.py
 python -m py_compile app\ui\overlay_window.py
 python -m py_compile app\ui\match_inspector_dialog.py
+python -m py_compile app\ui\live_match_analysis_dialog.py
 python main.py</code></pre>
-        <div class="notice">La API local usa un certificado HTTPS autofirmado. Por ello el servicio realiza peticiones con <code>verify=False</code>; los avisos de <code>urllib3</code> pueden silenciarse de forma explícita.</div>
+        <div class="notice">La API local de League usa un certificado HTTPS autofirmado. Por ello <code>GameService</code>, <code>riot_live.py</code> y <code>app/services/riotlive.py</code> hacen peticiones con <code>verify=False</code>, y silencian <code>urllib3.exceptions.InsecureRequestWarning</code> al importarse. La Riot API real (<code>RiotApiService</code>, <code>SettingsService.validate_riot_api_key</code>) usa <code>requests</code> con verificación de certificado normal (no se desactiva <code>verify</code>).</div>
       </section>
 
       <section id="estructura">
         <h2>Estructura del proyecto</h2>
+        <p>Estructura tal y como aparece en el export analizado. Los archivos marcados <span class="tag unused">SIN USO</span> no los importa nada del resto del código; el detalle y la evidencia de cada caso está en <a href="#limpieza">Archivos duplicados / sin uso</a>. Los marcados <span class="tag new">NUEVO</span> forman parte de la función de análisis con Riot API que aún no estaba documentada.</p>
         <pre><code>Solralol/
 ├── main.py
 ├── data_dragon.py
+├── riot_live.py                         · SIN USO por la app (solo scripts de debug)
+├── riot_api.py                          · SIN USO (vacío)
+├── analyzer.py                          · SIN USO (vacío)
+├── config.json                          · SIN USO (vacío)
+├── debug_cs.py                          · script manual de depuración
+├── debug_enemy_runes.py                 · script manual de depuración
+├── test_endpoints.py                    · script manual de depuración
+├── reorganize_project.ps1               · script histórico, desactualizado
+├── requirements.txt
+├── Solralol_Documentacion1_0_0.html     · versión anterior de este documento
 ├── app/
+│   ├── models/
+│   │   └── game_types.py                · SIN USO (vacío)
 │   ├── services/
 │   │   ├── game_service.py
 │   │   ├── live_data_worker.py
-│   │   ├── game_calculator.py
-│   │   ├── settings_service.py
+│   │   ├── live_data_worker_live_analysis.py   · SIN USO (duplicado)
+│   │   ├── live_data_worker copy.py            · SIN USO (copia de seguridad)
+│   │   ├── live_match_tracker.py               · NUEVO
+│   │   ├── live_analysis_models_and_calculator.py  · NUEVO
+│   │   ├── postgame_sync_service.py            · NUEVO
+│   │   ├── postgame_sync_worker.py             · NUEVO
 │   │   ├── riot_api_service.py
+│   │   ├── riotlive.py                          · SIN USO (duplicado)
 │   │   ├── match_history_cache.py
 │   │   ├── match_history_worker.py
-│   │   └── data_dragon_assets.py
-│   └── ui/
-│       ├── main_window.py
-│       ├── champion_card.py
-│       ├── inventory.py
-│       ├── overlay_window.py
-│       ├── match_inspector_dialog.py
-│       ├── match_inspector_styles.css
-│       └── styles.py
-├── .venv/
-└── README.md</code></pre>
+│   │   ├── game_calculator.py
+│   │   ├── data_dragon_assets.py
+│   │   └── settings_service.py
+│   ├── ui/
+│   │   ├── main_window.py               · Ventana principal (5 páginas de navegación)
+│   │   ├── control_window.py            · arquitectura anterior, SIN USO confirmado (main_window.py no la importa)
+│   │   ├── champion_card.py             · usada por main_window.py
+│   │   ├── inventory.py                 · usada por champion_card.py
+│   │   ├── overlay_window.py            · usada por main_window.py
+│   │   ├── styles.py                    · usada por main_window.py
+│   │   ├── live_match_analysis_dialog.py   · NUEVO
+│   │   └── match_inspector_dialog.py    · usada por main_window.py
+│   └── utils/
+│       └── cache.py                     · SIN USO (vacío)
+└── web/
+    ├── app.js       · SIN USO (vacío)
+    ├── index.html   · SIN USO (vacío)
+    └── styles.css   · SIN USO (vacío)</code></pre>
+
+        <h3>Tabla de responsabilidades por archivo</h3>
         <table>
           <thead><tr><th>Archivo</th><th>Responsabilidad</th></tr></thead>
           <tbody>
-            <tr><td><code>main.py</code></td><td>Punto de entrada: crea <code>QApplication</code>, prepara catálogo/versión y muestra la ventana principal.</td></tr>
-            <tr><td><code>data_dragon.py</code></td><td>Obtiene catálogo de objetos y campeones; resuelve datos estáticos e iconos locales del flujo original.</td></tr>
-            <tr><td><code>game_service.py</code></td><td>Lee la Live Client Data API y genera el snapshot interno para la interfaz.</td></tr>
-            <tr><td><code>live_data_worker.py</code></td><td>Ejecuta la lectura HTTP local fuera del hilo de interfaz y comunica resultados por señales.</td></tr>
-            <tr><td><code>game_calculator.py</code></td><td>Contiene lógica de KDA, oro, estadísticas, runas y estimaciones.</td></tr>
-            <tr><td><code>settings_service.py</code></td><td>Carga, guarda, valida y elimina configuración local, incluida la Riot API key.</td></tr>
-            <tr><td><code>riot_api_service.py</code></td><td>Resuelve Riot ID, consulta Match-V5 y normaliza resúmenes y detalles de partidas.</td></tr>
-            <tr><td><code>match_history_cache.py</code></td><td>Persiste cuentas, detalles de partidas y cooldown local de rate limit.</td></tr>
-            <tr><td><code>match_history_worker.py</code></td><td>Descarga historial y detalles en segundo plano.</td></tr>
-            <tr><td><code>data_dragon_assets.py</code></td><td>Descarga asíncrona y caché local de retratos de campeón e iconos de objeto.</td></tr>
-            <tr><td><code>main_window.py</code></td><td>Orquesta páginas, navegación, workers, historial, visor de Análisis y controles del overlay.</td></tr>
-            <tr><td><code>champion_card.py</code></td><td>Construye una tarjeta visual por jugador y pinta su fondo según el equipo.</td></tr>
-            <tr><td><code>inventory.py</code></td><td>Compone los slots de inventario, trinket y espacios especiales de Role Quest.</td></tr>
-            <tr><td><code>overlay_window.py</code></td><td>Gestiona la ventana flotante, opacidad, arrastre y click-through.</td></tr>
-            <tr><td><code>match_inspector_dialog.py</code></td><td>Presenta el detalle postpartida con builds, equipos y objetivos.</td></tr>
-            <tr><td><code>styles.py</code></td><td>Centraliza la hoja de estilos Qt del panel.</td></tr>
+            <tr><td><code>main.py</code></td><td>Punto de entrada: crea <code>QApplication</code>, descarga/lee el catálogo de objetos de Data Dragon y muestra <code>MainWindow</code>.</td></tr>
+            <tr><td><code>data_dragon.py</code></td><td>Descarga la última versión de Data Dragon, el catálogo de objetos (<code>items.json</code>) e iconos/datos de campeón, con caché en disco bajo <code>data/</code>. Es un módulo de utilidades puro (sin Qt), separado de <code>data_dragon_assets.py</code>.</td></tr>
+            <tr><td><code>app/services/game_service.py</code></td><td>Lee la Live Client Data API y genera el snapshot interno (<code>get_game_snapshot</code>) que consume el resto de la app.</td></tr>
+            <tr><td><code>app/services/live_data_worker.py</code></td><td>Ejecuta la lectura HTTP local fuera del hilo de interfaz (<code>QThread</code>), mantiene un <code>LiveMatchTracker</code> y emite tanto el snapshot de la UI como la sesión de análisis LIVE.</td></tr>
+            <tr><td><code>app/services/live_match_tracker.py</code></td><td><strong>Nuevo.</strong> Graba la telemetría de la partida en curso (jugadores, snapshots temporales, eventos de objetivos) y persiste la sesión completa al terminar en <code>~/.solralol/live_match_sessions.json</code>.</td></tr>
+            <tr><td><code>app/services/live_analysis_models_and_calculator.py</code></td><td><strong>Nuevo.</strong> Calcula estadísticas derivadas de una sesión (stats totales de objetos/runas de un jugador en un instante) y la lista de "logros" de la partida.</td></tr>
+            <tr><td><code>app/services/postgame_sync_service.py</code></td><td><strong>Nuevo.</strong> Empareja una sesión LIVE finalizada con la partida real en Riot (Match‑V5 + Timeline) y fusiona los datos oficiales.</td></tr>
+            <tr><td><code>app/services/postgame_sync_worker.py</code></td><td><strong>Nuevo.</strong> Ejecuta <code>PostgameSyncService.sync_session</code> en un <code>QThread</code> aparte.</td></tr>
+            <tr><td><code>app/services/game_calculator.py</code></td><td>Lógica de KDA, valor de inventario, stats de objetos, estimación de stats de campeón/enemigo y resumen de runas.</td></tr>
+            <tr><td><code>app/services/settings_service.py</code></td><td>Carga, guarda, valida y elimina configuración local, incluida la Riot API key, en <code>~/.solralol/settings.json</code>.</td></tr>
+            <tr><td><code>app/services/riot_api_service.py</code></td><td>Resuelve Riot ID (Account‑V1), consulta Match‑V5 (IDs, detalle, timeline) y normaliza resúmenes/detalles de partidas para el historial.</td></tr>
+            <tr><td><code>app/services/match_history_cache.py</code></td><td>Persiste cuentas, detalles de partidas y cooldown local de rate limit en <code>~/.solralol/match_history_cache.json</code>.</td></tr>
+            <tr><td><code>app/services/match_history_worker.py</code></td><td>Descarga historial y detalles de partida en segundo plano (<code>QThread</code>).</td></tr>
+            <tr><td><code>app/services/data_dragon_assets.py</code></td><td>Descarga asíncrona (con <code>QNetworkAccessManager</code>) y caché local de retratos de campeón e iconos de objeto para los diálogos Qt.</td></tr>
+            <tr><td><code>app/ui/main_window.py</code></td><td>Ventana principal (<code>MainWindow</code>): 5 páginas de navegación (Inicio, Análisis, Partida en vivo, Partidas guardadas, Ajustes), creación de los tres <code>QThread</code> (live data, historial, sincronización postpartida), overlay, y los botones "Buscar Riot" / "Re-sincronizar" / "Abrir análisis" / "Abrir análisis LIVE".</td></tr>
+            <tr><td><code>app/ui/champion_card.py</code></td><td>Construye una tarjeta visual por jugador y pinta su fondo según el equipo.</td></tr>
+            <tr><td><code>app/ui/inventory.py</code></td><td>Compone los slots de inventario, trinket y espacios especiales de Role Quest.</td></tr>
+            <tr><td><code>app/ui/overlay_window.py</code></td><td>Gestiona la ventana flotante, opacidad, arrastre y click-through.</td></tr>
+            <tr><td><code>app/ui/match_inspector_dialog.py</code></td><td>Presenta el detalle postpartida de una partida del historial, con builds, equipos y objetivos.</td></tr>
+            <tr><td><code>app/ui/live_match_analysis_dialog.py</code></td><td><strong>Nuevo.</strong> Diálogo de análisis LIVE/postpartida: pestañas por rol, gráficas de comparación, panel de objetos/runas, cronología de eventos y logros.</td></tr>
+            <tr><td><code>app/ui/styles.py</code></td><td>Centraliza la hoja de estilos Qt (QSS) del panel.</td></tr>
           </tbody>
         </table>
       </section>
 
       <section id="flujo">
         <h2>Flujo de datos</h2>
+        <h3>1. Panel en vivo</h3>
         <div class="flow">
           <span class="node">League local</span><span class="arrow">→</span>
           <span class="node">GameService</span><span class="arrow">→</span>
@@ -470,10 +557,24 @@ python main.py</code></pre>
   "champion_id": "Varus",
   "item_ids": [1055, 3006],
   "local_player": {...},
+  "local_team": "ORDER",
   "enemies": [...],
   "all_players": [...],
-  "local_live_stats": {...}
+  "local_live_stats": {...},
+  "game_events": [...]
 }</code></pre>
+
+        <h3>2. Grabación local + sincronización con Riot (nuevo)</h3>
+        <div class="flow">
+          <span class="node">LiveDataWorker</span><span class="arrow">→</span>
+          <span class="node">LiveMatchTracker</span><span class="arrow">→</span>
+          <span class="node">live_match_sessions.json</span><span class="arrow">→</span>
+          <span class="node">PostgameSyncWorker</span><span class="arrow">→</span>
+          <span class="node">LiveMatchAnalysisDialog</span>
+        </div>
+        <p>Cada <code>read_snapshot()</code> de <code>LiveDataWorker</code> actualiza un <code>LiveMatchTracker</code>, que va guardando en memoria la sesión de la partida en curso y la emite (<code>live_analysis_ready</code>) para análisis LIVE. Al terminar la partida, la sesión se cierra y se persiste en disco. Después (por acción del usuario — ver <a href="#botones">botones Analizar / Re‑analizar / Ver</a>), <code>PostgameSyncWorker</code> intenta emparejarla con la partida real de Riot para completarla con datos oficiales, y el resultado se muestra en <code>LiveMatchAnalysisDialog</code>.</p>
+
+        <h3>3. Historial oficial (bajo demanda)</h3>
         <div class="flow">
           <span class="node">Riot ID</span><span class="arrow">→</span>
           <span class="node">RiotApiService</span><span class="arrow">→</span>
@@ -481,538 +582,665 @@ python main.py</code></pre>
           <span class="node">MatchHistoryCache</span><span class="arrow">→</span>
           <span class="node">Historial / Inspector</span>
         </div>
-        <p>El flujo de historial es independiente del timer Live Client. Solo se ejecuta por acción manual del usuario y reutiliza la caché para no repetir descargas de partidas ya conocidas.</p>
+        <p>El flujo de historial es independiente del timer Live Client y de la sincronización postpartida. Solo se ejecuta por acción manual del usuario y reutiliza la caché para no repetir descargas de partidas ya conocidas.</p>
+      </section>
+
+      <section id="navegacion">
+        <h2>Navegación de MainWindow <span class="tag new">confirmado</span></h2>
+        <p><code>MainWindow</code> organiza la app en un <code>QStackedWidget</code> (<code>self.pages</code>) con 5 páginas, seleccionadas por botones exclusivos (<code>QButtonGroup</code>) creados en <code>create_navigation</code>:</p>
+        <table>
+          <thead><tr><th>#</th><th>Botón</th><th>Método</th><th>Contenido</th></tr></thead>
+          <tbody>
+            <tr><td>0</td><td>Inicio</td><td><code>create_home_page</code></td><td>Tarjeta de estado del cliente de League + sección "Actividad reciente" (buscador de historial por Riot ID <code>nombre#TAG</code>, botón de refresco, estado).</td></tr>
+            <tr><td>1</td><td>Análisis</td><td><code>create_analysis_page</code></td><td>Visor web externo con selector de fuente y bloqueador de anuncios (ver <a href="#analisis">Pestaña Análisis</a>).</td></tr>
+            <tr><td>2</td><td>Partida en vivo</td><td><code>create_live_page</code></td><td>Tarjetas por jugador (<code>ChampionCard</code>) y botón "Abrir análisis LIVE". Empieza deshabilitada (<code>live_button.setEnabled(False)</code>) hasta que hay partida activa.</td></tr>
+            <tr><td>3</td><td>Partidas guardadas</td><td><code>create_saved_games_page</code></td><td>Lista de sesiones grabadas, con los botones "Buscar Riot" / "Re-sincronizar" / "Abrir análisis" descritos arriba.</td></tr>
+            <tr><td>4</td><td>Ajustes</td><td><code>create_settings_page</code></td><td>Riot API key (con validación contra <code>lol/status/v4/platform-data</code>), Riot ID (<code>game_name</code>/<code>tag_line</code>) y regiones.</td></tr>
+          </tbody>
+        </table>
+        <p>Otras clases y detalles propios de <code>main_window.py</code>:</p>
+        <ul>
+          <li><code>Backdrop(QWidget)</code>: fondo general de toda la ventana, dibujado a mano con <code>QPainter</code> + dos <code>QRadialGradient</code> (uno azul arriba a la izquierda, uno rojo arriba a la derecha) sobre un color base casi negro.</li>
+          <li><code>QuietWebEnginePage(QWebEnginePage)</code>: silencia en consola tres mensajes conocidos y ruidosos de proveedores de anuncios/tracking en las webs de análisis (<code>fun-hooks:</code>, el error de inicialización de la integración de Facebook, y <code>firstPartyData</code>), reenviando el resto de mensajes de consola sin cambios.</li>
+          <li>Las señales propias de <code>MainWindow</code> son <code>snapshot_requested</code>, <code>postgame_sync_requested(dict, str, str, str, str, str)</code>, <code>history_requested(str, str, str, str, str, int)</code> y <code>match_detail_requested(str, str, str, str, str, str)</code>: cada una empuja trabajo hacia el worker correspondiente sin bloquear el hilo de interfaz.</li>
+          <li><code>MainWindow.__init__</code> crea <code>self.live_match_tracker = LiveMatchTracker(item_catalog)</code> y <code>self.overlay = OverlayWindow(item_catalog)</code> antes de construir la interfaz (<code>build_ui()</code>), luego <code>self.data_dragon_assets = DataDragonAssetService(self)</code> (una única instancia, reutilizada por <code>MatchInspectorDialog</code> y <code>LiveMatchAnalysisDialog</code>), aplica <code>CONTROL_WINDOW_STYLE</code> (de <code>app/ui/styles.py</code>) y arranca los tres workers.</li>
+        </ul>
       </section>
 
       <section id="api">
         <h2>API local de League</h2>
         <p>La base de la API local es:</p>
         <pre><code>https://127.0.0.1:2999/liveclientdata</code></pre>
-        <p>El endpoint principal del proyecto es:</p>
-        <pre><code>/allgamedata</code></pre>
-        <p>La respuesta incluye normalmente <code>gameData</code>, <code>activePlayer</code> y <code>allPlayers</code>. Cada jugador puede aportar nombre del campeón, Riot ID, equipo, posición, nivel, objetos, puntuaciones, runas y hechizos de invocador.</p>
+        <p>Endpoints usados en el proyecto:</p>
+        <table>
+          <thead><tr><th>Endpoint</th><th>Quién lo usa</th><th>Para qué</th></tr></thead>
+          <tbody>
+            <tr><td><code>/allgamedata</code></td><td><code>GameService.get_game_snapshot</code></td><td>Endpoint principal: <code>gameData</code>, <code>activePlayer</code>, <code>allPlayers</code>.</td></tr>
+            <tr><td><code>/eventdata</code></td><td><code>GameService.get_game_snapshot</code></td><td>Lista de eventos de partida (<code>Events</code>), usada para <code>game_events</code>; si falla se ignora sin romper el snapshot.</td></tr>
+            <tr><td><code>/gamestats</code></td><td><code>GameService.is_in_game</code></td><td>Comprobación ligera de si hay partida activa.</td></tr>
+            <tr><td><code>/activeplayer</code>, <code>/championstats</code></td><td><code>riot_live.py</code>, <code>app/services/riotlive.py</code> (sin uso por la app)</td><td>Solo en clientes <code>LiveClient</code> duplicados y scripts de depuración.</td></tr>
+            <tr><td><code>/help</code>, <code>/spectator/gameinfo</code></td><td><code>test_endpoints.py</code></td><td>Sondeo manual de disponibilidad de endpoints.</td></tr>
+          </tbody>
+        </table>
+        <p>Cada jugador de <code>allPlayers</code> puede aportar nombre del campeón, Riot ID, equipo, posición, nivel, objetos, puntuaciones (<code>scores</code>), runas y hechizos de invocador.</p>
       </section>
 
       <section id="game-service">
         <h2>GameService</h2>
-        <p><code>app/services/game_service.py</code> encapsula la comunicación con la API local. No contiene widgets ni código de presentación.</p>
+        <p><code>app/services/game_service.py</code> encapsula la comunicación con la API local. No contiene widgets ni código de presentación. Silencia <code>InsecureRequestWarning</code> a nivel de módulo porque siempre usa <code>verify=False</code>.</p>
         <table>
           <thead><tr><th>Método</th><th>Función</th></tr></thead>
           <tbody>
-            <tr><td><code>request_data(endpoint)</code></td><td>Construye la URL de Live Client Data, hace la petición HTTPS, aplica timeout y devuelve JSON.</td></tr>
-            <tr><td><code>is_in_game()</code></td><td>Detecta si League está exponiendo datos de una partida activa.</td></tr>
-            <tr><td><code>get_game_snapshot()</code></td><td>Lee <code>allgamedata</code>, localiza jugador local, separa enemigos y entrega el snapshot normalizado.</td></tr>
+            <tr><td><code>request_data(endpoint)</code></td><td>GET genérico a <code>BASE_URL/endpoint</code> con <code>timeout=2</code> y <code>verify=False</code>; propaga <code>requests.RequestException</code>.</td></tr>
+            <tr><td><code>is_in_game()</code></td><td>Devuelve <code>True</code> si <code>/gamestats</code> responde con un diccionario; captura errores de red.</td></tr>
+            <tr><td><code>get_game_snapshot()</code></td><td>Combina <code>/allgamedata</code> y <code>/eventdata</code>, identifica al jugador local (por <code>summonerName</code> o <code>riotId</code> coincidiendo con <code>activePlayer</code>, con fallback al primer jugador no-bot), separa enemigos por equipo y devuelve el diccionario normalizado que consume el resto de la app (ver ejemplo JSON en <a href="#flujo">Flujo de datos</a>).</td></tr>
           </tbody>
         </table>
-        <p>El jugador local se identifica comparando los datos de <code>activePlayer</code> con los jugadores de <code>allPlayers</code>. Los enemigos son quienes tienen un campo <code>team</code> diferente al del jugador local.</p>
+        <div class="notice">Si <code>/eventdata</code> falla o no es un diccionario, <code>game_events</code> queda como lista vacía en vez de romper el snapshot completo: el fallo de un endpoint secundario nunca debe tumbar el panel en vivo.</div>
       </section>
 
       <section id="worker">
         <h2>LiveDataWorker</h2>
-        <p><code>app/services/live_data_worker.py</code> hereda de <code>QObject</code>. Se desplaza a un hilo dedicado mediante <code>moveToThread()</code> y evita que una petición HTTP congele el panel.</p>
+        <p><code>app/services/live_data_worker.py</code> — es el worker realmente usado por <code>app/ui/control_window.py</code> (y, con toda probabilidad, por <code>main_window.py</code>). Vive en un <code>QThread</code> propio.</p>
         <table>
-          <thead><tr><th>Señal</th><th>Contenido</th><th>Destino</th></tr></thead>
+          <thead><tr><th>Señal</th><th>Cuándo se emite</th></tr></thead>
           <tbody>
-            <tr><td><code>snapshot_ready</code></td><td>Snapshot o <code>None</code>.</td><td><code>MainWindow.receive_snapshot</code></td></tr>
-            <tr><td><code>read_failed</code></td><td>Mensaje de error.</td><td><code>MainWindow.show_read_error</code></td></tr>
+            <tr><td><code>snapshot_ready(object)</code></td><td>Cada lectura correcta de <code>GameService.get_game_snapshot()</code>. Lleva el snapshot normalizado para refrescar tarjetas/overlay.</td></tr>
+            <tr><td><code>read_failed(str)</code></td><td>Cuando no hay partida activa o la lectura falla; mensaje ya listo para mostrar en la UI.</td></tr>
+            <tr><td><code>live_analysis_ready(object)</code></td><td><strong>Nuevo.</strong> Tras cada snapshot correcto, entrega la sesión LIVE actual del <code>LiveMatchTracker</code> (con <code>source="live_client_data_api"</code>, <code>live=True</code> y <code>final_sync.status="live"</code>) para alimentar <code>LiveMatchAnalysisDialog</code> mientras la partida sigue en curso.</td></tr>
+            <tr><td><code>live_analysis_failed(str)</code></td><td>Cuando la lectura lanza una excepción no controlada.</td></tr>
           </tbody>
         </table>
-        <pre><code>@Slot()
-def read_snapshot(self) -&gt; None:
-    snapshot = self.game_service.get_game_snapshot()
-    self.snapshot_ready.emit(snapshot)</code></pre>
-        <div class="notice warning">El worker no debe crear ni modificar widgets. En Qt, los widgets pertenecen al hilo de interfaz.</div>
+        <h3>Ciclo de vida de una partida dentro del worker</h3>
+        <ol>
+          <li><code>read_snapshot()</code> pide un snapshot a <code>GameService</code>.</li>
+          <li>Si es <code>None</code> (no hay partida): cierra cualquier sesión abierta (<code>_finish_tracking</code>), resetea <code>was_in_game</code> y la "firma" de la partida, y emite <code>read_failed</code>.</li>
+          <li>Si hay snapshot: calcula una <em>firma</em> de partida (<code>game_mode | riotId | summonerName | local_team</code>). Si la firma cambia respecto a la anterior <strong>y</strong> el tiempo de partida es menor a 10&nbsp;s, entiende que ha empezado una partida nueva: cierra (si procede) la sesión anterior y arranca (<code>tracker.start</code>) una nueva. En caso contrario, simplemente actualiza (<code>tracker.update</code>) la sesión en curso.</li>
+          <li>Emite <code>snapshot_ready</code> para la UI y, a continuación, <code>live_analysis_ready</code> con la sesión LIVE (si el tracker ya tiene una).</li>
+        </ol>
+        <div class="notice warning"><strong>Archivo casi idéntico sin usar:</strong> <code>app/services/live_data_worker_live_analysis.py</code> define otra clase <code>LiveDataWorker</code> con la misma lógica (nombres de señal ligeramente distintos: <code>snapshot_failed</code> en vez de <code>read_failed</code>). No lo importa ningún archivo del proyecto. Ver <a href="#limpieza">Archivos duplicados / sin uso</a>.</div>
       </section>
 
-      <section id="ventana">
-        <h2>MainWindow</h2>
-        <p><code>MainWindow</code>, en <code>app/ui/main_window.py</code>, es la ventana principal actual. Hereda de <code>QMainWindow</code> y organiza cabecera, navegación, Inicio, Análisis, Partida en vivo, Ajustes, workers, historial, visor web y overlay.</p>
-        <div class="grid">
-          <article class="card"><h3>Timer y refresco</h3><p>Un <code>QTimer</code> solicita snapshots locales cada segundo. <code>is_refreshing</code> evita solapar solicitudes si una lectura aún está en curso.</p></article>
-          <article class="card"><h3>Panel eficiente</h3><p>El overlay puede actualizarse por snapshot, mientras que las tarjetas se reconstruyen al entrar en partida y a intervalos configurables.</p></article>
-          <article class="card"><h3>Equipos</h3><p>Se filtran jugadores con <code>team == "ORDER"</code> y <code>team == "CHAOS"</code>; cada grupo se dispone en cinco columnas.</p></article>
-          <article class="card"><h3>Controles</h3><p>Permite mostrar/ocultar overlay, bloquear clics y modificar opacidad con un slider.</p></article>
-        </div>
-        <h3>Índices de navegación</h3>
-        <pre><code>0 → Inicio
-1 → Análisis
-2 → Partida en vivo
-3 → Ajustes</code></pre>
-        <p>Los índices del <code>QStackedWidget</code> y los botones de <code>create_navigation()</code> deben mantenerse sincronizados. La pestaña Partida en vivo empieza deshabilitada y se habilita únicamente cuando el snapshot detecta una partida activa.</p>
-        <h3>Orden por rol</h3>
-        <pre><code>TOP → JUNGLE → MIDDLE → BOTTOM → UTILITY</code></pre>
-        <p>La API puede entregar el jugador local como <code>position: "NONE"</code>. Si lleva un hechizo cuyo nombre contiene <code>Smite</code>, se infiere el rol <code>JUNGLE</code>.</p>
-        <h3>Estado sin partida</h3>
-        <p><code>show_no_game()</code> se llama cuando el snapshot es <code>None</code>. Debe borrar tarjetas cuando proceda, restablecer textos del overlay, poner <code>was_in_game = False</code>, poner <code>cards_built = False</code> y reiniciar el contador de refresco.</p>
+      <section id="tracker">
+        <h2>LiveMatchTracker <span class="tag new">nuevo</span></h2>
+        <p><code>app/services/live_match_tracker.py</code> es el componente central de la nueva función de análisis: convierte snapshots sueltos de la Live Client Data API en una <strong>sesión de partida</strong> completa y persistente, con series temporales por jugador y eventos de objetivos.</p>
+
+        <h3>Constantes clave</h3>
+        <ul>
+          <li><code>SAMPLE_INTERVAL_SECONDS = 2.0</code>: no se guarda un punto nuevo si no han pasado al menos 2&nbsp;s de tiempo de partida desde el último (salvo <code>force=True</code>, usado al arrancar).</li>
+          <li><code>MAX_SAVED_SESSIONS = 50</code>: al persistir, sólo se conservan las 50 sesiones más recientes en <code>~/.solralol/live_match_sessions.json</code>.</li>
+          <li><code>ROLES = (TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY)</code> y <code>ROLE_ALIASES</code> normalizan variantes de texto (<code>BOT</code>, <code>ADC</code>, <code>SUP</code>, etc.) a esos cinco valores.</li>
+          <li><code>OBJECTIVE_EVENTS</code> traduce los tipos de evento de la Live Client Data API (<code>dragonkill</code>, <code>baronkill</code>, <code>heraldkill</code>, <code>turretkilled</code>, <code>inhibkilled</code>) a claves internas (<code>dragon</code>, <code>baron</code>, <code>rift_herald</code>, <code>tower</code>, <code>inhibitor</code>) con etiqueta en español.</li>
+        </ul>
+
+        <h3>Métodos principales</h3>
+        <table>
+          <thead><tr><th>Método</th><th>Función</th></tr></thead>
+          <tbody>
+            <tr><td><code>is_tracking</code> (propiedad)</td><td><code>True</code> mientras hay una sesión abierta en memoria.</td></tr>
+            <tr><td><code>start(snapshot)</code></td><td>Crea una sesión nueva (ver <a href="#esquema-sesion">esquema</a>) con <code>session_id</code> único (fecha + campeón), estado inicial <code>final_sync.status = "live_only"</code>, y llama a <code>update(snapshot, force=True)</code> para el primer punto.</td></tr>
+            <tr><td><code>update(snapshot, force=False)</code></td><td>Si no ha pasado el intervalo mínimo y no es forzado, no hace nada. Si toca muestrear: indexa jugadores, registra eventos exactos, añade un punto de snapshot y detecta cambios relevantes por jugador (objetos nuevos, etc.).</td></tr>
+            <tr><td><code>finish()</code></td><td>Cierra la sesión activa, calcula el <code>final_scoreboard</code> a partir del último punto conocido de cada jugador, quita campos internos de trabajo (<code>seen_event_ids</code>, <code>last_player_state</code>), la añade a las sesiones guardadas y persiste el fichero (recortando a <code>MAX_SAVED_SESSIONS</code>). Devuelve la sesión completa o <code>None</code> si no había nada en curso.</td></tr>
+            <tr><td><code>get_live_session()</code></td><td>Devuelve una copia profunda de la sesión en curso (o <code>None</code>), para poder emitirla por señal sin riesgo de mutación concurrente.</td></tr>
+            <tr><td><code>load_saved_sessions()</code></td><td>Lee y devuelve la lista de sesiones guardadas en <code>~/.solralol/live_match_sessions.json</code>; si el archivo no existe o está corrupto, devuelve <code>[]</code>.</td></tr>
+            <tr><td><code>delete_saved_session(session_id)</code></td><td>Elimina una sesión guardada por su id y reescribe el fichero.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Cómo se identifica y clasifica a cada jugador</h3>
+        <ul>
+          <li><code>_identity(player)</code>: usa <code>riotId</code> si existe, si no <code>summonerName</code>, si no compone <code>riotIdGameName#riotIdTagLine</code>.</li>
+          <li><code>_player_key(player, index)</code>: clave estable <code>"{team}:{identidad}"</code> en minúsculas, con <code>player-{index}</code> como último recurso si no hay identidad.</li>
+          <li><code>_role(player)</code>: usa la posición reportada por la API y la normaliza con <code>ROLE_ALIASES</code>; si la posición es <code>NONE</code> y el jugador lleva Ignite/Smite entre sus hechizos, infiere <code>JUNGLE</code> (heurística ya documentada en la versión anterior de este documento).</li>
+          <li><code>lane_matchups</code>: para cada rol, guarda la clave del primer aliado y del primer enemigo detectados en ese rol; es lo que usa <code>LiveMatchAnalysisDialog</code> para enfrentar "tu jugador de la calle" contra su rival.</li>
+        </ul>
+
+        <h3>Estimación de oro y estadísticas en vivo</h3>
+        <p><code>_estimate_gold</code> usa el oro real (<code>current_gold</code>) cuando está disponible (jugador local, vía <code>activePlayer.championStats</code>); para el resto de jugadores, estima con una fórmula simple: valor del inventario + <code>300</code> por kill + <code>75</code> por asistencia + <code>20</code> por creep. <code>_stats</code> intenta encontrar daño a campeones/estructuras, daño recibido, curación y visión, mirando primero <code>local_live_stats</code> (solo disponible para el jugador local) y si no, <code>player["stats"]</code>/<code>player["scores"]</code>/el propio diccionario del jugador, probando varios nombres de campo posibles (por ejemplo <code>totalDamageToChampions</code> o <code>damageToChampions</code>).</p>
+        <div class="notice">Estos valores LIVE son <strong>estimaciones</strong>. Cuando la sesión se sincroniza con Riot (ver <a href="#postgame-sync">Sincronización postpartida</a>), el <code>final_scoreboard</code> se sustituye por datos exactos de Match‑V5.</div>
       </section>
 
       <section id="tarjeta">
         <h2>ChampionCard</h2>
-        <p><code>ChampionCard</code>, en <code>app/ui/champion_card.py</code>, representa un jugador. Recibe su diccionario, la marca de jugador local, catálogo de ítems, versión, tiempo de partida y estadísticas locales cuando aplican.</p>
-        <ul>
-          <li>Icono del campeón, nombre y Riot ID.</li>
-          <li>Nivel y etiqueta <code>TÚ</code> para el jugador local.</li>
-          <li>KDA, CS, CS/minuto y valor de build.</li>
-          <li>Chips de AP, AD, armadura, MR, crítico, penetración, letalidad y heridas graves.</li>
-          <li>Nota de datos reales o estimados.</li>
-          <li>Resumen de runas e inventario.</li>
-        </ul>
-        <h3>Degradado de equipo</h3>
-        <p>La tarjeta debe leer <code>player["team"]</code>, no depender de si es el jugador local. En <code>paintEvent()</code>, un <code>QRadialGradient</code> pinta un brillo difuminado individual:</p>
-        <ul>
-          <li><code>ORDER</code>: azul, más visible hacia la parte inferior.</li>
-          <li><code>CHAOS</code>: rojo, más visible hacia la parte inferior.</li>
-          <li>La zona superior permanece oscura para que el texto conserve contraste.</li>
-        </ul>
-        <p>Los tamaños se mantienen homogéneos mediante una política horizontal expandible, una altura fija y cinco columnas con el mismo factor de expansión en el grid.</p>
+        <p><code>app/ui/champion_card.py</code> construye una tarjeta (<code>QFrame</code>) por jugador. Usa <code>player["team"]</code> para elegir el color de fondo (no la condición de "es el jugador local"): <code>QRadialGradient</code> dibuja un brillo azul para <code>ORDER</code> y rojo para <code>CHAOS</code>, manteniendo la parte superior más oscura. Incluye cabecera (icono de campeón + nombre), fila de estadísticas y una etiqueta de resumen de runas.</p>
       </section>
 
       <section id="inventario">
-        <h2>Inventario y Role Quest</h2>
-        <p><code>app/ui/inventory.py</code> transforma la lista <code>player["items"]</code> en slots visuales. Debe devolver siempre un <code>QWidget</code>, incluso si hay slots sin contenido.</p>
-        <table>
-          <thead><tr><th>Elemento</th><th>Tratamiento visual</th></tr></thead>
-          <tbody>
-            <tr><td>Slots 0–5</td><td>Inventario normal, mostrado en matriz de seis espacios.</td></tr>
-            <tr><td>Slot 6</td><td>Trinket: ward, farsight u oracle lens.</td></tr>
-            <tr><td>ADC/APC</td><td>Las botas detectadas en cualquier objeto publicado se mueven visualmente al slot especial de botlane.</td></tr>
-            <tr><td>Support</td><td>Se reserva una posición visual para la mecánica de Control Wards de Role Quest.</td></tr>
-          </tbody>
-        </table>
-        <h3>Limitación de botas</h3>
-        <p>Tras completar la Role Quest, League puede retirar las botas de la lista expuesta por la API local para BOTTOM. Si la aplicación vio esas botas antes, puede retener el último objeto conocido por Riot ID en una caché de memoria. Si nunca se recibió un identificador de botas, no se puede saber de forma fiable cuál lleva el jugador.</p>
+        <h2>Inventario</h2>
+        <p><code>app/ui/inventory.py</code> siempre debe devolver un <code>QWidget</code> (nunca <code>None</code>, o falla <code>addWidget</code> en el layout padre). Los slots 0–5 son inventario normal y el slot 6 es el trinket. Incluye <code>get_player_role</code>, <code>is_boots</code>/<code>find_boots</code> (para tratar especialmente el calzado) y <code>create_item_icon</code>/<code>create_item_slots</code> para construir los iconos con fallback cuando no hay asset local.</p>
       </section>
 
       <section id="overlay">
-        <h2>OverlayWindow</h2>
-        <p><code>app/ui/overlay_window.py</code> implementa una ventana flotante que presenta datos rápidos de partida. Su responsabilidad es visual y no debe consultar la API por sí misma.</p>
-        <ul>
-          <li>Actualiza tiempo de partida, datos locales y resumen de enemigos.</li>
-          <li>Puede mostrarse u ocultarse desde el panel.</li>
-          <li>Usa <code>setWindowOpacity()</code> para opacidad.</li>
-          <li>Activa click-through con <code>Qt.WindowTransparentForInput</code>.</li>
-          <li>Permite arrastre cuando click-through está desactivado.</li>
-        </ul>
+        <h2>Overlay</h2>
+        <p><code>app/ui/overlay_window.py</code> (<code>OverlayWindow</code>, hereda de <code>QMainWindow</code>) es una ventana flotante puramente visual: muestra datos resumidos ya calculados por la app, permite ajustar opacidad (<code>set_overlay_opacity</code>), arrastrar la ventana (<code>mousePressEvent</code>/<code>mouseMoveEvent</code>/<code>mouseReleaseEvent</code>) y activar el modo "click‑through" (<code>set_click_through</code>). No hace ninguna petición HTTP ni consulta la API por su cuenta: recibe los datos ya procesados vía <code>update_data</code>.</p>
       </section>
 
       <section id="estilos">
-        <h2>Estilos y sombras</h2>
-        <p><code>app/ui/styles.py</code> define <code>CONTROL_WINDOW_STYLE</code>. Debe incluir paleta, tipografías, bordes, botones, scroll, aspecto de slots, pestaña Análisis e inspector de partida.</p>
-        <div class="notice warning"><strong>No uses <code>text-shadow</code> en Qt Style Sheets.</strong> Qt QSS no implementa esa propiedad CSS web y mostrará <code>Unknown property text-shadow</code>.</div>
-        <p>Para una sombra real alrededor de cada tarjeta puede usarse <code>QGraphicsDropShadowEffect</code>:</p>
-        <pre><code>shadow = QGraphicsDropShadowEffect(card)
-shadow.setBlurRadius(12)
-shadow.setOffset(2, 3)
-shadow.setColor(QColor(0, 0, 0, 190))
-card.setGraphicsEffect(shadow)</code></pre>
+        <h2>Estilos (QSS)</h2>
+        <p><code>app/ui/styles.py</code> centraliza la hoja de estilos Qt del panel (colores, tipografías, formas de tarjetas). Recordatorio importante: <strong>QSS no soporta <code>text-shadow</code></strong>; si se necesita un efecto de sombra en texto hay que simularlo con capas o con <code>QGraphicsDropShadowEffect</code> desde Python, nunca con esa propiedad CSS.</p>
       </section>
 
       <section id="riot-api">
-        <h2>Riot API y ajustes</h2>
-        <p>La página Ajustes contiene el campo protegido de Riot API key, el botón <strong>Guardar y comprobar</strong> y la acción <strong>Eliminar clave</strong>. La clave se valida contra un endpoint de Riot y se guarda localmente en:</p>
-        <pre><code>C:\Users\TU_USUARIO\.solralol\settings.json</code></pre>
-        <p>El servicio <code>SettingsService</code> es responsable de cargar y guardar el JSON, validar la clave y eliminarla. Debe definir <code>self.settings_path</code> en su constructor antes de usar <code>save()</code>.</p>
-        <div class="notice success">La clave no se incluye en la caché del historial. La caché de partidas y la configuración se mantienen en archivos separados.</div>
-        <h3>Regiones</h3>
-        <p>Riot Account-V1 y Match-V5 utilizan una región de routing, por ejemplo <code>europe</code>; Summoner-V4 utiliza una región de plataforma, por ejemplo <code>euw1</code>. Ambas se conservan en ajustes como <code>riot_account_region</code> y <code>riot_platform_region</code>.</p>
+        <h2>RiotApiService y ajustes</h2>
+        <p><code>app/services/settings_service.py</code> (<code>SettingsService</code>) administra <code>~/.solralol/settings.json</code>: inicializa <code>self.settings_path</code> en <code>__init__</code> (requisito obligatorio, ver <a href="#errores">Diagnóstico</a>), y ofrece <code>load()</code>, <code>save()</code>, <code>save_riot_api_key()</code>, <code>clear_riot_api_key()</code> y <code>validate_riot_api_key()</code> (esta última hace una petición real a <code>lol/status/v4/platform-data</code> en <code>euw1</code> para comprobar que la clave es válida, distinguiendo 200/401/403/429/otros). La Riot API key <strong>nunca</strong> debe guardarse dentro de <code>match_history_cache.json</code>.</p>
+
+        <p><code>app/services/riot_api_service.py</code> (<code>RiotApiService</code>) es el cliente real de la Riot API:</p>
+        <table>
+          <thead><tr><th>Método</th><th>Función</th></tr></thead>
+          <tbody>
+            <tr><td><code>get_account_by_riot_id(game_name, tag_line)</code></td><td>Account‑V1: Riot ID (Nombre#TAG) → PUUID.</td></tr>
+            <tr><td><code>get_summoner_by_puuid(puuid)</code></td><td>Datos del invocador a partir del PUUID.</td></tr>
+            <tr><td><code>get_match_ids(puuid, count)</code></td><td>Match‑V5: lista de IDs de las últimas partidas.</td></tr>
+            <tr><td><code>get_match(match_id)</code></td><td>Match‑V5: detalle completo de una partida (con caché vía <code>MatchHistoryCache</code>).</td></tr>
+            <tr><td><code>get_match_timeline(match_id)</code></td><td>Match‑V5: timeline (frames/eventos) de una partida — usada por <code>PostgameSyncService</code> para los eventos oficiales.</td></tr>
+            <tr><td><code>get_recent_matches(...)</code> / <code>get_match_detail(...)</code></td><td>Construyen los resúmenes/detalles normalizados que consume el historial y <code>MatchInspectorDialog</code>.</td></tr>
+            <tr><td><code>resolve_item(...)</code></td><td>Resuelve datos de un objeto contra el catálogo para mostrarlo en la UI.</td></tr>
+          </tbody>
+        </table>
+        <p>Regiones soportadas: <code>account_region</code> ∈ {<code>americas</code>, <code>asia</code>, <code>europe</code>} (normalmente <code>europe</code>); <code>platform_region</code> ∈ las plataformas estándar de Riot (<code>euw1</code>, <code>na1</code>, <code>kr</code>, etc. — normalmente <code>euw1</code>). Los códigos de error se traducen a <code>RiotApiError</code> con <code>status_code</code> y, en el caso de 429, con <code>retry_after</code> leído de la cabecera <code>Retry-After</code> cuando existe.</p>
       </section>
 
       <section id="historial">
-        <h2>Buscador de invocador e historial</h2>
-        <p>La sección «Actividad reciente» de Inicio permite escribir el Riot ID separado en dos campos: nombre y <code>TAG</code>. El botón <strong>Actualizar historial</strong> es la única ruta normal para consultar Riot API. El usuario puede abrir cada fila para inspeccionar la partida.</p>
-        <div class="grid">
-          <article class="card"><h3>RiotApiService</h3><p>Resuelve <code>Nombre#TAG</code> a PUUID mediante Account-V1, obtiene IDs recientes desde Match-V5 y recupera detalles de cada partida nueva.</p></article>
-          <article class="card"><h3>MatchHistoryWorker</h3><p>Vive en un <code>QThread</code> dedicado. Emite <code>history_ready</code>, <code>history_failed</code>, <code>detail_ready</code> y <code>detail_failed</code>.</p></article>
-          <article class="card"><h3>MatchHistoryCache</h3><p>Persiste PUUID, resúmenes, detalles completos y el cooldown de rate limit en <code>~/.solralol/match_history_cache.json</code>.</p></article>
-          <article class="card"><h3>Interfaz</h3><p>La ventana usa <code>history_is_loading</code> para bloquear acciones simultáneas y actualiza la lista solo cuando el worker termina.</p></article>
+        <h2>Buscador e historial — regla crítica de rate limit <span class="tag new">confirmado</span></h2>
+        <p>No es una pestaña propia: vive dentro de <strong>Inicio</strong>, en la tarjeta "Actividad reciente" (<code>create_home_page</code>). Componentes reales: botón <strong>"Actualizar historial"</strong> (<code>refresh_history_button</code> → <code>request_match_history</code>), campos <code>riot_game_name_input</code> ("Nombre de Riot ID") y <code>riot_tag_line_input</code> ("TAG", máx. 5 caracteres), y una etiqueta de estado <code>history_status</code>.</p>
+        <div class="notice warning">
+          <strong>No añadir sondeo de Riot API al <code>poll_timer</code> de Live Client.</strong> El historial se consulta solo al pulsar "Actualizar historial" (<code>request_match_history</code>); no hay ninguna llamada automática a Riot al arrancar la app ni al cambiar de pestaña.
         </div>
-        <h3>Política de solicitudes</h3>
         <ul>
-          <li>No consultar historial al iniciar la aplicación.</li>
-          <li>No consultar historial al cambiar de pestaña.</li>
-          <li>No consultar Riot API dentro del timer de un segundo de Live Client.</li>
-          <li>Solicitar por defecto cinco partidas recientes mediante acción manual.</li>
-          <li>Usar PUUID cacheado antes de volver a resolver el Riot ID.</li>
-          <li>Descargar el detalle solo para <code>match_id</code> nuevos o no detallados.</li>
-          <li>Tras una respuesta <code>429</code>, respetar <code>Retry-After</code> o aplicar 120 segundos de bloqueo local.</li>
-          <li>La futura actualización al terminar una partida debe ejecutarse una sola vez tras la transición <code>in_game → lobby</code>, idealmente con un pequeño retraso para que Riot procese el resultado.</li>
+          <li>El historial por defecto consulta 5 partidas (<code>count</code> en <code>MatchHistoryWorker.load_history</code>).</li>
+          <li><code>MatchHistoryCache</code> (<code>app/services/match_history_cache.py</code>) persiste en <code>~/.solralol/match_history_cache.json</code>: cuentas (<code>account_key</code>/<code>get_account</code>/<code>save_account</code>), resúmenes/detalles por <code>match_id</code> (<code>get_match</code>/<code>save_match</code>/<code>get_matches</code>) y el cooldown de rate limit (<code>rate_limit_remaining_seconds</code>, <code>activate_rate_limit_cooldown</code>, <code>clear_rate_limit_cooldown</code>).</li>
+          <li>Una partida detallada nunca debería descargarse dos veces: siempre comprobar la caché antes de llamar a Riot.</li>
+          <li>Ante HTTP 429: <code>show_match_detail_error(message, retry_after)</code> deshabilita <code>refresh_history_button</code> y lo reactiva automáticamente pasados <code>retry_after</code> segundos con <code>QTimer.singleShot(retry_after * 1000, self.enable_history_refresh)</code>, mostrando en <code>history_status</code> cuánto falta.</li>
+          <li><code>MatchHistoryWorker</code> (<code>QThread</code>, <code>history_thread</code>) expone <code>load_history()</code> y <code>load_match_detail()</code>, con señales <code>history_ready</code> → <code>receive_match_history</code>, <code>history_failed</code> → <code>show_match_history_error</code>, <code>detail_ready</code> → <code>open_match_inspector</code> y <code>detail_failed</code> → <code>show_match_detail_error</code>.</li>
+          <li>Al recibir el detalle (<code>open_match_inspector</code>) se abre directamente <code>MatchInspectorDialog(match_detail, item_catalog, data_dragon_assets, self)</code> como modal (<code>.exec()</code>).</li>
         </ul>
-        <pre><code>self.history_requested.emit(
-    self.riot_api_key,
-    game_name,
-    tag_line,
-    self.riot_account_region,
-    self.riot_platform_region,
-    5,
-)</code></pre>
+      </section>
+
+      <section id="ajustes">
+        <h2>Página de Ajustes <span class="tag new">confirmado</span></h2>
+        <p><code>create_settings_page</code>: campo de Riot API key (<code>api_key_input</code>, modo contraseña, placeholder <code>RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>) con dos botones, <strong>"Guardar y comprobar"</strong> (<code>save_and_validate_api_key</code>) y <strong>"Eliminar clave"</strong> (<code>clear_api_key</code>), más los campos de Riot ID y regiones (<code>riot_account_region</code>/<code>riot_platform_region</code>, guardados con <code>save_riot_id</code>).</p>
+        <div class="notice warning">
+          <strong><code>save_and_validate_api_key</code> llama a <code>SettingsService.validate_riot_api_key(api_key)</code> de forma síncrona, en el hilo de interfaz</strong> (no pasa por ningún <code>QThread</code>). Esa llamada hace una petición HTTP real a <code>lol/status/v4/platform-data</code> en <code>euw1</code>, así que mientras Riot responde la ventana puede quedarse sin refrescar unos instantes. Es una excepción puntual a la regla general "toda petición HTTP bloqueante va en un worker" — aceptable porque es una acción explícita y poco frecuente del usuario (guardar la clave), pero conviene tenerlo en cuenta si algún día se nota un pequeño parón al pulsar "Guardar y comprobar".
+        </div>
+        <p>Si la clave es válida, se guarda con <code>settings_service.save_riot_api_key(api_key)</code> y se refleja en <code>self.riot_api_key</code>; si no, se limpia con <code>clear_riot_api_key()</code>. El estado visual (<code>api_key_status</code>, con la propiedad QSS <code>state</code> en <code>checking</code>/<code>valid</code>/<code>invalid</code>) se repinta manualmente con <code>unpolish()</code>/<code>polish()</code> para forzar que Qt vuelva a aplicar el estilo tras cambiar la propiedad dinámica.</p>
       </section>
 
       <section id="inspector">
         <h2>Inspector de partidas</h2>
-        <p><code>MatchInspectorDialog</code> se abre al pulsar una fila del historial. Para evitar llamadas repetidas, primero busca el detalle completo en la caché. Si una partida antigua solo tiene resumen, el worker solicita su detalle una única vez y lo persiste con <code>detail_version</code>.</p>
+        <p><code>MatchInspectorDialog</code> vive en <code>app/ui/match_inspector_dialog.py</code>. Recibe <code>match</code> (el detalle normalizado), <code>item_catalog</code>, <code>assets</code> (<code>DataDragonAssetService</code>, opcional — si no se pasa, crea uno propio) y <code>parent</code>.</p>
+        <p>Muestra: resultado, retrato del campeón local, cola, fecha, duración, KDA, ambos equipos, roles, Riot IDs, CS, oro, visión, nivel y build final. Los objetivos se listan de forma compacta junto a encabezados <em>Aliados</em> y <em>Enemigos</em>: <code>dragon</code> 🐉, <code>baron</code> 🟣, <code>rift_herald</code> 👁, <code>tower</code> 🏰 e <code>inhibitor</code> 💎 (emoji de respaldo si no hay asset local). El diálogo se muestra como modal (<code>setModal(True)</code>) con un tamaño mínimo de 1220×840.</p>
+      </section>
+
+      <section id="postgame-sync">
+        <h2>Sincronización postpartida <span class="tag new">nuevo</span></h2>
+        <p><code>app/services/postgame_sync_service.py</code> (<code>PostgameSyncService</code>) es el corazón de la nueva función de análisis con Riot API: coge una sesión LIVE ya terminada (grabada por <code>LiveMatchTracker</code>) y la completa con los datos oficiales de esa misma partida en los servidores de Riot.</p>
+
+        <h3>Constantes</h3>
+        <ul>
+          <li><code>MAX_CANDIDATES = 10</code>: número máximo de partidas recientes del jugador que se comprueban como posible coincidencia.</li>
+          <li><code>START_TOLERANCE_SECONDS = 12 * 60</code>: diferencia máxima admitida entre la hora de inicio local y la de Riot.</li>
+          <li><code>DURATION_TOLERANCE_SECONDS = 4 * 60</code>: diferencia máxima admitida entre duración local y duración según Riot.</li>
+        </ul>
+
+        <h3><code>sync_session(session)</code> — algoritmo paso a paso</h3>
+        <ol>
+          <li><strong>Comprobación previa (<code>_can_sync</code>):</strong> hace falta API key, <code>game_name</code>, <code>tag_line</code> y que la sesión tenga <code>local_player_key</code>. Si falta algo, se devuelve la sesión sin tocar con <code>final_sync.status = "live_only"</code> y el mensaje "Sin Riot ID o API key: se conserva telemetría LIVE."</li>
+          <li><strong>Resolución de cuenta:</strong> <code>RiotApiService.get_account_by_riot_id</code> obtiene el PUUID.</li>
+          <li><strong>Candidatas:</strong> <code>get_match_ids(puuid, count=MAX_CANDIDATES)</code> trae hasta 10 IDs de partidas recientes.</li>
+          <li><strong>Puntuación de cada candidata (<code>_candidate_score</code>):</strong>
+            <ul>
+              <li>Se descarta si el campeón jugado en esa partida (según Match‑V5) no coincide con <code>session["champion_name"]</code>.</li>
+              <li>Se calcula la diferencia entre la hora de inicio local (<code>session["started_at"]</code>) y <code>gameStartTimestamp</code>/<code>gameCreation</code> de Riot; se descarta si supera <code>START_TOLERANCE_SECONDS</code>.</li>
+              <li>Se calcula la diferencia entre <code>session["duration"]</code> y <code>gameDuration</code>; se descarta si hay duración local y la diferencia supera <code>DURATION_TOLERANCE_SECONDS</code>.</li>
+              <li>La puntuación final es <code>diferencia_de_inicio + 2 × diferencia_de_duración</code> (cuanto menor, mejor).</li>
+            </ul>
+          </li>
+          <li><strong>Selección:</strong> se elige la candidata con menor puntuación. Si ninguna pasa los filtros, la sesión queda en estado <code>"pending"</code> ("Esperando a que Riot procese la partida.").</li>
+          <li><strong>Fusión (<code>_merge_riot_data</code>):</strong> con la partida elegida, se descarga también su timeline y se hace lo siguiente:
+            <ul>
+              <li>Se mapea cada <code>participantId</code> de Riot a la clave interna de jugador de la sesión, primero por Riot ID normalizado y, si no hay coincidencia, por par (campeón, equipo).</li>
+              <li>Se rellena <code>meta["final"]</code> de cada jugador emparejado con <code>_official_player_stats</code> (ver más abajo) y se marca <code>meta["win"]</code>.</li>
+              <li><code>session["final_scoreboard"]</code> pasa a ser el marcador oficial (antes era una estimación LIVE).</li>
+              <li><code>session["winning_team"]</code> se calcula a partir de <code>teamId</code>/<code>win</code> del jugador local.</li>
+              <li>Se guardan <code>session["riot_match"]</code> (respuesta cruda de Match‑V5) y <code>session["riot_timeline"]</code> (respuesta cruda de la timeline).</li>
+              <li><code>session["official_events"]</code> sustituye a los eventos estimados en vivo si Riot ha devuelto alguno (<code>session["events"] = official_events or events</code>).</li>
+              <li><code>session["postgame"] = True</code> y <code>session["final_sync"]</code> pasa a <code>{"status": "synced", "match_id": ..., "synced_at": ..., "source": "riot_match_v5", "message": "Partida sincronizada con Riot Match-V5."}</code>.</li>
+            </ul>
+          </li>
+          <li><strong>Errores:</strong> un <code>RiotApiError</code> con <code>status_code</code> 404 o 429 se traduce a estado <code>"pending"</code> (tiene sentido reintentar); cualquier otro <code>RiotApiError</code>, o cualquier excepción inesperada, se traduce a estado <code>"failed"</code> con el mensaje de error.</li>
+        </ol>
+
+        <h3><code>_official_player_stats(participant)</code> — qué datos oficiales se guardan por jugador</h3>
+        <p>KDA (<code>kills</code>, <code>deaths</code>, <code>assists</code>), CS (<code>cs_minions</code>, <code>cs_jungle</code>, <code>cs_total</code>), <code>level</code>, oro (<code>gold_earned</code>, <code>gold_spent</code>), daño (a campeones, estructuras, objetivos, y recibido), utilidad/visión (<code>healing</code>, <code>healing_from_teammates</code>, <code>vision_score</code>, <code>wards_placed</code>, <code>wards_killed</code>, <code>control_wards_purchased</code>, <code>time_cc_dealt</code>), build final (hasta 7 <code>item{N}</code> distintos de 0), runas y sub‑estilos (<code>perk0..5</code>, <code>stat_perk_0..2</code>), hechizos de invocador (<code>spell1_id</code>, <code>spell2_id</code>) y <code>win</code>.</p>
+
+        <h3>PostgameSyncWorker</h3>
+        <p><code>app/services/postgame_sync_worker.py</code> ejecuta todo lo anterior en un <code>QThread</code>. Su slot <code>sync_session(session, api_key, game_name, tag_line, account_region, platform_region)</code> crea internamente un <code>RiotApiService</code> y un <code>PostgameSyncService</code>, y emite:</p>
+        <ul>
+          <li><code>sync_ready(dict)</code> — la sesión actualizada (haya quedado <code>synced</code>, <code>pending</code>, <code>failed</code> o <code>live_only</code>: el worker no filtra por estado, simplemente devuelve lo que <code>sync_session</code> haya calculado).</li>
+          <li><code>sync_failed(str)</code> — sólo ante una excepción no controlada al construir los servicios o llamar a <code>sync_session</code> (no es lo mismo que un estado <code>"failed"</code> dentro de la sesión, que sí se emite por <code>sync_ready</code>).</li>
+        </ul>
+        <div class="notice">El worker actual incluye varias líneas <code>print("[WORKER] ...")</code> de depuración en cada paso (creación de servicios, inicio y fin de la sincronización, estado final). Son útiles para depurar mientras se termina de conectar la función a la interfaz, pero conviene revisarlas antes de una versión "final" de cara al usuario.</div>
+      </section>
+
+      <section id="botones">
+        <h2>Botones de análisis: Buscar Riot / Re-sincronizar / Abrir análisis <span class="tag new">confirmado</span></h2>
+        <div class="notice success">
+          Comportamiento verificado línea a línea contra <code>app/ui/main_window.py</code> (métodos <code>create_saved_game_row</code>, <code>request_saved_session_sync</code>, <code>request_resync_session</code>, <code>open_saved_game_analysis</code>).
+        </div>
+        <p>En la pestaña <strong>Partidas guardadas</strong>, cada fila (<code>create_saved_game_row</code>) muestra el estado de <code>session["final_sync"]["status"]</code> y hasta dos botones:</p>
         <table>
-          <thead><tr><th>Bloque</th><th>Información mostrada</th></tr></thead>
+          <thead><tr><th>Estado (<code>final_sync.status</code>)</th><th>Texto de estado</th><th>Botón(es)</th><th>Método invocado</th></tr></thead>
           <tbody>
-            <tr><td>Cabecera</td><td>Victoria/derrota, retrato de campeón, cola, fecha, duración y KDA del jugador local.</td></tr>
-            <tr><td>Objetivos</td><td>Dragones, Barones, Heraldos, torres e inhibidores. Los objetivos se muestran compactos junto a las cabeceras Aliados y Enemigos para ahorrar espacio vertical.</td></tr>
-            <tr><td>Jugadores</td><td>Campeón, rol, Riot ID, KDA, CS, oro, visión, nivel y build final.</td></tr>
-            <tr><td>Build</td><td>Seis objetos y trinket cuando existen; los huecos con ID <code>0</code> no se pintan.</td></tr>
-            <tr><td>Fallbacks</td><td>Si no existe un icono de objetivo local, usa emoji: 🐉, 🟣, 👁, 🏰 y 💎.</td></tr>
+            <tr><td><code>live_only</code></td><td>"Solo telemetría LIVE"</td><td><strong>Buscar Riot</strong></td><td><code>request_saved_session_sync(session_id)</code></td></tr>
+            <tr><td><code>pending</code></td><td>"Pendiente de sincronización"</td><td><strong>Buscar Riot</strong></td><td><code>request_saved_session_sync(session_id)</code></td></tr>
+            <tr><td><code>failed</code></td><td>"Error al sincronizar"</td><td><strong>Buscar Riot</strong></td><td><code>request_saved_session_sync(session_id)</code></td></tr>
+            <tr><td><code>synced</code></td><td>"Sincronizada con Riot"</td><td><strong>Re-sincronizar</strong></td><td><code>request_resync_session(session_id)</code></td></tr>
+            <tr><td><em>cualquiera</em></td><td>—</td><td><strong>Abrir análisis</strong> (siempre visible)</td><td><code>open_saved_game_analysis(session)</code></td></tr>
           </tbody>
         </table>
-        <p>Las tarjetas se han compactado para que entren ambos equipos, reduciendo el spacing entre tarjetas, entre líneas y en bordes. Las imágenes siguen teniendo prioridad visual sobre texto redundante.</p>
+        <p>Correspondencia con la terminología de la petición original ("Analizar" / "Re-analizar" / "Ver"):</p>
+
+        <h3>"Analizar" → botón "Buscar Riot" → <code>request_saved_session_sync(session_id)</code></h3>
+        <ol>
+          <li>Si <code>postgame_sync_in_progress</code> es <code>True</code>, no hace nada (evita lanzar dos sincronizaciones a la vez).</li>
+          <li>Busca la sesión por <code>session_id</code> en <code>live_match_tracker.load_saved_sessions()</code>.</li>
+          <li>Si el <code>game_mode</code> es <code>PRACTICETOOL</code>, <code>PRACTICE</code>, <code>TUTORIAL</code>, <code>CUSTOM</code> o <code>CUSTOM_GAME</code>, marca la sesión como <code>live_only</code> con el mensaje "No disponible en Riot Match-V5: las partidas de práctica, tutorial y personalizadas conservan telemetría LIVE local." y no llama a Riot.</li>
+          <li>Si no hay <code>riot_api_key</code>, o falta el nombre/tag del Riot ID en Ajustes, marca la sesión como <code>failed</code> con un mensaje pidiendo configurarlos.</li>
+          <li>Si todo está listo: guarda <code>pending_postgame_session_id = session_id</code>, marca el estado como <code>pending</code> ("Buscando detalle y timeline en Riot…"), refresca la lista (<code>refresh_saved_games</code>) y llama a <code>start_postgame_sync(session_id)</code>.</li>
+          <li><code>start_postgame_sync</code> vuelve a leer la sesión de disco (para trabajar con el estado <code>pending</code> recién guardado, no con una copia antigua) y emite la señal <code>postgame_sync_requested(session, riot_api_key, game_name, tag_line, riot_account_region, riot_platform_region)</code>, que <code>PostgameSyncWorker</code> recibe en su propio <code>QThread</code> y procesa con <code>PostgameSyncService.sync_session(...)</code> (ver <a href="#postgame-sync">Sincronización postpartida</a>).</li>
+          <li>La respuesta llega por <code>sync_ready</code> → <code>receive_postgame_sync</code> (sustituye la sesión en disco por la versión devuelta y refresca la lista) o por <code>sync_failed</code> → <code>receive_postgame_sync_error</code> (marca la sesión como <code>failed</code> con el mensaje de error, conservando la telemetría LIVE intacta).</li>
+        </ol>
+
+        <h3>"Re-analizar" → botón "Re-sincronizar" → <code>request_resync_session(session_id)</code></h3>
+        <p>Solo visible cuando <code>final_sync.status == "synced"</code>. Resetea manualmente el estado de sincronización de la sesión guardada:</p>
+        <pre><code>session["final_sync"] = {
+    "status": "live_only",
+    "match_id": None,
+    "synced_at": None,
+    "source": "live_client_data_api",
+    "message": "Pendiente de re-sincronización.",
+}
+session.pop("official_events", None)</code></pre>
+        <p>Guarda ese cambio directamente en disco (<code>live_match_tracker._save_sessions(sessions)</code>) y a continuación llama a <code>request_saved_session_sync(session_id)</code>: es decir, "Re-sincronizar" es literalmente "olvida la sincronización anterior y vuelve a pulsar Buscar Riot".</p>
+
+        <h3>"Ver" → botón "Abrir análisis" → <code>open_saved_game_analysis(session)</code></h3>
+        <p>Siempre visible, en cualquier estado. No llama a Riot para nada: simplemente construye y muestra el diálogo con la sesión tal cual está guardada en ese momento.</p>
+        <pre><code>def open_saved_game_analysis(self, session: dict) -> None:
+    dialog = LiveMatchAnalysisDialog(
+        session,
+        self.data_dragon_assets,
+        self.item_catalog,
+        self,
+    )
+    dialog.exec()</code></pre>
+
+        <h3>Un cuarto botón: "Abrir análisis LIVE" (partida en curso)</h3>
+        <p>En la pestaña <strong>Partida en vivo</strong>, <code>open_live_analysis_button</code> permanece deshabilitado hasta que llega la primera sesión LIVE (<code>receive_live_analysis</code>, conectada a <code>LiveDataWorker.live_analysis_ready</code>). <code>open_live_analysis()</code> reutiliza el diálogo si ya está abierto (<code>show()</code>, <code>raise_()</code>, <code>activateWindow()</code>, <code>update_session(session)</code>) o crea uno nuevo y lo conecta a <code>finished</code> para limpiar la referencia al cerrarse. Mientras la partida sigue en curso, cada sesión LIVE nueva (una por segundo, junto al snapshot del panel) se reenvía automáticamente al diálogo si está abierto, así que se actualiza solo.</p>
+
+        <h3>Sincronización automática al terminar la partida</h3>
+        <p>Cuando <code>MainWindow</code> detecta que la partida ha terminado, cierra la sesión (<code>live_match_tracker.finish()</code>) y llama a <code>schedule_postgame_sync(session)</code>: marca el estado como <code>pending</code> ("Esperando a que Riot procese la partida…") y programa, con <code>QTimer.singleShot(20_000, ...)</code>, una primera llamada a <code>start_postgame_sync</code> veinte segundos después — así la primera sincronización ocurre sola, sin que haga falta pulsar "Buscar Riot" la primera vez. Si Riot todavía no tiene la partida procesada en ese momento, la sesión queda en <code>pending</code> y es cuando tiene sentido volver a pulsar el botón manualmente más tarde.</p>
+      </section>
+
+      <section id="live-analysis-dialog">
+        <h2>Diálogo de análisis LIVE <span class="tag new">nuevo</span></h2>
+        <p><code>app/ui/live_match_analysis_dialog.py</code> define <code>LiveMatchAnalysisDialog(QDialog)</code>, la ventana de análisis por partida. Recibe <code>session</code>, <code>assets</code> (<code>DataDragonAssetService</code>) e <code>item_catalog</code>. Título de ventana: <em>"Análisis LIVE · SolraLoL"</em>; tamaño inicial 1640×1000, mínimo 1200×760.</p>
+
+        <h3>Construcción</h3>
+        <ol>
+          <li><code>_prepare_session()</code>: inicializa <code>session["achievements"]</code> si no existe y llama a <code>attach_achievements(session, item_catalog)</code> (capturando cualquier excepción para no romper la apertura del diálogo si el cálculo de logros falla).</li>
+          <li><code>_build_ui()</code>: cabecera (<code>_create_header</code>), pestañas por rol (<code>_create_role_tabs</code>) y un contenedor de contenido que se reconstruye al cambiar de rol; pie con botón "Cerrar".</li>
+          <li><code>show_role("TOP")</code> se llama al final del constructor para mostrar la primera pestaña por defecto.</li>
+        </ol>
+        <p><code>update_session(session)</code> permite refrescar el diálogo ya abierto con una sesión nueva (por ejemplo, tras terminar una sincronización) sin cerrarlo: vuelve a preparar los logros, refresca la cabecera y redibuja el rol activo.</p>
+
+        <h3>Pestañas por rol</h3>
+        <p><code>ROLE_LABELS</code> define las cinco pestañas: <em>TOP VS TOP</em>, <em>JGL VS JGL</em>, <em>MID VS MID</em>, <em>BOT VS BOT</em>, <em>SUP VS SUP</em>. Cada pestaña usa <code>session["lane_matchups"][rol]</code> para saber qué aliado y qué enemigo enfrentar. Por cada jugador de la calle activa se construyen, entre otros:</p>
+        <ul>
+          <li><code>_create_player_header</code>: campeón, Riot ID, KDA.</li>
+          <li><code>_create_runes_panel</code>: resumen de runas.</li>
+          <li><code>_create_awards_panel</code>: logros de ese jugador (ver <a href="#logros">Logros</a>).</li>
+          <li><code>_create_metrics_panel</code> / <code>_build_item_metrics</code>: estadísticas derivadas de la build actual, apoyándose en <code>game_calculator.calculate_item_stats</code>.</li>
+          <li><code>_create_inventory_panel</code>: objetos actuales del jugador.</li>
+          <li><code>_create_charts_panel</code>: gráficas de comparación (ver <code>VersusChart</code> más abajo).</li>
+          <li><code>_create_timeline_panel</code> / <code>_create_timeline_content</code> / <code>_timeline_event_row</code>: cronología de eventos, filtrable entre modo "calle" (<code>lane</code>, solo eventos relevantes para esos dos jugadores) y modo global, mediante <code>_change_timeline_mode</code>.</li>
+        </ul>
+
+        <h3><code>VersusChart</code></h3>
+        <p>Widget de gráfica dibujado a mano con <code>QPainter</code> (sin librerías externas de gráficos): recibe una lista de puntos <code>(tiempo, valor)</code> para el aliado y para el enemigo, dibuja rejilla, dos series de líneas (azul para el aliado, rojo para el enemigo) y una capa de <em>hover</em> que muestra en un tooltip el valor de ambos jugadores en el instante más cercano al ratón. Usa <code>LiveMatchTracker.format_time</code> para formatear el eje de tiempo como <code>MM:SS</code>.</p>
+      </section>
+
+      <section id="logros">
+        <h2>Logros y métricas derivadas <span class="tag new">nuevo</span></h2>
+        <p><code>app/services/live_analysis_models_and_calculator.py</code> calcula estadísticas adicionales a partir de una sesión ya construida por <code>LiveMatchTracker</code>:</p>
+        <table>
+          <thead><tr><th>Función</th><th>Qué calcula</th></tr></thead>
+          <tbody>
+            <tr><td><code>calculate_post_stats(session, player_key, item_catalog, version)</code></td><td>Estadísticas totales del campeón (ataque, magia, armadura, RM, vida, crítico, robo de vida, letalidad, etc.) combinando <code>calculate_champion_total_stats</code> y <code>calculate_item_stats</code> de <code>game_calculator.py</code> con los datos base del campeón (<code>data_dragon.get_champion_data</code>).</td></tr>
+            <tr><td><code>calculate_achievements(session, player_key, item_catalog, version)</code></td><td>Lista de "logros" de la partida para un jugador (ver tabla siguiente).</td></tr>
+            <tr><td><code>calculate_all_achievements(session, item_catalog, version)</code></td><td>Aplica la función anterior a todos los jugadores de la sesión.</td></tr>
+            <tr><td><code>attach_achievements(session, item_catalog, version)</code></td><td>Guarda el resultado anterior en <code>session["achievements"]</code> y devuelve la sesión.</td></tr>
+            <tr><td><code>build_postgame_payload(session, riot_match, ...)</code></td><td>Construye el payload combinado usado para presentar la partida ya sincronizada.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Catálogo de logros (<code>AWARD_LABELS</code>)</h3>
+        <table>
+          <thead><tr><th>Logro</th><th>Condición</th></tr></thead>
+          <tbody>
+            <tr><td>Victoria</td><td><code>_is_winner(session, player_key)</code> es cierto.</td></tr>
+            <tr><td>Ha ganado el early</td><td>Oro estimado del jugador en el minuto 15 (<code>t≤900s</code>) mayor que el de su rival de calle.</td></tr>
+            <tr><td>Ha ganado el mid</td><td>Igual que el anterior, en el minuto 30 (<code>t≤1800s</code>).</td></tr>
+            <tr><td>Ha ganado el late</td><td>Igual que el anterior, con el último punto disponible de cada jugador.</td></tr>
+            <tr><td>Full AD</td><td>Ataque físico total (<code>ad</code>) ≥ 300.</td></tr>
+            <tr><td>Full AP</td><td>Poder de habilidad total (<code>ap</code>) ≥ 400.</td></tr>
+            <tr><td>Armadura</td><td>Armadura total ≥ 150.</td></tr>
+            <tr><td>Resistencia mágica</td><td>RM total ≥ 150.</td></tr>
+            <tr><td>Vida extra</td><td>Vida total menos la vida base del campeón (según Data Dragon) ≥ 3000.</td></tr>
+            <tr><td>Crítico</td><td>Probabilidad de crítico ≥ 50% (normaliza si el valor viene como fracción 0–1).</td></tr>
+            <tr><td>Robo de vida</td><td>Robo de vida ≥ 25% (misma normalización).</td></tr>
+            <tr><td>Antiheal</td><td><code>stats["grievous_wounds"]</code> es cierto.</td></tr>
+            <tr><td>Penetración de armadura</td><td>Letalidad &gt; 0, o penetración porcentual &gt; 0, o <code>has_armor_penetration</code> cierto.</td></tr>
+            <tr><td>Full letalidad</td><td>Letalidad ≥ 100.</td></tr>
+          </tbody>
+        </table>
+        <p>Los logros se deduplican preservando el primer orden en que aparecen. Existe también una etiqueta <code>"roamer"</code> reservada en <code>AWARD_LABELS</code> que actualmente no se asigna en <code>calculate_achievements</code> (posible logro pendiente de implementar).</p>
+      </section>
+
+      <section id="esquema-sesion">
+        <h2>Esquema de una sesión <span class="tag new">nuevo</span></h2>
+        <p>Estructura real (<code>schema_version = 2</code>) que produce <code>LiveMatchTracker</code> y que consumen <code>PostgameSyncService</code> y <code>LiveMatchAnalysisDialog</code>. Es el documento que se guarda, uno por partida, en la lista JSON de <code>~/.solralol/live_match_sessions.json</code>.</p>
+        <pre><code>{
+  "schema_version": 2,
+  "session_id": "2026-01-15T21-03-10-482310+00-00_Varus",
+  "started_at": "2026-01-15T21:03:10.482310+00:00",
+  "ended_at": "2026-01-15T21:34:02.101922+00:00",
+  "game_mode": "CLASSIC",
+  "local_team": "ORDER",
+  "local_player_key": "order:jugador#euw",
+  "champion_name": "Varus",
+  "player_riot_id": "Jugador#EUW",
+  "duration": 1852.4,
+
+  "players": {
+    "order:jugador#euw": {
+      "player_key": "order:jugador#euw",
+      "team": "ORDER",
+      "side": "ally",
+      "role": "BOTTOM",
+      "riot_id": "Jugador#EUW",
+      "champion_name": "Varus",
+      "is_local_player": true,
+      "win": true,
+      "final": { "...": "solo tras sincronizar, ver _official_player_stats" },
+      "items": [3006, 3072, 3031]
+    }
+  },
+
+  "lane_matchups": {
+    "TOP": { "ally_key": "order:...", "enemy_key": "chaos:..." },
+    "JUNGLE": { "ally_key": null, "enemy_key": null },
+    "MIDDLE": { "...": "..." },
+    "BOTTOM": { "ally_key": "order:jugador#euw", "enemy_key": "chaos:..." },
+    "UTILITY": { "...": "..." }
+  },
+
+  "snapshots": [
+    {
+      "time": 120.0,
+      "players": {
+        "order:jugador#euw": {
+          "level": 5, "kills": 1, "deaths": 0, "assists": 0, "cs": 42,
+          "items": [1055], "inventory_value": 450,
+          "current_gold": 280, "estimated_gold": 940,
+          "stats": { "damage_to_champions": null, "vision_score": null, "...": "..." },
+          "quality": { "estimated_gold": "estimated", "damage_to_champions": "unavailable", "...": "..." }
+        }
+      }
+    }
+  ],
+
+  "events": [
+    { "time": 305.2, "time_label": "05:05", "order": 3, "type": "kill",
+      "precision": "observed", "player_key": "order:jugador#euw",
+      "team": "ORDER", "role": "BOTTOM", "label": "Asesinato 1", "value": 1 },
+    { "time": 640.0, "time_label": "10:40", "order": 8, "type": "item_purchase",
+      "precision": "observed", "player_key": "order:jugador#euw",
+      "team": "ORDER", "role": "BOTTOM", "label": "Compra: Espada de fuego negro",
+      "item_id": 3071 },
+    { "time": 900.5, "time_label": "15:00", "order": 15, "type": "dragonkill",
+      "precision": "observed", "team": "ORDER", "role": "UNKNOWN",
+      "label": "Dragón" }
+  ],
+
+  "player_timelines": { "order:jugador#euw": [ "... mismos eventos, filtrados por jugador ..." ] },
+
+  "final_scoreboard": {
+    "order:jugador#euw": {
+      "kills": 6, "deaths": 2, "assists": 9, "cs": 210, "level": 18,
+      "estimated_gold": 13500,
+      "stats": { "...": "última muestra LIVE conocida" },
+      "items": [3006, 3072, 3031, 3046, 3026, 1037],
+      "win": true
+    }
+  },
+
+  "winning_team": "ORDER",
+  "riot_match": { "...": "solo tras sincronizar: respuesta cruda de Match-V5" },
+  "riot_timeline": { "...": "solo tras sincronizar: respuesta cruda de la timeline" },
+  "official_events": [ "... eventos oficiales de Riot, mismo formato que events tras sincronizar ..." ],
+  "postgame": true,
+  "achievements": { "order:jugador#euw": ["Victoria", "Ha ganado el early", "Full letalidad"] },
+
+  "final_sync": {
+    "status": "synced",
+    "match_id": "EUW1_1234567890",
+    "synced_at": "2026-01-15T21:40:11.000000+00:00",
+    "source": "riot_match_v5",
+    "message": "Partida sincronizada con Riot Match-V5."
+  }
+}</code></pre>
+        <p>Notas sobre este esquema:</p>
+        <ul>
+          <li><code>seen_event_ids</code> y <code>last_player_state</code> son campos de trabajo interno del tracker: se eliminan (<code>.pop</code>) al llamar a <code>finish()</code>, así que no aparecen en las sesiones ya guardadas.</li>
+          <li>Los tipos de evento generados por el propio tracker incluyen: <code>level_up</code>, <code>kill</code>, <code>death</code>, <code>assist</code> (por cada incremento de contador, uno por unidad), <code>cs_milestone</code> (cada 10 de CS), <code>item_purchase</code>/<code>item_removed</code> (comparando el multiconjunto de objetos entre snapshots consecutivos con <code>_multiset_added</code>), y los cinco de <code>OBJECTIVE_EVENTS</code> (<code>dragonkill</code>, <code>baronkill</code>, <code>heraldkill</code>, <code>turretkilled</code>, <code>inhibkilled</code>) leídos de <code>game_events</code>.</li>
+          <li>Cada evento lleva <code>precision: "observed"</code> porque se detecta comparando snapshots sucesivos (no es instantáneo al segundo exacto en el que ocurrió); tras sincronizar con Riot, <code>official_events</code> sustituye a <code>events</code> con la cronología exacta de la timeline oficial.</li>
+          <li><code>player["final"]</code> queda vacío (<code>{}</code>) hasta que la sesión se sincroniza; a partir de ahí contiene el diccionario completo de <code>_official_player_stats</code>.</li>
+        </ul>
       </section>
 
       <section id="datadragon">
-        <h2>Assets de Data Dragon</h2>
-        <p><code>DataDragonAssetService</code> centraliza imágenes externas estáticas. Se crea una vez en <code>MainWindow</code> y se pasa a <code>MatchInspectorDialog</code>; no debe instanciarse una vez por jugador.</p>
+        <h2>Data Dragon (catálogo y assets)</h2>
+        <p>Hay <strong>dos módulos distintos</strong> relacionados con Data Dragon, con responsabilidades diferentes; no son duplicados aunque el nombre se parezca:</p>
+        <table>
+          <thead><tr><th>Archivo</th><th>Para qué sirve</th><th>Quién lo usa</th></tr></thead>
+          <tbody>
+            <tr><td><code>data_dragon.py</code> (raíz)</td><td>Módulo de utilidades puro (sin Qt). Descarga la versión más reciente, el catálogo completo de objetos (<code>items.json</code>, cacheado en <code>data/</code>) y datos/iconos de campeón individuales bajo demanda, con caché en disco y en memoria (<code>CHAMPION_MEMORY_CACHE</code>).</td><td><code>main.py</code> (arranque, catálogo global), <code>app/services/live_analysis_models_and_calculator.py</code> (<code>get_champion_data</code> para la vida base del campeón al calcular el logro "Vida extra").</td></tr>
+            <tr><td><code>app/services/data_dragon_assets.py</code> (<code>DataDragonAssetService</code>)</td><td>Servicio Qt (<code>QObject</code>) que descarga <strong>imágenes</strong> (retratos de campeón, iconos de objeto) de forma asíncrona con <code>QNetworkAccessManager</code>, las cachea en <code>~/.solralol/ddragon</code> y las entrega como <code>QPixmap</code> vía la señal <code>image_ready</code> o directamente sobre un <code>QLabel</code> con <code>set_label_image</code>.</td><td>Diálogos Qt: <code>MatchInspectorDialog</code>, <code>LiveMatchAnalysisDialog</code>.</td></tr>
+          </tbody>
+        </table>
+        <p>Reglas de <code>DataDragonAssetService</code> ya documentadas y verificadas contra el código:</p>
         <ul>
-          <li>Los campeones se resuelven mediante el catálogo <code>champion.json</code>, porque el nombre visible puede no coincidir con el ID interno. Ejemplos: <code>Kha'Zix → Khazix</code> y <code>Wukong → MonkeyKing</code>.</li>
-          <li>Los objetos se resuelven directamente por ID numérico, por ejemplo <code>/img/item/3047.png</code>.</li>
-          <li>Las descargas se realizan con <code>QNetworkAccessManager</code>, sin bloquear la interfaz.</li>
-          <li>Los assets se guardan en <code>~/.solralol/ddragon</code> y se reutilizan en aperturas posteriores.</li>
-          <li>Si una imagen falla, se muestra un fallback: abreviatura del campeón o ID del objeto.</li>
+          <li>Se crea <strong>una sola vez</strong> (previsiblemente en <code>MainWindow</code>) y se pasa como parámetro a los diálogos que la necesiten; no debe instanciarse un servicio nuevo por jugador ni por partida (cada instancia mantiene su propio caché en memoria de campeones/objetos y su propio <code>QNetworkAccessManager</code>).</li>
+          <li>Los campeones requieren resolver el ID interno de Data Dragon a partir del nombre visible mediante <code>champion.json</code> (ejemplos ya conocidos: <em>Kha'Zix</em> → <code>Khazix</code>, <em>Wukong</em> → <code>MonkeyKing</code>).</li>
+          <li>Los objetos se identifican por ID numérico; el ID <code>0</code> (slot vacío) se omite al renderizar, y cualquier fallo de descarga cae a un icono de respaldo en vez de dejar el hueco vacío o lanzar una excepción.</li>
+          <li>La versión de Data Dragon usada por este servicio está fijada en el propio archivo (<code>self.version = "15.16.1"</code>), independiente de la versión que <code>main.py</code> obtiene dinámicamente al arrancar con <code>data_dragon.load_item_catalog()</code>. Conviene tenerlo en cuenta si un parche nuevo cambia iconos: hay que actualizar esta constante además del catálogo de objetos.</li>
         </ul>
-        <div class="notice">Si faltan iconos de objeto, comprobar que el ID no es <code>0</code>, que la versión configurada de Data Dragon contiene ese objeto y que <code>item_url()</code> usa <code>int(item_id)</code>.</div>
       </section>
 
       <section id="analisis">
-        <h2>Pestaña Análisis</h2>
-        <p>La página Análisis es el visor de referencias para un campeón. Tiene selector de campeón, rol, rango/elo y región. Sus valores se guardan en <code>settings.json</code> como <code>analysis_champion</code>, <code>analysis_role</code>, <code>analysis_rank</code> y <code>analysis_region</code>.</p>
-        <div class="grid">
-          <article class="card"><h3>Campeón</h3><p>Campo de texto. El nombre se convierte a slug para construir URLs, eliminando espacios, apóstrofes y puntos cuando procede.</p></article>
-          <article class="card"><h3>Rol</h3><p>Valores internos: <code>top</code>, <code>jungle</code>, <code>middle</code>, <code>adc</code> y <code>support</code>.</p></article>
-          <article class="card"><h3>Rango/Elo</h3><p>Filtro guardado para contextualizar las consultas: Todos, Iron+, Bronze+, Silver+, Gold+, Platinum+, Emerald+, Diamond+, Master+, Grandmaster+ y Challenger.</p></article>
-          <article class="card"><h3>Región</h3><p>Filtro guardado: EUW, EUNE, NA, KR, BR, LAN, LAS, OCE, JP, TR y RU. Cada fuente puede tener una nomenclatura propia.</p></article>
-        </div>
-        <h3>Visor integrado</h3>
-        <p>La fuente predeterminada es LoLalytics, cargada en <code>QWebEngineView</code> debajo de los filtros. La UI también permite cambiar a U.GG y LeagueOfGraphs. El botón <strong>Cargar análisis</strong> carga la fuente seleccionada; <strong>Abrir en navegador</strong> actúa como respaldo si el sitio no funciona bien dentro del visor.</p>
+        <h2>Pestaña Análisis (visor web) <span class="tag new">confirmado</span></h2>
+        <p>Página 1 de la navegación (<code>create_analysis_page</code>): análisis <strong>externo</strong> por campeón/rol/rango/región, distinto del análisis LIVE/postpartida de las secciones anteriores. Incluye:</p>
+        <ul>
+          <li>Campo de texto "CAMPEÓN" (<code>analysis_champion_input</code>, placeholder "Ej.: Mordekaiser"; Enter también dispara la carga).</li>
+          <li><code>QComboBox</code> "ROL": Top / Jungla / Mid / ADC / Support (<code>top</code>, <code>jungle</code>, <code>middle</code>, <code>adc</code>, <code>support</code>).</li>
+          <li><code>QComboBox</code> "RANGO": desde "Todos los rangos" hasta Challenger, pasando por Hierro+, Bronce+, Plata+, Oro+, Platino+, Esmeralda+, Diamante+, Master+ y Grandmaster+.</li>
+          <li><code>QComboBox</code> "REGIÓN": Europa Oeste, Europa Este, Norteamérica, Corea, Brasil, Latinoamérica Norte/Sur, Oceanía, Japón, Turquía, Rusia.</li>
+          <li>Botón <strong>"Cargar análisis"</strong> (<code>load_analysis_button</code>).</li>
+          <li>Selector de fuente: botones <strong>LoLalytics</strong> (seleccionado por defecto), <strong>U.GG</strong> y <strong>LeagueOfGraphs</strong> (<code>select_analysis_source</code>).</li>
+          <li>Botón <strong>"Bloqueador: SÍ"</strong> (<code>adblock_button</code>, marcado por defecto) para activar/desactivar el bloqueador de anuncios de la sección siguiente.</li>
+          <li><code>QWebEngineView</code> (<code>analysis_web_view</code>, altura mínima 620&nbsp;px) con una página <code>QuietWebEnginePage</code> propia.</li>
+          <li>Botones <strong>"Recargar"</strong> (<code>reload_analysis_button</code>, conectado directamente a <code>analysis_web_view.reload</code>) y <strong>"Abrir en navegador"</strong> (<code>open_external_button</code>).</li>
+        </ul>
+        <p>Preferencias que se guardan en <code>settings.json</code> vía <code>save_analysis_preferences</code>: <code>analysis_champion</code>, <code>analysis_role</code>, <code>analysis_rank</code>, <code>analysis_region</code>.</p>
+        <p><code>load_selected_analysis()</code> normaliza el nombre del campeón a un "slug" (minúsculas, sin espacios, sin comillas simples ni puntos) y construye la URL exacta según la fuente elegida (<code>analysis_values()</code> / <code>load_selected_analysis</code>):</p>
         <table>
-          <thead><tr><th>Fuente</th><th>URL construida</th><th>Uso principal</th></tr></thead>
+          <thead><tr><th>Fuente</th><th>Plantilla de URL exacta</th></tr></thead>
           <tbody>
-            <tr><td>LoLalytics</td><td><code>https://lolalytics.com/lol/{champion}/build/?lane={role}</code></td><td>Builds, runas, objetos, counters, win rate y muestras.</td></tr>
-            <tr><td>U.GG</td><td><code>https://u.gg/lol/champions/{champion}/build/{role}</code></td><td>Builds, runas, item paths, counters y probuilds.</td></tr>
-            <tr><td>LeagueOfGraphs</td><td><code>https://www.leagueofgraphs.com/champions/builds/{champion}/{role}</code></td><td>Builds, matchups, popularidad, win rate y tendencias.</td></tr>
+            <tr><td>LoLalytics (por defecto)</td><td><code>https://lolalytics.com/lol/{champion_slug}/build/?lane={role}</code></td></tr>
+            <tr><td>U.GG</td><td><code>https://u.gg/lol/champions/{champion_slug}/build/{role}</code></td></tr>
+            <tr><td>LeagueOfGraphs</td><td><code>https://www.leagueofgraphs.com/champions/builds/{champion_slug}/{role}</code></td></tr>
           </tbody>
         </table>
-        <p>Los métodos relacionados de <code>MainWindow</code> incluyen <code>set_combo_value()</code>, <code>save_analysis_preferences()</code>, <code>analysis_values()</code>, <code>select_analysis_source()</code>, <code>load_selected_analysis()</code>, <code>open_current_analysis_externally()</code>, <code>analysis_load_started()</code>, <code>analysis_load_finished()</code> y <code>set_analysis_status()</code>.</p>
+        <p>El botón "Abrir en navegador" (<code>open_current_analysis_externally</code>) reutiliza <code>self.current_analysis_url</code> si ya se cargó algo, o lo genera primero llamando a <code>load_selected_analysis()</code>; usa <code>QDesktopServices.openUrl</code> para abrirlo en el navegador del sistema, fuera de la app.</p>
+        <div class="notice">No cargar estas webs por sondeo periódico ni durante una partida activa. La carga solo ocurre al pulsar "Cargar análisis", al presionar Enter en el campo de campeón, o al pulsar "Abrir en navegador" sin haber cargado nada todavía.</div>
       </section>
 
       <section id="adblock">
-        <h2>Visor web y bloqueador</h2>
-        <p>El visor puede usar <code>QWebEngineUrlRequestInterceptor</code> para bloquear solicitudes de dominios publicitarios y rastreadores conocidos. El interceptor se instala en el perfil del visor y debe conservarse en una referencia como <code>self.analysis_adblocker</code>.</p>
-        <pre><code>self.analysis_adblocker = AdBlockInterceptor(
-    self.analysis_web_view
-)
-
-self.analysis_web_view.page().profile().setUrlRequestInterceptor(
-    self.analysis_adblocker
-)</code></pre>
+        <h2>Visor y bloqueador <span class="tag new">confirmado</span></h2>
+        <p><code>AdBlockInterceptor</code> (clase definida directamente en <code>main_window.py</code>) hereda de <code>QWebEngineUrlRequestInterceptor</code> y bloquea peticiones del visor de Análisis por dos vías, ambas comprobaciones rápidas en memoria (sin red ni disco):</p>
         <ul>
-          <li>El bloqueador solo afecta a <code>QWebEngineView</code> dentro de Análisis; no modifica el navegador del sistema ni League.</li>
-          <li>Debe existir un botón para activarlo o desactivarlo y otro para recargar la página.</li>
-          <li>El botón Recargar debe conectarse solo después de crear <code>self.analysis_web_view</code>, o conectar a un método seguro como <code>reload_analysis_page()</code>.</li>
-          <li>Un filtro por dominios no elimina todos los huecos visuales ni sustituye a un bloqueador completo basado en listas y reglas cosméticas.</li>
-          <li>Si el visor pierde funciones necesarias de una página, desactivar el bloqueador y recargar.</li>
+          <li><code>BLOCKED_DOMAINS</code>: una lista fija de 27 dominios conocidos de publicidad/analítica (<code>doubleclick.net</code>, <code>googlesyndication.com</code>, <code>google-analytics.com</code>, <code>googletagmanager.com</code>, <code>amazon-adsystem.com</code>, <code>adnxs.com</code>, <code>taboola.com</code>, <code>outbrain.com</code>, <code>criteo.com</code>/<code>.net</code>, <code>pubmatic.com</code>, <code>rubiconproject.com</code>, <code>openx.net</code>, <code>moatads.com</code>, <code>scorecardresearch.com</code>, <code>quantserve.com</code>, <code>hotjar.com</code>, <code>facebook.net</code>, <code>connect.facebook.net</code>, entre otros): si el host de la petición contiene alguno, se bloquea con <code>info.block(True)</code>.</li>
+          <li><code>BLOCKED_URL_PARTS</code>: fragmentos de ruta/URL sospechosos (<code>/ads/</code>, <code>/adserver/</code>, <code>/advert/</code>, <code>/advertising/</code>, <code>/banner/</code>, <code>/banners/</code>, <code>/promo/</code>, <code>doubleclick</code>, <code>google_ads</code>, <code>googleads</code>, <code>googlesyndication</code>, <code>adservice</code>, <code>adnxs</code>, <code>taboola</code>, <code>outbrain</code>): si la URL completa (en minúsculas) contiene alguno, también se bloquea.</li>
+        </ul>
+        <p><code>QuietWebEnginePage</code> (también en <code>main_window.py</code>) silencia en la consola de desarrollador tres mensajes concretos y ya identificados como ruido inofensivo de proveedores externos (<code>fun-hooks:</code>, el aviso de inicialización de la integración de Facebook, <code>firstPartyData</code>); cualquier otro mensaje de consola se reenvía sin cambios al comportamiento por defecto de Qt.</p>
+        <p>Puntos de diseño a respetar si se toca este código:</p>
+        <ul>
+          <li>La referencia al interceptor se guarda en <code>self.analysis_adblocker</code>: si se dejara de guardar (por ejemplo, pasándolo como valor anónimo sin asignar), Python podría recolectarlo como basura y <code>QWebEngineView</code> dejaría de aplicar el bloqueo sin avisar.</li>
+          <li>El interceptor se instala una sola vez, sobre el <em>profile</em> de la página del visor: <code>analysis_web_view.page().profile().setUrlRequestInterceptor(self.analysis_adblocker)</code>.</li>
+          <li>El botón "Bloqueador: SÍ"/"Bloqueador: NO" (<code>toggle_analysis_adblock</code>) permite desactivarlo si una web concreta deja de funcionar correctamente con el bloqueo activo.</li>
+          <li>Solo afecta al visor integrado de la pestaña Análisis; no toca ninguna petición de la Live Client Data API ni de la Riot API.</li>
         </ul>
       </section>
 
       <section id="hilos">
         <h2>Hilos y señales</h2>
-        <pre><code>Hilo principal                          Worker thread
---------------                          -------------
-QTimer.timeout
-    │
-    ├─ snapshot_requested ───────────► read_snapshot()
-    │                                      │
-    │                                      └─ petición HTTP local
-    │
-    ◄──── snapshot_ready(snapshot) ──────┘
-    │
-receive_snapshot()
-actualiza widgets</code></pre>
-        <pre><code>Hilo principal                          Worker historial
---------------                          ----------------
-Clic en Actualizar historial
-    │
-    ├─ history_requested ────────────► load_history()
-    │                                      │
-    │                                      └─ Riot API + caché
-    │
-    ◄──── history_ready(history) ────────┘
-    │
-receive_match_history()
-actualiza filas</code></pre>
-        <p>La UI no se debe actualizar desde los workers. Los datos pasan desde el hilo de fondo al hilo principal mediante señales Qt.</p>
-        <h3>Cierre seguro</h3>
-        <pre><code>def closeEvent(self, event) -&gt; None:
-    self.poll_timer.stop()
-    self.overlay.close()
-
-    if self.worker_thread.isRunning():
-        self.worker_thread.quit()
-        if not self.worker_thread.wait(5000):
-            self.worker_thread.terminate()
-            self.worker_thread.wait(2000)
-
-    if self.history_thread.isRunning():
-        self.history_thread.quit()
-        if not self.history_thread.wait(5000):
-            self.history_thread.terminate()
-            self.history_thread.wait(2000)
-
-    event.accept()</code></pre>
-        <p>El botón de cerrar personalizado debe conectarse a <code>self.close</code> para asegurar que se ejecute <code>closeEvent()</code>.</p>
+        <p><code>MainWindow</code> crea y arranca tres <code>QThread</code> en su constructor, cada uno con su worker movido a él con <code>moveToThread</code>:</p>
+        <table>
+          <thead><tr><th>Hilo</th><th>Worker</th><th>Señal de entrada (hacia el worker)</th><th>Señales de salida (hacia MainWindow)</th></tr></thead>
+          <tbody>
+            <tr><td><code>worker_thread</code></td><td><code>LiveDataWorker</code></td><td><code>snapshot_requested</code> → <code>read_snapshot</code> (disparada cada 1000&nbsp;ms por <code>poll_timer</code>)</td><td><code>snapshot_ready</code> → <code>receive_snapshot</code>; <code>live_analysis_ready</code> → <code>receive_live_analysis</code>; <code>read_failed</code> → <code>show_read_error</code></td></tr>
+            <tr><td><code>history_thread</code></td><td><code>MatchHistoryWorker</code></td><td><code>history_requested</code> → <code>load_history</code>; <code>match_detail_requested</code> → <code>load_match_detail</code></td><td><code>history_ready</code> → <code>receive_match_history</code>; <code>history_failed</code> → <code>show_match_history_error</code>; <code>detail_ready</code> → <code>open_match_inspector</code>; <code>detail_failed</code> → <code>show_match_detail_error</code></td></tr>
+            <tr><td><code>postgame_sync_thread</code></td><td><code>PostgameSyncWorker</code></td><td><code>postgame_sync_requested</code> → <code>sync_session</code></td><td><code>sync_ready</code> → <code>receive_postgame_sync</code>; <code>sync_failed</code> → <code>receive_postgame_sync_error</code></td></tr>
+          </tbody>
+        </table>
+        <p>Todas las señales que cruzan de un hilo a otro llevan tipos serializables sencillos (<code>dict</code>, <code>str</code>, <code>int</code>), nunca widgets de Qt: los widgets solo se tocan desde el hilo principal, dentro de los métodos receptores (<code>receive_snapshot</code>, <code>receive_live_analysis</code>, <code>receive_postgame_sync</code>, etc.).</p>
+        <p><code>MainWindow.closeEvent</code> para los tres hilos con el mismo patrón: <code>quit()</code>, después <code>wait(5000)</code> y, si no ha terminado, <code>terminate()</code> + <code>wait(2000)</code>. También detiene <code>poll_timer</code> y cierra el overlay. Nota menor: el bloque de cierre de <code>postgame_sync_thread</code> tiene una indentación ligeramente distinta a los otros dos (el <code>wait(5000)</code> final no queda anidado dentro del <code>if isRunning()</code>), aunque no es un fallo funcional porque <code>QThread.wait()</code> devuelve <code>True</code> de inmediato si el hilo ya ha terminado.</p>
       </section>
 
       <section id="limitaciones">
-        <h2>Limitaciones conocidas</h2>
-        <table>
-          <thead><tr><th>Situación</th><th>Causa</th><th>Respuesta recomendada</th></tr></thead>
-          <tbody>
-            <tr><td><code>position: NONE</code></td><td>La API local puede no asignar rol al jugador local.</td><td>Inferir jungla por Smite; otras posiciones pueden requerir heurística adicional.</td></tr>
-            <tr><td>Botas ADC ausentes</td><td>Role Quest puede omitirlas del snapshot.</td><td>Buscar en todos los objetos y usar caché si hubo una observación previa.</td></tr>
-            <tr><td>Control Wards especiales ausentes</td><td>El slot de Role Quest puede no estar expuesto.</td><td>Mantener slot visual y dibujar contenido solo si existe un objeto real.</td></tr>
-            <tr><td>Stats de otros jugadores</td><td>La API local no expone todas sus estadísticas finales.</td><td>Mostrar estimación basada en campeón, nivel e ítems.</td></tr>
-            <tr><td>Partida reciente no aparece</td><td>Riot puede tardar en procesar el resultado tras terminar una partida.</td><td>Esperar un breve intervalo y ejecutar una única actualización manual o postpartida.</td></tr>
-            <tr><td>Una web no carga en visor</td><td>El sitio puede usar restricciones, scripts incompatibles o políticas de embebido.</td><td>Usar <strong>Abrir en navegador</strong> como ruta de respaldo.</td></tr>
-            <tr><td>Objetos sin icono</td><td>ID 0, versión no disponible o fallo temporal de descarga.</td><td>Usar fallback, revisar Data Dragon y reutilizar la caché local.</td></tr>
-          </tbody>
-        </table>
+        <h2>Limitaciones y reglas</h2>
+        <ul>
+          <li>La Live Client Data API solo existe mientras hay una partida (o herramienta de práctica) activa; fuera de eso, <code>GameService.is_in_game()</code> devuelve <code>False</code> y la pestaña "Partida en vivo" permanece deshabilitada.</li>
+          <li>La sincronización con Riot solo tiene sentido para partidas de cola pública: las de práctica, tutorial y personalizadas no existen en Match‑V5, así que <code>request_saved_session_sync</code> las descarta explícitamente antes de gastar una llamada a la API.</li>
+          <li>Los valores LIVE (oro, daño, etc.) de <code>LiveMatchTracker</code> son <strong>estimaciones</strong> hasta que la sesión se sincroniza; solo entonces <code>final_scoreboard</code> pasa a ser el marcador oficial de Riot.</li>
+          <li>La sincronización postpartida depende de tener configurados a la vez: Riot API key válida (Ajustes) y Riot ID completo (nombre + tag, en Inicio). Si falta cualquiera de los dos, la sesión se queda en <code>live_only</code>/<code>failed</code> con un mensaje explicando qué falta.</li>
+          <li>Rate limit de Riot: cooldown local de 120&nbsp;s si no hay cabecera <code>Retry-After</code>, respetando siempre esa cabecera cuando Riot la envía.</li>
+          <li><code>DataDragonAssetService</code> tiene fijada su propia versión de Data Dragon (<code>15.16.1</code> en el código analizado) independientemente de la versión que <code>main.py</code> detecta dinámicamente al arrancar; si Riot publica un parche nuevo con iconos distintos, hay que actualizar esa constante a mano.</li>
+          <li><code>MAX_SAVED_SESSIONS = 50</code> en <code>LiveMatchTracker</code>: solo se conservan las 50 partidas grabadas más recientes; las más antiguas se descartan al persistir.</li>
+        </ul>
       </section>
 
       <section id="errores">
         <h2>Diagnóstico de errores</h2>
         <table>
-          <thead><tr><th>Mensaje</th><th>Causa probable</th><th>Corrección</th></tr></thead>
+          <thead><tr><th>Síntoma</th><th>Causa probable</th><th>Dónde mirar</th></tr></thead>
           <tbody>
-            <tr><td><code>Unknown property text-shadow</code></td><td>Propiedad CSS web no soportada por QSS.</td><td>Eliminar <code>text-shadow</code>.</td></tr>
-            <tr><td><code>QThread: Destroyed while thread is still running</code></td><td>La ventana termina antes que un worker.</td><td>Detener timer y hacer <code>quit()</code> + <code>wait()</code> para ambos threads en <code>closeEvent()</code>.</td></tr>
-            <tr><td><code>Signal source has been deleted</code></td><td>El worker emite cuando UI se está cerrando.</td><td>Cierre ordenado y tolerancia a <code>RuntimeError</code> al emitir.</td></tr>
-            <tr><td><code>None passed to addWidget</code></td><td>Un constructor visual devolvió <code>None</code>.</td><td>Garantizar que <code>create_item_slots()</code> devuelve un widget.</td></tr>
-            <tr><td><code>NameError: QSizePolicy</code></td><td>Falta import.</td><td>Importar desde <code>PySide6.QtWidgets</code>.</td></tr>
-            <tr><td><code>NameError: QPainter</code></td><td>Import de QtGui incompleto.</td><td>Importar <code>QPainter</code> y <code>QRadialGradient</code> desde <code>PySide6.QtGui</code>.</td></tr>
-            <tr><td><code>no attribute set_analysis_status</code></td><td>El método no existe o se pegó fuera de <code>MainWindow</code>.</td><td>Definirlo dentro de la clase, al mismo nivel que el resto de métodos.</td></tr>
-            <tr><td><code>no attribute open_leagueofgraphs_analysis</code></td><td>La página referencia un callback ausente.</td><td>Añadir el método dentro de <code>MainWindow</code> antes de construir la página.</td></tr>
-            <tr><td><code>no attribute analysis_web_view</code></td><td>Se conectó <code>reload</code> antes de crear el visor.</td><td>Crear <code>QWebEngineView</code> primero o conectar a un método seguro.</td></tr>
-            <tr><td><code>SettingsService has no attribute settings_path</code></td><td>El constructor no inicializó la ruta.</td><td>Definir <code>self.settings_path = Path.home() / ".solralol" / "settings.json"</code>.</td></tr>
+            <tr><td>La pestaña "Partida en vivo" no se activa</td><td>League no está en partida, o <code>GameService.is_in_game()</code> está fallando por certificado/puerto</td><td><code>app/services/game_service.py</code>, comprobar <code>https://127.0.0.1:2999/liveclientdata/gamestats</code> a mano</td></tr>
+            <tr><td>"Buscar Riot" deja la partida en <code>pending</code> indefinidamente</td><td>Riot aún no ha procesado la partida en Match‑V5, o ninguna candidata pasa la tolerancia de <code>_candidate_score</code> (±12&nbsp;min de inicio, ±4&nbsp;min de duración)</td><td><code>app/services/postgame_sync_service.py</code>: revisar <code>START_TOLERANCE_SECONDS</code>/<code>DURATION_TOLERANCE_SECONDS</code> y el campeón registrado en la sesión</td></tr>
+            <tr><td>"Buscar Riot" deja la partida en <code>failed</code></td><td>API key inválida/caducada, Riot ID mal escrito, error de red, o excepción inesperada en <code>sync_session</code></td><td><code>final_sync.message</code> de la sesión (visible en la fila de "Partidas guardadas"); <code>app/services/riot_api_service.py</code> (<code>RiotApiError</code>)</td></tr>
+            <tr><td>El botón "Guardar y comprobar" tarda o parece congelar la UI un instante</td><td>Comportamiento esperado: <code>validate_riot_api_key</code> hace la comprobación de forma síncrona en el hilo principal (ver <a href="#ajustes">Página de Ajustes</a>)</td><td><code>app/services/settings_service.py</code></td></tr>
+            <tr><td>Los iconos de campeón/objeto no cargan en un diálogo</td><td>Fallo de red al descargar de Data Dragon, o el ID/nombre no se resuelve correctamente contra el catálogo cacheado</td><td><code>app/services/data_dragon_assets.py</code>, revisar <code>~/.solralol/ddragon</code></td></tr>
+            <tr><td>"Actualizar historial" se deshabilita solo y no reacciona</td><td>Rate limit 429 activo: se reactivará solo tras <code>retry_after</code> segundos</td><td><code>show_match_detail_error</code>/<code>show_match_history_error</code>, <code>MatchHistoryCache</code></td></tr>
+            <tr><td>Una partida grabada aparece con 0 eventos</td><td>La partida terminó demasiado rápido tras empezar a grabarse, o League cerró antes de que <code>LiveMatchTracker.finish()</code> pudiera capturar el último snapshot</td><td><code>app/services/live_match_tracker.py</code>, campo <code>events</code> de la sesión</td></tr>
           </tbody>
         </table>
       </section>
 
+      <section id="limpieza">
+        <h2>Archivos duplicados / sin uso</h2>
+        <p>Listado completo, con evidencia de qué importa (o no) cada archivo, en <a href="./LIMPIEZA.txt"><code>LIMPIEZA.txt</code></a>. Resumen:</p>
+        <table>
+          <thead><tr><th>Categoría</th><th>Archivos</th></tr></thead>
+          <tbody>
+            <tr><td>Vacíos, sin ninguna referencia</td><td><code>analyzer.py</code>, <code>riot_api.py</code>, <code>config.json</code>, <code>app/models/game_types.py</code>, <code>app/utils/cache.py</code>, <code>web/app.js</code>, <code>web/index.html</code>, <code>web/styles.css</code></td></tr>
+            <tr><td>Duplicados/obsoletos confirmados</td><td><code>app/services/"live_data_worker copy.py"</code>, <code>app/services/live_data_worker_live_analysis.py</code>, <code>app/services/riotlive.py</code>, <code>riot_live.py</code> (raíz), <code>app/ui/control_window.py</code></td></tr>
+            <tr><td>Scripts sueltos de depuración manual (funcionan, pero no forman parte de la app)</td><td><code>debug_cs.py</code>, <code>debug_enemy_runes.py</code>, <code>test_endpoints.py</code></td></tr>
+            <tr><td>Histórico / desactualizado</td><td><code>reorganize_project.ps1</code>, <code>Solralol_Documentacion1_0_0.html</code></td></tr>
+            <tr><td>Dependencia no usada</td><td><code>keyboard</code> en <code>requirements.txt</code>: ningún archivo hace <code>import keyboard</code></td></tr>
+          </tbody>
+        </table>
+        <div class="notice success">Todos los archivos de <code>app/ui</code> que antes tenían uso "no confirmable" (<code>champion_card.py</code>, <code>inventory.py</code>, <code>overlay_window.py</code>, <code>styles.py</code>, <code>match_inspector_dialog.py</code>) están ahora <strong>confirmados en uso</strong>, verificados contra las importaciones reales de <code>app/ui/main_window.py</code>.</div>
+      </section>
+
       <section id="mejoras">
-        <h2>Mejoras futuras</h2>
+        <h2>Próximas mejoras</h2>
         <ul>
-          <li>Persistir caché de botas durante una partida y limpiarla al detectar fin de juego.</li>
-          <li>Mejorar la inferencia de rol cuando la API responda <code>NONE</code>.</li>
-          <li>Añadir indicadores explícitos para datos no disponibles o estimados.</li>
-          <li>Reemplazar <code>print()</code> por <code>logging</code> con niveles configurables.</li>
-          <li>Crear pruebas unitarias para cálculo de estadísticas, normalización de rol y detección de botas.</li>
-          <li>Extraer el grid de equipo a un widget dedicado y reducir responsabilidad de la ventana principal.</li>
-          <li>Revisar versiones de League y Data Dragon ante cambios de Role Quest o Live Client API.</li>
-          <li>Implementar actualización automática única del historial tras detectar el fin de una partida, con retraso y sin polling a Riot API.</li>
-          <li>Incorporar análisis personal desde partidas cacheadas: win rate, KDA, CS/min, builds más usadas y matchups propios.</li>
-          <li>Mostrar build más popular y build con mejor win rate como conceptos separados, siempre con muestra, parche, rango, región y fuente.</li>
-          <li>Importar o aplicar runas solo con confirmación explícita, separando runas recomendadas, runas usadas y origen del dato.</li>
-          <li>Diseñar recomendaciones en vivo de baja frecuencia basadas en contexto local, inventario y rivales, sin consultas web durante la partida y tras revisar políticas aplicables.</li>
+          <li><strong>Unificar los clientes "LiveClient" duplicados.</strong> Hay tres implementaciones distintas de un cliente para la Live Client Data API (<code>app/services/game_service.py</code> en uso, y <code>riot_live.py</code>/<code>app/services/riotlive.py</code> huérfanas): sería más fácil de mantener reescribir <code>debug_cs.py</code> y <code>debug_enemy_runes.py</code> para que usen <code>GameService</code> y borrar los dos clientes duplicados.</li>
+          <li><strong>Revisar los <code>print("[WORKER] ...")</code> de depuración</strong> en <code>postgame_sync_worker.py</code> antes de una versión "final" de cara al usuario, o sustituirlos por <code>logging</code> con un nivel configurable.</li>
+          <li><strong>Implementar o retirar el logro "Roamer".</strong> <code>AWARD_LABELS</code> en <code>live_analysis_models_and_calculator.py</code> reserva la clave <code>"roamer"</code>, pero <code>calculate_achievements</code> nunca la asigna todavía.</li>
+          <li><strong>Mover la validación de la API key a un worker.</strong> <code>save_and_validate_api_key</code> hace una petición HTTP síncrona en el hilo de interfaz; sería más consistente con el resto de la app moverla a un <code>QThread</code> corto o reutilizar <code>PostgameSyncWorker</code>/uno nuevo dedicado.</li>
+          <li><strong>Actualizar <code>DataDragonAssetService.version</code> dinámicamente</strong> a partir de la versión que ya detecta <code>main.py</code> al arrancar, en vez de mantenerla como constante fija dentro del propio servicio.</li>
+          <li><strong>Retirar o archivar <code>app/ui/control_window.py</code>.</strong> Confirmado como código muerto de una arquitectura anterior (con un bug real de <code>closeEvent</code> fuera de la clase); no aporta nada y puede confundir a quien lea el proyecto por primera vez.</li>
+          <li><strong>Reescribir <code>reorganize_project.ps1</code> o borrarlo.</strong> Ya no refleja la estructura real del proyecto (le faltan la mayoría de servicios y diálogos actuales).</li>
         </ul>
       </section>
 
       <section id="para-ia">
         <h2>Para la IA</h2>
-        <p>Este prompt es la referencia de continuidad del proyecto. Si se entrega este HTML a otra IA, debe leer este bloque antes de proponer cambios. El objetivo es evitar suposiciones, pérdidas de contexto, sustituciones masivas de archivos y regresiones.</p>
-        <div class="notice success"><strong>Instrucción al usuario:</strong> entrega este HTML y, si solicitas una modificación de código, adjunta además el archivo real que se va a editar. La IA debe contrastar el prompt con el archivo real antes de escribir cambios.</div>
-        <pre class="prompt-block"><code>CONTEXTO MAESTRO — SOLRALOL
-
-Eres asistente de desarrollo de SolraLoL. Debes responder en español. Antes de proponer modificaciones debes leer este documento completo y, si el usuario aporta un archivo, inspeccionar primero ese archivo real. No inventes arquitectura, nombres de métodos, índices de páginas, imports o estructuras que no estén confirmadas.
-
-OBJETIVO DEL PRODUCTO
-SolraLoL es una aplicación personal de escritorio para League of Legends hecha con Python y PySide6 en Windows. Combina:
-- Datos locales de una partida activa mediante Live Client Data API.
-- Tarjetas de ambos equipos y overlay flotante.
-- Historial y detalle postpartida mediante Riot API.
-- Caché local para reducir llamadas.
-- Imágenes estáticas de campeones y objetos mediante Data Dragon.
-- Pestaña Análisis con QWebEngineView para consultar fuentes web por campeón.
-
-ESTRUCTURA REAL
-Solralol/
-├── main.py
-├── data_dragon.py
-├── app/
-│   ├── services/
-│   │   ├── game_service.py
-│   │   ├── live_data_worker.py
-│   │   ├── game_calculator.py
-│   │   ├── settings_service.py
-│   │   ├── riot_api_service.py
-│   │   ├── match_history_cache.py
-│   │   ├── match_history_worker.py
-│   │   └── data_dragon_assets.py
-│   └── ui/
-│       ├── main_window.py
-│       ├── champion_card.py
-│       ├── inventory.py
-│       ├── overlay_window.py
-│       ├── match_inspector_dialog.py
-│       ├── match_inspector_styles.css
-│       └── styles.py
-├── .venv/
-└── README.md
-
-VENTANA PRINCIPAL
-La clase principal actual es MainWindow(QMainWindow) en app/ui/main_window.py. En documentación anterior puede aparecer SolralolWindow/control_window.py: es arquitectura anterior; la implementación actual usa MainWindow/main_window.py salvo que el archivo real indique otra cosa.
-
-ÍNDICES ACTUALES DEL QSTACKEDWIDGET
-0 = Inicio
-1 = Análisis
-2 = Partida en vivo
-3 = Ajustes
-
-Al modificar navegación, create_navigation() y build_ui(), mantener esos índices sincronizados. Los botones relevantes son home_button, analysis_button, live_button y settings_button. live_button empieza deshabilitado y se activa cuando se detecta una partida local.
-
-IMPORTS IMPORTANTES
-- Qt, QThread, QTimer, QUrl, Signal y Slot provienen de PySide6.QtCore.
-- QColor, QPainter, QRadialGradient y QDesktopServices provienen de PySide6.QtGui.
-- Widgets como QComboBox, QLineEdit, QLabel, QFrame, QStackedWidget y QVBoxLayout provienen de PySide6.QtWidgets.
-- QWebEngineView proviene de PySide6.QtWebEngineWidgets.
-- QWebEngineUrlRequestInterceptor proviene de PySide6.QtWebEngineCore.
-No duplicar bloques de imports. Verificar paréntesis de cierre y ejecutar py_compile.
-
-LIVE CLIENT
-La URL local es https://127.0.0.1:2999/liveclientdata. El endpoint principal es /allgamedata.
-GameService normaliza un snapshot con game_time, game_mode, local_player, all_players, enemies y local_live_stats.
-LiveDataWorker vive en un QThread. snapshot_requested conecta a read_snapshot(); snapshot_ready llega a receive_snapshot(); read_failed llega a show_read_error().
-La interfaz Qt se modifica exclusivamente desde el hilo principal. Los workers no deben crear/modificar widgets.
-QTimer consulta el snapshot local cada segundo. is_refreshing evita solapar solicitudes. cards_built, was_in_game, panel_refresh_counter y panel_refresh_every_seconds controlan actualizaciones de tarjetas.
-Los equipos usan ORDER y CHAOS. Orden de rol: TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY. Si position es NONE y el jugador tiene Smite, inferir JUNGLE.
-
-OVERLAY Y TARJETAS
-ChampionCard usa player["team"] para el color de equipo, no la condición de jugador local. QRadialGradient dibuja brillo azul para ORDER y rojo para CHAOS manteniendo parte superior oscura.
-Inventory siempre debe devolver QWidget. Los slots 0–5 son inventario, slot 6 es trinket. Role Quest puede ocultar botas en botlane o Control Wards especiales; aplicar caché visual solo cuando se haya observado previamente el objeto.
-OverlayWindow es solo visual: muestra datos resumidos, permite opacidad, arrastre y click-through. No consulta API.
-
-AJUSTES Y RIOT API
-SettingsService administra ~/.solralol/settings.json. Debe inicializar self.settings_path en __init__.
-La Riot API key se guarda y valida desde Ajustes. No incluir API key dentro de match_history_cache.json.
-RiotApiService usa:
-- Account-V1 para Riot ID (Nombre#TAG) a PUUID.
-- Match-V5 para IDs y detalles de partidas.
-- account_region: normalmente europe.
-- platform_region: normalmente euw1.
-
-HISTORIAL — REGLA CRÍTICA DE RATE LIMIT
-NO añadir polling de Riot API al QTimer de Live Client. No consultar Riot API al arrancar ni al cambiar de pestaña.
-El historial se consulta solo al pulsar Actualizar historial y, en el futuro, una única vez después de detectar la transición in_game → lobby, con retraso breve.
-El historial por defecto consulta cinco partidas.
-MatchHistoryCache persiste ~/.solralol/match_history_cache.json con cuentas, PUUID, resúmenes/detalles por match_id y rate_limit_until.
-Reutilizar PUUID y detalles cacheados. Una partida detallada no debe descargarse dos veces.
-Ante HTTP 429, leer Retry-After si existe; si no, bloquear localmente 120 segundos. Desactivar la acción temporalmente y mostrar un estado claro.
-MatchHistoryWorker corre en QThread y ofrece load_history() y load_match_detail(). Sus señales son history_ready, history_failed, detail_ready y detail_failed.
-
-INSPECTOR DE PARTIDAS
-MatchInspectorDialog está en app/ui/match_inspector_dialog.py. Recibe match_detail, item_catalog, data_dragon_assets y parent.
-Muestra resultado, retrato del campeón local, cola, fecha, duración, KDA, ambos equipos, roles, Riot IDs, KDA, CS, oro, visión, nivel y build final.
-Los objetivos se muestran compactos junto a encabezados Aliados y Enemigos para ahorrar altura: dragon, baron, rift_herald, tower e inhibitor. Si no hay asset local, usar fallback de emoji.
-Las tarjetas deben mantenerse compactas: poco spacing entre tarjetas/líneas/bordes, pero objetos e información clave legibles.
-
-DATA DRAGON
-DataDragonAssetService se crea una sola vez desde MainWindow y se pasa al inspector. No crear un servicio por jugador.
-Descarga imágenes asíncronamente con QNetworkAccessManager y cachea en ~/.solralol/ddragon.
-Los campeones requieren resolver el ID interno con champion.json. Ejemplos: Kha'Zix -> Khazix; Wukong -> MonkeyKing.
-Los objetos usan ID numérico. Omitir IDs 0 al renderizar; usar fallback si una imagen falla.
-
-PÁGINA ANÁLISIS
-create_analysis_page() corresponde al índice 1. Incluye:
-- Campo de campeón.
-- QComboBox de rol.
-- QComboBox de rango/elo.
-- QComboBox de región.
-- Botón Cargar análisis.
-- Selector de fuente: LoLalytics por defecto, U.GG y LeagueOfGraphs.
-- QWebEngineView debajo de filtros.
-- Botón Abrir en navegador.
-- Botón Recargar.
-- Bloqueador opcional.
-
-Guardar preferencias en settings.json:
-analysis_champion, analysis_role, analysis_rank, analysis_region.
-Métodos relevantes que deben existir dentro de MainWindow si la página los usa:
-set_combo_value(), create_analysis_source_row(), save_analysis_preferences(), analysis_values(), open_analysis_url(), open_ugg_analysis(), open_lolalytics_analysis(), open_leagueofgraphs_analysis(), set_analysis_status(), select_analysis_source(), load_selected_analysis(), open_current_analysis_externally(), analysis_load_started(), analysis_load_finished().
-
-URLs base actuales:
-LoLalytics: https://lolalytics.com/lol/{champion}/build/?lane={role}
-U.GG: https://u.gg/lol/champions/{champion}/build/{role}
-LeagueOfGraphs: https://www.leagueofgraphs.com/champions/builds/{champion}/{role}
-No asumir que parámetros no documentados de rango, región o parche son estables. El usuario puede aplicar filtros adicionales desde el sitio web.
-No cargar webs por polling ni durante una partida. La carga automática solo es admisible cuando exista un campeón ya guardado y la UX lo requiera explícitamente.
-
-BLOQUEADOR DEL VISOR
-AdBlockInterceptor hereda de QWebEngineUrlRequestInterceptor. Debe hacer únicamente comprobaciones rápidas en memoria de dominio/URL y usar info.block(True) para anuncios/rastreadores.
-Mantener referencia viva: self.analysis_adblocker. Si no se conserva, Python puede destruir el interceptor.
-Crear self.analysis_web_view antes de conectar un botón directamente a self.analysis_web_view.reload. Como alternativa, usar un método seguro reload_analysis_page().
-El bloqueador solo afecta al visor integrado. Debe poder desactivarse y recargarse si rompe una página.
-
-ERRORES YA OCURRIDOS Y PREVENCIÓN
-- NameError QPainter: falta import desde PySide6.QtGui.
-- AttributeError set_analysis_status: el método se pegó fuera de MainWindow o no se añadió.
-- AttributeError open_leagueofgraphs_analysis: callback no definido dentro de MainWindow.
-- AttributeError analysis_web_view: el visor se referencia antes de crearse.
-- SettingsService no tiene settings_path: inicializar la ruta en __init__.
-- QThread destroyed while running: parar poll_timer y cerrar worker_thread e history_thread mediante quit() + wait() en closeEvent().
-- None passed to addWidget: cada fábrica visual debe devolver QWidget.
-- QSS no soporta text-shadow: no usar esa propiedad.
-
-REGLAS OBLIGATORIAS DE IMPLEMENTACIÓN
-1. Leer primero el archivo real. No asumir que documentación y código están sincronizados si difieren.
-2. No generar sustituciones completas de archivos cuando basten cambios localizados, salvo que el usuario pida expresamente reemplazarlo completo.
-3. Explicar exactamente qué importar, qué bloque sustituir y dónde pegar métodos.
-4. Mantener UI en hilo principal. Todo HTTP bloqueante debe ejecutarse en worker o mecanismo asíncrono adecuado.
-5. No añadir polling a Riot API, páginas web, proveedores externos ni scraper durante la partida.
-6. Mantener caché de historial, deduplicación de match_id y cooldown 429.
-7. Usar Data Dragon para imágenes de campeones/objetos y caché local.
-8. Tras cada cambio, indicar comandos python -m py_compile del archivo modificado.
-9. En documentación HTML, conservar estilo y contenido anterior; añadir secciones sin condensar ni borrar información vigente.
-10. Responder en español, con pasos precisos, verificables y compatibles con la estructura confirmada.
-
-PRÓXIMAS MEJORAS
-- Actualización única automática del historial al terminar partida.
-- Análisis personal desde partidas cacheadas.
-- Builds recomendadas: popularidad frente a mejor win rate, siempre con muestra, parche, rango, región y fuente.
-- Importación/aplicación segura de runas con confirmación.
-- Recomendaciones en vivo de baja frecuencia, basadas en contexto local y sin consultas web durante partida, tras revisar políticas aplicables.
-
-FORMATO ESPERADO DE RESPUESTA
-Da instrucciones claras en español. Si falta el archivo exacto, solicítalo antes de asumir detalles. No inventes APIs, métodos o rutas. Si un cambio tiene riesgo de romper la aplicación, pide primero el fragmento relevante. Mantén coherencia con este documento y con el código real.</code></pre>
+        <p>Si en el futuro se pide ayuda a una IA (incluido Claude) para seguir desarrollando Solralol, conviene que tenga en cuenta:</p>
+        <ul>
+          <li>La ventana principal real es <code>app/ui/main_window.py</code> (<code>MainWindow</code>). <code>app/ui/control_window.py</code> (<code>SolralolWindow</code>) es una arquitectura anterior, confirmada como no usada: no hay que "arreglarla" ni asumir que sigue viva.</li>
+          <li>Antes de dar por hecho que un archivo "no se usa", comprobar con <code>grep -rn "nombre_del_archivo\|NombreDeClase" --include=*.py .</code> desde la raíz del proyecto, igual que se ha hecho para este documento.</li>
+          <li>Los tres estados de <code>final_sync.status</code> relevantes para partidas guardadas son <code>live_only</code>, <code>pending</code>, <code>failed</code> y <code>synced</code>; el estado <code>live</code> es exclusivo de la sesión en curso emitida por <code>LiveDataWorker.live_analysis_ready</code>, no se persiste en <code>live_match_sessions.json</code>.</li>
+          <li>Cualquier nueva llamada a la Riot API debe ir en un <code>QThread</code> propio (o en uno de los tres ya existentes si encaja), nunca directamente en un método de <code>MainWindow</code> llamado desde un botón, salvo que sea una excepción tan puntual y justificada como <code>validate_riot_api_key</code>.</li>
+          <li>No introducir sondeo periódico de Riot API: el único <code>QTimer</code> recurrente debe seguir siendo <code>poll_timer</code>, dedicado exclusivamente a la Live Client Data API local.</li>
+          <li>Antes de tocar <code>LiveMatchTracker</code>, <code>PostgameSyncService</code> o <code>live_analysis_models_and_calculator.py</code>, revisar el <a href="#esquema-sesion">esquema de sesión</a> completo: son muchos campos interdependientes (snapshots, eventos, <code>lane_matchups</code>, <code>final_scoreboard</code>, <code>final_sync</code>) y es fácil romper alguno sin darse cuenta.</li>
+        </ul>
       </section>
 
-      <footer>Solralol · documentación de arquitectura y snapshot funcional actualizado con Live Client, Riot API, historial, inspector, Data Dragon y visor de Análisis.</footer>
+      <footer>
+        Documentación generada a partir de una lectura completa del código fuente de Solralol, incluido <code>app/ui/main_window.py</code>. Cualquier discrepancia con el comportamiento real de la app debe resolverse a favor del código, no de este documento.
+      </footer>
     </main>
   </div>
+
   <script>
-    const searchInput = document.getElementById('doc-search');
-    const searchStatus = document.getElementById('search-status');
-    const searchableSections = Array.from(document.querySelectorAll('main section'));
+    (function () {
+      const searchInput = document.getElementById("doc-search");
+      const searchStatus = document.getElementById("search-status");
+      const sections = Array.from(document.querySelectorAll("main > section"));
 
-    searchInput.addEventListener('input', () => {
-      const query = searchInput.value.trim().toLocaleLowerCase('es');
-      let visible = 0;
-
-      searchableSections.forEach((section) => {
-        const matches = !query || section.textContent.toLocaleLowerCase('es').includes(query);
-        section.classList.toggle('search-hidden', !matches);
-        if (matches) visible += 1;
-      });
-
-      if (!query) {
-        searchStatus.style.display = 'none';
-        searchStatus.textContent = '';
-        return;
+      function normalize(text) {
+        return text.toLowerCase();
       }
 
-      searchStatus.style.display = 'block';
-      searchStatus.textContent = `${visible} sección(es) coincidente(s)`;
-    });
+      searchInput.addEventListener("input", function () {
+        const query = normalize(searchInput.value.trim());
+
+        if (!query) {
+          sections.forEach((section) => section.classList.remove("search-hidden"));
+          searchStatus.style.display = "none";
+          return;
+        }
+
+        let matches = 0;
+
+        sections.forEach((section) => {
+          const text = normalize(section.textContent || "");
+          if (text.includes(query)) {
+            section.classList.remove("search-hidden");
+            matches += 1;
+          } else {
+            section.classList.add("search-hidden");
+          }
+        });
+
+        searchStatus.style.display = "block";
+        searchStatus.textContent = matches
+          ? `${matches} sección(es) con "${searchInput.value.trim()}"`
+          : `Sin resultados para "${searchInput.value.trim()}"`;
+      });
+    })();
   </script>
 </body>
 </html>
