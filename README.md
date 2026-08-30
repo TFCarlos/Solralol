@@ -375,9 +375,3 @@ por botones de navegación exclusivos (`QButtonGroup`):
 El detalle completo, método a método, de cada clase y servicio está en
 [`Solralol_Documentacion.html`](./Solralol_Documentacion.html). Ábrelo en un
 navegador; incluye buscador integrado en la barra lateral.
-
-## 10. Limpieza pendiente
-
-Ver [`LIMPIEZA.txt`](./LIMPIEZA.txt) para el listado de archivos y código
-duplicado que puede eliminarse con seguridad, con la evidencia (qué
-importa/usa cada cosa) que respalda cada recomendación.
