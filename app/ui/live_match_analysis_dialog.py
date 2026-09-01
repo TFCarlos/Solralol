@@ -201,7 +201,153 @@ class VersusChart(QWidget):
     def _format_value(self, value):
         return f"{int(round(value)):,}{self.unit}"
 
+class RiotComparisonBar(QWidget):
+    """
+    Comparativa final de Riot mediante dos barras horizontales.
 
+    Azul: aliado.
+    Rojo: enemigo.
+    """
+
+    def __init__(
+        self,
+        title: str,
+        ally_value: float,
+        enemy_value: float,
+        ally_name: str,
+        enemy_name: str,
+        unit: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+
+        self.title = title
+        self.ally_value = float(ally_value or 0)
+        self.enemy_value = float(enemy_value or 0)
+        self.ally_name = str(ally_name or "Aliado")
+        self.enemy_name = str(enemy_name or "Enemigo")
+        self.unit = unit
+
+        self.setObjectName("riotComparisonBar")
+        self.setMinimumHeight(108)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor(8, 19, 34, 220))
+
+        bold_font = painter.font()
+        bold_font.setBold(True)
+        painter.setFont(bold_font)
+        painter.setPen(QColor(237, 209, 117))
+        painter.drawText(12, 20, f"{self.title} · RIOT")
+
+        normal_font = painter.font()
+        normal_font.setBold(False)
+        painter.setFont(normal_font)
+
+        ally_color = QColor(58, 188, 245)
+        enemy_color = QColor(244, 87, 108)
+        muted_color = QColor(135, 159, 194)
+        background_color = QColor(33, 54, 82)
+
+        maximum = max(self.ally_value, self.enemy_value, 1.0)
+
+        label_width = 84
+        value_width = 78
+        left = label_width + 12
+        right = self.width() - value_width - 12
+        available_width = max(1, right - left)
+
+        ally_y = 45
+        enemy_y = 76
+        bar_height = 16
+
+        painter.setPen(ally_color)
+        painter.drawText(
+            10,
+            ally_y + 13,
+            self._short_name(self.ally_name),
+        )
+
+        painter.setPen(enemy_color)
+        painter.drawText(
+            10,
+            enemy_y + 13,
+            self._short_name(self.enemy_name),
+        )
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(background_color)
+
+        painter.drawRoundedRect(
+            left,
+            ally_y,
+            available_width,
+            bar_height,
+            4,
+            4,
+        )
+
+        painter.drawRoundedRect(
+            left,
+            enemy_y,
+            available_width,
+            bar_height,
+            4,
+            4,
+        )
+
+        ally_width = int(
+            available_width * self.ally_value / maximum
+        )
+
+        enemy_width = int(
+            available_width * self.enemy_value / maximum
+        )
+
+        painter.setBrush(ally_color)
+        painter.drawRoundedRect(
+            left,
+            ally_y,
+            max(0, ally_width),
+            bar_height,
+            4,
+            4,
+        )
+
+        painter.setBrush(enemy_color)
+        painter.drawRoundedRect(
+            left,
+            enemy_y,
+            max(0, enemy_width),
+            bar_height,
+            4,
+            4,
+        )
+
+        painter.setPen(muted_color)
+        painter.drawText(
+            right + 7,
+            ally_y + 13,
+            self._format_value(self.ally_value),
+        )
+
+        painter.drawText(
+            right + 7,
+            enemy_y + 13,
+            self._format_value(self.enemy_value),
+        )
+
+    def _format_value(self, value: float) -> str:
+        if self.unit:
+            return f"{value:,.0f}{self.unit}"
+
+        return f"{value:,.0f}"
+
+    @staticmethod
+    def _short_name(name: str) -> str:
+        return name[:12] + "…" if len(name) > 13 else name
 
 class LiveMatchAnalysisDialog(QDialog):
     ROLE_LABELS = {"TOP": "TOP VS TOP", "JUNGLE": "JGL VS JGL", "MIDDLE": "MID VS MID", "BOTTOM": "BOT VS BOT", "UTILITY": "SUP VS SUP"}
@@ -1029,30 +1175,122 @@ class LiveMatchAnalysisDialog(QDialog):
         layout.addLayout(row)
         return frame
 
+    def _riot_final_value(
+        self,
+        player_key: str,
+        metric: str,
+    ) -> float | None:
+        final_sync = self.session.get("final_sync", {})
+
+        if (
+            not isinstance(final_sync, dict)
+            or final_sync.get("status") != "synced"
+        ):
+            return None
+
+        player = self.session.get("players", {}).get(
+            player_key,
+            {},
+        )
+
+        if not isinstance(player, dict):
+            return None
+
+        final = player.get("final", {})
+
+        if not isinstance(final, dict):
+            return None
+
+        # CS oficial total: súbditos de línea + monstruos neutrales.
+        # Primero utiliza el total normalizado que ya produces.
+        if metric == "cs":
+            print(
+                "DEBUG CS:",
+                "cs_total=", final.get("cs_total"),
+                "cs_minions=", final.get("cs_minions"),
+                "cs_jungle=", final.get("cs_jungle"),
+            )
+
+            cs_total = final.get("cs_total")
+
+            if cs_total is not None:
+                try:
+                    return float(cs_total)
+                except (TypeError, ValueError):
+                    pass
+
+            try:
+                return (
+                    float(final.get("cs_minions", 0) or 0)
+                    + float(final.get("cs_jungle", 0) or 0)
+                )
+            except (TypeError, ValueError):
+                return None
+
+        metric_keys = {
+            "gold": (
+                "gold_earned",
+                "goldEarned",
+            ),
+            "kills": (
+                "kills",
+            ),
+            "vision": (
+                "vision_score",
+                "visionScore",
+            ),
+            "damage_champions": (
+                "damage_to_champions",
+                "total_damage_dealt_to_champions",
+            ),
+            "damage_structures": (
+                "damage_to_structures",
+                "damage_dealt_to_turrets",
+            ),
+            "damage_objectives": (
+                "damage_to_objectives",
+                "damageDealtToObjectives",
+            ),
+            "damage_taken": (
+                "damage_taken",
+                "total_damage_taken",
+            ),
+            "healing": (
+                "healing",
+                "total_heal",
+            ),
+        }
+
+        for field in metric_keys.get(metric, (metric,)):
+            value = final.get(field)
+
+            if value is None:
+                continue
+
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+
+        return None
 
     def _create_charts_panel(
         self,
         player_key,
     ):
         """
-        Muestra cada gráfica solo al jugador que gana esa métrica.
+        Muestra comparativas del enfrentamiento actual.
 
-
-        Si existe empate, la gráfica se muestra en ambos paneles con
-        una etiqueta EMPATE sobre la gráfica, nunca dentro de ella.
+        - Riot sincronizado: barras finales oficiales.
+        - LIVE: gráficas de línea con snapshots temporales reales.
+        - Cada métrica se muestra solo al ganador; los empates aparecen en
+        ambos paneles.
         """
         container = QWidget()
 
-
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-
 
         matchup = self.session.get(
             "lane_matchups",
@@ -1062,10 +1300,8 @@ class LiveMatchAnalysisDialog(QDialog):
             {},
         )
 
-
         ally_key = matchup.get("ally_key")
         enemy_key = matchup.get("enemy_key")
-
 
         if player_key not in {
             ally_key,
@@ -1073,98 +1309,146 @@ class LiveMatchAnalysisDialog(QDialog):
         }:
             return container
 
-
-        ally_series = self._player_series(
-            ally_key
-        )
-
-
-        enemy_series = self._player_series(
-            enemy_key
-        )
-
-
         players = self.session.get(
             "players",
             {},
         )
-
 
         ally = players.get(
             ally_key,
             {},
         )
 
-
         enemy = players.get(
             enemy_key,
             {},
         )
 
+        if not isinstance(ally, dict) or not isinstance(enemy, dict):
+            return container
 
-        specs = (
-            (
-                "Oro",
-                "estimated_gold",
-                " oro",
-            ),
-            (
-                "CS",
-                "cs",
-                " CS",
-            ),
-            (
-                "Kills",
-                "kills",
-                "",
-            ),
-            (
-                "Visión",
-                "vision_score",
-                "",
-            ),
-            (
-                "Daño a campeones",
-                "damage_to_champions",
-                "",
-            ),
-            (
-                "Daño a estructuras",
-                "damage_to_structures",
-                "",
-            ),
-            (
-                "Daño recibido",
-                "damage_taken",
-                "",
-            ),
-            (
-                "Sanación",
-                "healing",
-                "",
-            ),
+        # -------------------------------------------------------------
+        # BARRAS FINALES RIOT
+        # -------------------------------------------------------------
+        riot_specs = (
+            ("Oro ganado", "gold", "g"),
+            ("CS", "cs", ""),
+            ("Kills", "kills", ""),
+            ("Visión", "vision", ""),
+            ("Daño a campeones", "damage_champions", ""),
+            ("Daño a estructuras", "damage_structures", ""),
+            ("Daño a objetivos", "damage_objectives", ""),
+            ("Daño recibido", "damage_taken", ""),
+            ("Curación", "healing", ""),
         )
 
+        riot_bars_added = 0
 
-        charts_added = 0
+        for title, metric, unit in riot_specs:
+            ally_value = self._riot_final_value(
+                ally_key,
+                metric,
+            )
 
+            enemy_value = self._riot_final_value(
+                enemy_key,
+                metric,
+            )
 
-        for title, key, unit in specs:
+            # Riot debe proporcionar ambos valores para comparar.
+            if ally_value is None or enemy_value is None:
+                continue
+
+            if ally_value > enemy_value:
+                winner_key = ally_key
+            elif enemy_value > ally_value:
+                winner_key = enemy_key
+            else:
+                winner_key = "tie"
+
+            # La barra se añade al panel ganador, o a los dos si empatan.
+            if winner_key not in {
+                player_key,
+                "tie",
+            }:
+                continue
+
+            if riot_bars_added == 0:
+                riot_title = QLabel(
+                    "COMPARACIÓN FINAL · DATOS OFICIALES RIOT"
+                )
+                riot_title.setObjectName("livePanelTitle")
+                riot_title.setAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+                layout.addWidget(riot_title)
+
+            if winner_key == "tie":
+                tie_label = QLabel("EMPATE")
+                tie_label.setObjectName("liveChartTie")
+                tie_label.setAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+                layout.addWidget(tie_label)
+
+            bar = RiotComparisonBar(
+                title=title,
+                ally_value=ally_value,
+                enemy_value=enemy_value,
+                ally_name=ally.get(
+                    "champion_name",
+                    "Aliado",
+                ),
+                enemy_name=enemy.get(
+                    "champion_name",
+                    "Enemigo",
+                ),
+                unit=unit,
+            )
+
+            layout.addWidget(bar)
+            riot_bars_added += 1
+
+        # -------------------------------------------------------------
+        # GRÁFICAS TEMPORALES LIVE
+        # -------------------------------------------------------------
+        ally_series = self._player_series(
+            ally_key,
+        )
+
+        enemy_series = self._player_series(
+            enemy_key,
+        )
+
+        live_specs = (
+            ("Oro", "estimated_gold", " oro"),
+            ("CS", "cs", " CS"),
+            ("Kills", "kills", ""),
+            ("Visión", "vision_score", ""),
+            ("Daño a campeones", "damage_to_champions", ""),
+            ("Daño a estructuras", "damage_to_structures", ""),
+            ("Daño recibido", "damage_taken", ""),
+            ("Sanación", "healing", ""),
+        )
+
+        live_charts_added = 0
+
+        for title, key, unit in live_specs:
             ally_values = ally_series.get(
                 key,
                 [],
             )
-
 
             enemy_values = enemy_series.get(
                 key,
                 [],
             )
 
-
-            if not ally_values and not enemy_values:
+            # Se requiere timeline real. Una serie de un solo snapshot no
+            # representa evolución; sí se acepta que la timeline exista solo
+            # para uno de los dos jugadores.
+            if len(ally_values) < 2 and len(enemy_values) < 2:
                 continue
-
 
             winner_key = self._metric_winner(
                 key,
@@ -1174,47 +1458,35 @@ class LiveMatchAnalysisDialog(QDialog):
                 enemy_values,
             )
 
-
             if winner_key not in {
                 player_key,
                 "tie",
             }:
                 continue
 
+            if live_charts_added == 0:
+                live_title = QLabel(
+                    "EVOLUCIÓN TEMPORAL · DATOS LIVE"
+                )
+                live_title.setObjectName("livePanelTitle")
+                live_title.setAlignment(
+                    Qt.AlignmentFlag.AlignCenter
+                )
+                layout.addWidget(live_title)
 
             chart_wrapper = QWidget()
 
-
-            chart_layout = QVBoxLayout(
-                chart_wrapper
-            )
-
-
-            chart_layout.setContentsMargins(
-                0,
-                0,
-                0,
-                0,
-            )
-
-
+            chart_layout = QVBoxLayout(chart_wrapper)
+            chart_layout.setContentsMargins(0, 0, 0, 0)
             chart_layout.setSpacing(3)
-
 
             if winner_key == "tie":
                 tie_label = QLabel("EMPATE")
-                tie_label.setObjectName(
-                    "liveChartTie"
-                )
+                tie_label.setObjectName("liveChartTie")
                 tie_label.setAlignment(
                     Qt.AlignmentFlag.AlignCenter
                 )
-
-
-                chart_layout.addWidget(
-                    tie_label
-                )
-
+                chart_layout.addWidget(tie_label)
 
             chart = VersusChart(
                 title,
@@ -1231,36 +1503,20 @@ class LiveMatchAnalysisDialog(QDialog):
                 unit,
             )
 
-
             chart_layout.addWidget(chart)
-
-
             layout.addWidget(chart_wrapper)
+            live_charts_added += 1
 
-
-            charts_added += 1
-
-
-        if charts_added == 0:
+        if riot_bars_added == 0 and live_charts_added == 0:
             empty = QLabel(
-                "Este jugador no lidera ninguna métrica "
-                "en este enfrentamiento."
+                "No hay datos Riot comparables ni timelines LIVE "
+                "suficientes para este enfrentamiento."
             )
-
-
-            empty.setObjectName(
-                "liveChartsEmpty"
-            )
-
-
+            empty.setObjectName("liveChartsEmpty")
             empty.setWordWrap(True)
-
-
             layout.addWidget(empty)
 
-
         return container
-
 
 
     def _metric_winner(
@@ -1271,16 +1527,27 @@ class LiveMatchAnalysisDialog(QDialog):
         ally_values,
         enemy_values,
     ):
+        """
+        Devuelve el jugador con el valor final mayor.
+
+        Si una serie no está disponible, el jugador que sí tiene serie es el
+        ganador. Si los valores finales son iguales, devuelve 'tie'.
+        """
         if not ally_values and not enemy_values:
             return None
-        if not ally_values or not enemy_values:
-            return ally_key if ally_values else enemy_key
 
+        if not ally_values:
+            return enemy_key
+
+        if not enemy_values:
+            return ally_key
 
         ally_value = ally_values[-1][1]
         enemy_value = enemy_values[-1][1]
+
         if ally_value == enemy_value:
             return "tie"
+
         return ally_key if ally_value > enemy_value else enemy_key
 
 
@@ -1435,20 +1702,106 @@ class LiveMatchAnalysisDialog(QDialog):
         self.show_role(self.current_role)
 
 
-    def _player_series(self, player_key):
-        keys = ("estimated_gold", "cs", "kills", "vision_score", "damage_to_champions", "damage_to_structures", "damage_taken", "healing")
-        series = {key: [] for key in keys}
-        for snapshot in self.session.get("snapshots", []):
-            time_value = float(snapshot.get("time", 0))
-            point = snapshot.get("players", {}).get(player_key, {})
+    def _player_series(
+        self,
+        player_key,
+    ):
+        """
+        Construye series exclusivamente con snapshots LIVE registrados.
+
+        No utiliza ni convierte las estadísticas finales de Riot.
+        """
+        keys = (
+            "estimated_gold",
+            "cs",
+            "kills",
+            "vision_score",
+            "damage_to_champions",
+            "damage_to_structures",
+            "damage_taken",
+            "healing",
+        )
+
+        series = {
+            key: []
+            for key in keys
+        }
+
+        for snapshot in self.session.get(
+            "snapshots",
+            [],
+        ):
+            if not isinstance(snapshot, dict):
+                continue
+
+            try:
+                time_value = float(
+                    snapshot.get(
+                        "time",
+                        0,
+                    ) or 0
+                )
+            except (TypeError, ValueError):
+                continue
+
+            point = snapshot.get(
+                "players",
+                {},
+            ).get(
+                player_key,
+                {},
+            )
+
             if not isinstance(point, dict):
                 continue
-            for key in ("estimated_gold", "cs", "kills"):
-                series[key].append((time_value, float(point.get(key, 0))))
+
+            for key in (
+                "estimated_gold",
+                "cs",
+                "kills",
+            ):
+                value = point.get(key)
+
+                if value is None:
+                    continue
+
+                try:
+                    series[key].append(
+                        (
+                            time_value,
+                            float(value),
+                        )
+                    )
+                except (TypeError, ValueError):
+                    continue
+
             stats = point.get("stats", {})
-            for key in keys[3:]:
-                if stats.get(key) is not None:
-                    series[key].append((time_value, float(stats[key])))
+
+            if not isinstance(stats, dict):
+                continue
+
+            for key in (
+                "vision_score",
+                "damage_to_champions",
+                "damage_to_structures",
+                "damage_taken",
+                "healing",
+            ):
+                value = stats.get(key)
+
+                if value is None:
+                    continue
+
+                try:
+                    series[key].append(
+                        (
+                            time_value,
+                            float(value),
+                        )
+                    )
+                except (TypeError, ValueError):
+                    continue
+
         return series
 
 

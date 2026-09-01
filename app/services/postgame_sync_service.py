@@ -303,79 +303,274 @@ class PostgameSyncService:
         self,
         participant: dict[str, Any],
     ) -> dict[str, Any]:
-        return {
-            # KDA
-            "kills": int(participant.get("kills", 0)),
-            "deaths": int(participant.get("deaths", 0)),
-            "assists": int(participant.get("assists", 0)),
+        """
+        Normaliza todas las estadísticas disponibles de Match-V5 para un jugador.
 
-            # CS
-            "cs_minions": int(participant.get("minionsKilled", 0)),
-            "cs_jungle": int(participant.get("neutralMinionsKilled", 0)),
+        Riot no siempre devuelve todos los campos en todos los modos de juego,
+        por lo que los campos ausentes se guardan con valor 0 o False. Además de
+        las estadísticas principales, conserva también estadísticas avanzadas y
+        datos de objetivos, visión, economía, CC, runas, hechizos e inventario.
+        """
+
+        def integer(*keys: str) -> int:
+            for key in keys:
+                value = participant.get(key)
+                if value is None:
+                    continue
+
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    continue
+
+            return 0
+
+        def decimal(*keys: str) -> float:
+            for key in keys:
+                value = participant.get(key)
+                if value is None:
+                    continue
+
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    continue
+
+            return 0.0
+
+        def boolean(*keys: str) -> bool:
+            for key in keys:
+                value = participant.get(key)
+                if value is not None:
+                    return bool(value)
+
+            return False
+
+        result: dict[str, Any] = {
+            # Identificación oficial.
+            "participant_id": integer("participantId"),
+            "puuid": participant.get("puuid"),
+            "summoner_id": participant.get("summonerId"),
+            "summoner_name": participant.get("summonerName"),
+            "riot_id_game_name": participant.get("riotIdGameName"),
+            "riot_id_tagline": participant.get("riotIdTagline"),
+            "champion_id": integer("championId"),
+            "champion_name": participant.get("championName"),
+            "team_id": integer("teamId"),
+            "role": participant.get("individualPosition"),
+            "lane": participant.get("lane"),
+
+            # Resultado y progreso.
+            "win": boolean("win"),
+            "game_ended_in_early_surrender": boolean(
+                "gameEndedInEarlySurrender"
+            ),
+            "game_ended_in_surrender": boolean(
+                "gameEndedInSurrender"
+            ),
+            "champ_level": integer("champLevel"),
+            "level": integer("champLevel"),
+
+            # KDA.
+            "kills": integer("kills"),
+            "deaths": integer("deaths"),
+            "assists": integer("assists"),
+            "double_kills": integer("doubleKills"),
+            "triple_kills": integer("tripleKills"),
+            "quadra_kills": integer("quadraKills"),
+            "penta_kills": integer("pentaKills"),
+            "unreal_kills": integer("unrealKills"),
+            "largest_killing_spree": integer("largestKillingSpree"),
+            "largest_multi_kill": integer("largestMultiKill"),
+
+            # CS y economía.
+            # Riot usa `minionsKilled` y `jungleMinionsKilled` en el timeline,
+            # mientras que `totalMinionsKilled` / `neutralMinionsKilled` aparecen
+            # en el DTO principal de la partida. Mantener ambos aliases evita
+            # romper ambos formatos.
+            "minions_killed": integer("minionsKilled", "totalMinionsKilled"),
+            "neutral_minions_killed": integer(
+                "jungleMinionsKilled",
+                "neutralMinionsKilled",
+            ),
+            "cs_minions": integer("minionsKilled", "totalMinionsKilled"),
+            "cs_jungle": integer(
+                "jungleMinionsKilled",
+                "neutralMinionsKilled",
+            ),
             "cs_total": (
-                int(participant.get("minionsKilled", 0))
-                + int(participant.get("neutralMinionsKilled", 0))
+                integer("minionsKilled", "totalMinionsKilled")
+                + integer(
+                    "jungleMinionsKilled",
+                    "neutralMinionsKilled",
+                )
+            ),
+            "gold_earned": integer("goldEarned"),
+            "gold_spent": integer("goldSpent"),
+
+            # Daño total.
+            "total_damage_dealt": integer("totalDamageDealt"),
+            "total_damage_dealt_to_champions": integer(
+                "totalDamageDealtToChampions"
+            ),
+            "total_damage_taken": integer("totalDamageTaken"),
+            "damage_dealt_to_champions": integer(
+                "totalDamageDealtToChampions"
+            ),
+            "damage_taken": integer("totalDamageTaken"),
+
+            # Daño por tipo.
+            "magic_damage_dealt": integer("magicDamageDealt"),
+            "physical_damage_dealt": integer("physicalDamageDealt"),
+            "true_damage_dealt": integer("trueDamageDealt"),
+            "magic_damage_dealt_to_champions": integer(
+                "magicDamageDealtToChampions"
+            ),
+            "physical_damage_dealt_to_champions": integer(
+                "physicalDamageDealtToChampions"
+            ),
+            "true_damage_dealt_to_champions": integer(
+                "trueDamageDealtToChampions"
+            ),
+            "magic_damage_taken": integer("magicDamageTaken"),
+            "physical_damage_taken": integer("physicalDamageTaken"),
+            "true_damage_taken": integer("trueDamageTaken"),
+
+            # Estructuras, objetivos y torres.
+            "damage_dealt_to_turrets": integer(
+                "damageDealtToTurrets",
+                "damageDealtToBuildings",
+            ),
+            "damage_dealt_to_buildings": integer(
+                "damageDealtToBuildings",
+                "damageDealtToTurrets",
+            ),
+            "damage_dealt_to_objectives": integer(
+                "damageDealtToObjectives"
+            ),
+            "turret_kills": integer("turretKills"),
+            "inhibitor_kills": integer("inhibitorKills"),
+            "objectives_stolen": integer("objectivesStolen"),
+            "objectives_stolen_assists": integer(
+                "objectivesStolenAssists"
             ),
 
-            # Nivel
-            "level": int(participant.get("champLevel", 0)),
-
-            # Economía
-            "gold_earned": int(participant.get("goldEarned", 0)),
-            "gold_spent": int(participant.get("goldSpent", 0)),
-
-            # Daño
-            "damage_to_champions": int(
-                participant.get("totalDamageDealtToChampions", 0)
+            # Curación y mitigación.
+            "total_heal": integer("totalHeal"),
+            "total_heals_on_teammates": integer(
+                "totalHealsOnTeammates"
             ),
-            "damage_to_structures": int(
-                participant.get("damageDealtToTurrets", 0)
+            "healing": integer("totalHeal"),
+            "healing_from_teammates": integer(
+                "totalHealsOnTeammates"
             ),
-            "damage_to_objectives": int(
-                participant.get("damageDealtToObjectives", 0)
+            "damage_self_mitigated": integer(
+                "damageSelfMitigated"
             ),
-            "damage_taken": int(
-                participant.get("totalDamageTaken", 0)
+            "total_absorbed_shields": integer(
+                "totalAbsorbedShields"
             ),
 
-            # Utilidad / visión
-            "healing": int(participant.get("totalHeal", 0)),
-            "healing_from_teammates": int(
-                participant.get("totalHealsOnTeammates", 0)
+            # Control de masas y utilidad.
+            "total_time_crowd_control_dealt": integer(
+                "totalTimeCrowdControlDealt"
             ),
-            "vision_score": int(participant.get("visionScore", 0)),
-            "wards_placed": int(participant.get("wardsPlaced", 0)),
-            "wards_killed": int(participant.get("wardsKilled", 0)),
-            "control_wards_purchased": int(
-                participant.get("detectorWardsPlaced", 0)
+            "time_cc_dealt": integer(
+                "totalTimeCrowdControlDealt"
             ),
-            "time_cc_dealt": int(
-                participant.get("totalTimeCrowdControlDealt", 0)
+            "total_units_healed": integer("totalUnitsHealed"),
+            "time_played": integer("timePlayed"),
+
+            # Visión.
+            "vision_score": integer("visionScore"),
+            "wards_placed": integer("wardsPlaced"),
+            "wards_killed": integer("wardsKilled"),
+            "detector_wards_placed": integer(
+                "detectorWardsPlaced"
+            ),
+            "control_wards_purchased": integer(
+                "detectorWardsPlaced"
+            ),
+            "sight_wards_bought_in_game": integer(
+                "sightWardsBoughtInGame"
+            ),
+            "vision_wards_bought_in_game": integer(
+                "visionWardsBoughtInGame"
             ),
 
-            # Objetos (finales)
+            # Objetos finales. Se conservan siete posiciones porque
+            # Match-V5 puede devolver también el objeto de misión.
             "items": [
-                int(participant.get(f"item{index}", 0))
+                integer(f"item{index}")
                 for index in range(7)
-                if int(participant.get(f"item{index}", 0)) > 0
+                if integer(f"item{index}") > 0
             ],
+            "item0": integer("item0"),
+            "item1": integer("item1"),
+            "item2": integer("item2"),
+            "item3": integer("item3"),
+            "item4": integer("item4"),
+            "item5": integer("item5"),
+            "item6": integer("item6"),
 
-            # Runas / hechizos (útiles para análisis)
-            "perk0": int(participant.get("perk0", 0)),
-            "perk1": int(participant.get("perk1", 0)),
-            "perk2": int(participant.get("perk2", 0)),
-            "perk3": int(participant.get("perk3", 0)),
-            "perk4": int(participant.get("perk4", 0)),
-            "perk5": int(participant.get("perk5", 0)),
-            "stat_perk_0": int(participant.get("statPerk0", 0)),
-            "stat_perk_1": int(participant.get("statPerk1", 0)),
-            "stat_perk_2": int(participant.get("statPerk2", 0)),
-            "spell1_id": int(participant.get("spell1Id", 0)),
-            "spell2_id": int(participant.get("spell2Id", 0)),
+            # Runas principales.
+            "perk0": integer("perk0"),
+            "perk1": integer("perk1"),
+            "perk2": integer("perk2"),
+            "perk3": integer("perk3"),
+            "perk4": integer("perk4"),
+            "perk5": integer("perk5"),
 
-            # Resultado
-            "win": bool(participant.get("win")),
+            # Runas de estadísticas.
+            "stat_perk_0": integer(
+                "statPerk0",
+                "statPerk0Id",
+            ),
+            "stat_perk_1": integer(
+                "statPerk1",
+                "statPerk1Id",
+            ),
+            "stat_perk_2": integer(
+                "statPerk2",
+                "statPerk2Id",
+            ),
+
+            # Hechizos de invocador.
+            "spell1_id": integer("spell1Id"),
+            "spell2_id": integer("spell2Id"),
+
+            # Estadísticas de combate adicionales que pueden aparecer
+            # en algunas respuestas o versiones.
+            "first_blood_kill": boolean("firstBloodKill"),
+            "first_tower_kill": boolean("firstTowerKill"),
+            "killing_sprees": integer("killingSprees"),
+            "neutral_minions_killed_team_jungle": integer(
+                "neutralMinionsKilledTeamJungle"
+            ),
+            "neutral_minions_killed_enemy_jungle": integer(
+                "neutralMinionsKilledEnemyJungle"
+            ),
+
+            # Campos numéricos opcionales conservados si Riot los entrega.
+            "ability_haste": decimal("abilityHaste"),
+            "attack_damage": decimal("attackDamage"),
+            "ability_power": decimal("abilityPower"),
+            "armor": decimal("armor"),
+            "magic_resist": decimal(
+                "magicResist",
+                "spellBlock",
+            ),
+            "movement_speed": decimal("movementSpeed"),
+            "attack_speed": decimal("attackSpeed"),
+            "critical_chance": decimal("criticalChance"),
+            "life_steal": decimal("lifeSteal"),
         }
+
+        # Conserva también el objeto completo de estadísticas recibido por
+        # Riot para no perder futuras propiedades añadidas por Match-V5.
+        result["raw_participant_stats"] = dict(participant)
+
+        return result
 
 
     def _normalise_timeline_events(

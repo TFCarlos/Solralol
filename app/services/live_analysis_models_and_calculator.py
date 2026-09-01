@@ -307,14 +307,23 @@ def attach_achievements(
 
 def build_postgame_payload(
     session: dict[str, Any],
-    riot_match: dict[str, Any] | None,
+    riot_match: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not riot_match:
         return session
+
     session["postgame"] = True
     session["final_sync"] = {
         "status": "synced",
         "source": "riot_match_v5",
+        "synced_at": datetime.now(UTC).isoformat(),
     }
     session["riot_match"] = riot_match
+
+    # Rellenar el campo "final" de cada jugador.
+    final_scoreboard = session.get("final_scoreboard", {})
+    for playerkey, player in session.get("players", {}).items():
+        if isinstance(player, dict):
+            player["final"] = final_scoreboard.get(playerkey, {})
+
     return session
