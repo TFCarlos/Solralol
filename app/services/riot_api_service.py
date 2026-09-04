@@ -209,6 +209,44 @@ class RiotApiService:
             )
         return result
 
+    def get_emerald_plus_puuids(self, limit_per_tier: int = 10) -> list[str]:
+        """Obtiene una lista representativa de PUUIDs de jugadores en Esmeralda+ (Esmeralda, Diamante, Master, GM, Challenger)."""
+        base_url = self.PLATFORM_BASE_URLS[self.platform_region]
+        puuids: list[str] = []
+
+        endpoints = [
+            "/lol/league/v4/challengerleagues/by-queue/RANKED_SOLO_5x5",
+            "/lol/league/v4/grandmasterleagues/by-queue/RANKED_SOLO_5x5",
+            "/lol/league/v4/masterleagues/by-queue/RANKED_SOLO_5x5",
+            "/lol/league/v4/entries/RANKED_SOLO_5x5/DIAMOND/I?page=1",
+            "/lol/league/v4/entries/RANKED_SOLO_5x5/EMERALD/I?page=1",
+        ]
+
+        for ep in endpoints:
+            try:
+                res = self._request(base_url, ep)
+                entries = []
+                if isinstance(res, dict):
+                    entries = res.get("entries", [])
+                elif isinstance(res, list):
+                    entries = res
+
+                for entry in entries[:limit_per_tier]:
+                    p = entry.get("puuid")
+                    if p:
+                        puuids.append(str(p))
+                    elif entry.get("summonerId"):
+                        try:
+                            summ = self._request(base_url, f"/lol/summoner/v4/summoners/{entry['summonerId']}")
+                            if isinstance(summ, dict) and summ.get("puuid"):
+                                puuids.append(str(summ["puuid"]))
+                        except Exception:
+                            pass
+            except Exception:
+                continue
+
+        return puuids
+
     def get_match_ids(
         self,
         puuid: str,

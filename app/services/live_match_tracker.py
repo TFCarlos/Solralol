@@ -197,6 +197,8 @@ class LiveMatchTracker:
                     "win": None,
                     "final": {},
                     "items": [],
+                    "summoner_spells": player.get("summonerSpells", {}),
+                    "runes": player.get("runes", {}),
                 }
                 self.session["player_timelines"][key] = []
 
@@ -207,6 +209,8 @@ class LiveMatchTracker:
                     "side": side,
                     "team": team,
                     "items": self._item_ids(player),
+                    "summoner_spells": player.get("summonerSpells", {}),
+                    "runes": player.get("runes", {}),
                 }
             )
 
@@ -293,6 +297,7 @@ class LiveMatchTracker:
                 )
             ),
             "items": items,
+            "live_stats": local_live_stats if is_local else {},
             "inventory_value": inventory_value,
             "current_gold": current_gold,
             "estimated_gold": self._estimate_gold(
@@ -302,7 +307,7 @@ class LiveMatchTracker:
             ),
             "stats": stats,
             "quality": {
-                "estimated_gold": "estimated",
+                "estimated_gold": "live" if current_gold is not None else "estimated",
                 "damage_to_champions": (
                     "api"
                     if stats["damage_to_champions"] is not None

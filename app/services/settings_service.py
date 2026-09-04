@@ -126,3 +126,58 @@ class SettingsService:
             "Riot devolvió HTTP "
             f"{response.status_code} al validar la clave.",
         )
+
+    def save_gemini_api_key(self, api_key: str) -> None:
+        settings = self.load()
+        settings["gemini_api_key"] = api_key.strip()
+        self.save(settings)
+
+    def clear_gemini_api_key(self) -> None:
+        settings = self.load()
+        settings.pop("gemini_api_key", None)
+        self.save(settings)
+
+    def validate_gemini_api_key(self, api_key: str) -> tuple[bool, str]:
+        api_key = api_key.strip()
+
+        if not api_key:
+            return (
+                False,
+                "Introduce una Gemini API key antes de guardar.",
+            )
+
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            response = requests.get(
+                url,
+                headers={"Accept": "application/json"},
+                timeout=10,
+            )
+        except requests.RequestException as error:
+            return (
+                False,
+                f"No se pudo conectar con Google AI Studio (Gemini): {error}",
+            )
+
+        if response.status_code == 200:
+            return (
+                True,
+                "Gemini API key válida y guardada correctamente.",
+            )
+
+        if response.status_code in (400, 401, 403):
+            return (
+                False,
+                "Gemini API key inválida o no autorizada.",
+            )
+
+        if response.status_code == 429:
+            return (
+                False,
+                "Límite de peticiones de Gemini excedido (Rate limit).",
+            )
+
+        return (
+            False,
+            f"Google AI Studio devolvió HTTP {response.status_code} al validar la clave.",
+        )

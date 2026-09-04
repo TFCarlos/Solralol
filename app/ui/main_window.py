@@ -5,23 +5,12 @@ from PySide6.QtCore import (
     Qt,
     QThread,
     QTimer,
-    QUrl,
     Signal,
     Slot,
 )
 
-from PySide6.QtWebEngineCore import (
-    QWebEnginePage,
-    QWebEngineUrlRequestInterceptor,
-)
-
-from PySide6.QtWebEngineWidgets import (
-    QWebEngineView,
-)
-
 from PySide6.QtGui import (
     QColor,
-    QDesktopServices,
     QPainter,
     QRadialGradient,
 )
@@ -51,6 +40,7 @@ from app.services.live_match_tracker import (
 from app.ui.live_match_analysis_dialog import (
     LiveMatchAnalysisDialog,
 )
+from app.ui.local_analysis_dialog import LocalAnalysisDialog
 
 from app.ui.match_inspector_dialog import (
     MatchInspectorDialog,
@@ -98,106 +88,6 @@ class Backdrop(QWidget):
         red.setColorAt(1.0, QColor(208, 45, 62, 0))
         painter.fillRect(self.rect(), red)
 
-class QuietWebEnginePage(QWebEnginePage):
-    """Oculta ruido conocido de consola de proveedores web."""
-
-    def javaScriptConsoleMessage(
-        self,
-        level,
-        message: str,
-        line_number: int,
-        source_id: str,
-    ) -> None:
-        ignored_messages = (
-            "fun-hooks:",
-            "Error initializing Facebook integration",
-            "firstPartyData",
-        )
-
-        if any(
-            value in message
-            for value in ignored_messages
-        ):
-            return
-
-        super().javaScriptConsoleMessage(
-            level,
-            message,
-            line_number,
-            source_id,
-        )
-
-class AdBlockInterceptor(
-    QWebEngineUrlRequestInterceptor,
-):
-    """Bloqueo ligero de anuncios y rastreadores en el visor web."""
-
-    BLOCKED_DOMAINS = (
-        "doubleclick.net",
-        "googlesyndication.com",
-        "googleadservices.com",
-        "google-analytics.com",
-        "googletagmanager.com",
-        "adservice.google.",
-        "amazon-adsystem.com",
-        "adnxs.com",
-        "adsrvr.org",
-        "taboola.com",
-        "outbrain.com",
-        "criteo.com",
-        "criteo.net",
-        "pubmatic.com",
-        "rubiconproject.com",
-        "openx.net",
-        "moatads.com",
-        "scorecardresearch.com",
-        "quantserve.com",
-        "hotjar.com",
-        "facebook.net",
-        "connect.facebook.net",
-        "adsystem.com",
-        "adform.net",
-        "advertising.com",
-        "adskeeper.co.uk",
-        "popads.net",
-    )
-
-    BLOCKED_URL_PARTS = (
-        "/ads/",
-        "/adserver/",
-        "/advert/",
-        "/advertising/",
-        "/banner/",
-        "/banners/",
-        "/promo/",
-        "doubleclick",
-        "google_ads",
-        "googleads",
-        "googlesyndication",
-        "adservice",
-        "adnxs",
-        "taboola",
-        "outbrain",
-    )
-
-    def interceptRequest(self, info) -> None:
-        url = info.requestUrl()
-        host = url.host().casefold()
-        full_url = url.toString().casefold()
-
-        if any(
-            domain in host
-            for domain in self.BLOCKED_DOMAINS
-        ):
-            info.block(True)
-            return
-
-        if any(
-            value in full_url
-            for value in self.BLOCKED_URL_PARTS
-        ):
-            info.block(True)
-
 class MainWindow(QMainWindow):
     """Ventana única de Solralol."""
 
@@ -239,6 +129,10 @@ class MainWindow(QMainWindow):
         self.settings = self.settings_service.load()
         self.riot_api_key = self.settings.get(
             "riot_api_key",
+            "",
+        )
+        self.gemini_api_key = self.settings.get(
+            "gemini_api_key",
             "",
         )
 
@@ -331,6 +225,7 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self.pages.setObjectName("mainPages")
+        self.pages.currentChanged.connect(self._handle_page_changed)
         self.pages.addWidget(
             self.create_home_page()
         )
@@ -602,316 +497,31 @@ class MainWindow(QMainWindow):
         return card
 
     def create_analysis_page(self) -> QWidget:
-        page = QWidget()
+        page = LocalAnalysisDialog(
+            self,
+            version=getattr(self, "version", "16.17.1"),
+            item_catalog=getattr(self, "item_catalog", None),
+        )
         page.setObjectName("analysisPage")
-
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
-        filters = QFrame()
-        filters.setObjectName("sectionCard")
-
-        filters_layout = QGridLayout(filters)
-        filters_layout.setContentsMargins(18, 16, 18, 16)
-        filters_layout.setHorizontalSpacing(10)
-        filters_layout.setVerticalSpacing(7)
-
-        champion_label = QLabel("CAMPEÓN")
-        champion_label.setObjectName("filterLabel")
-        filters_layout.addWidget(champion_label, 0, 0)
-
-        role_label = QLabel("ROL")
-        role_label.setObjectName("filterLabel")
-        filters_layout.addWidget(role_label, 0, 1)
-
-        rank_label = QLabel("RANGO")
-        rank_label.setObjectName("filterLabel")
-        filters_layout.addWidget(rank_label, 0, 2)
-
-        region_label = QLabel("REGIÓN")
-        region_label.setObjectName("filterLabel")
-        filters_layout.addWidget(region_label, 0, 3)
-
-        self.analysis_champion_input = QLineEdit()
-        self.analysis_champion_input.setObjectName("analysisInput")
-        self.analysis_champion_input.setPlaceholderText(
-            "Ej.: Mordekaiser"
-        )
-        self.analysis_champion_input.setText(
-            self.analysis_champion
-        )
-        self.analysis_champion_input.returnPressed.connect(
-            self.load_selected_analysis
-        )
-        filters_layout.addWidget(
-            self.analysis_champion_input,
-            1,
-            0,
-        )
-
-        self.analysis_role_combo = QComboBox()
-        self.analysis_role_combo.setObjectName("analysisCombo")
-
-        for label, value in (
-            ("Top", "top"),
-            ("Jungla", "jungle"),
-            ("Mid", "middle"),
-            ("ADC", "adc"),
-            ("Support", "support"),
-        ):
-            self.analysis_role_combo.addItem(label, value)
-
-        self.set_combo_value(
-            self.analysis_role_combo,
-            self.analysis_role,
-        )
-        filters_layout.addWidget(
-            self.analysis_role_combo,
-            1,
-            1,
-        )
-
-        self.analysis_rank_combo = QComboBox()
-        self.analysis_rank_combo.setObjectName("analysisCombo")
-
-        for label, value in (
-            ("Todos los rangos", "all"),
-            ("Hierro+", "iron_plus"),
-            ("Bronce+", "bronze_plus"),
-            ("Plata+", "silver_plus"),
-            ("Oro+", "gold_plus"),
-            ("Platino+", "platinum_plus"),
-            ("Esmeralda+", "emerald_plus"),
-            ("Diamante+", "diamond_plus"),
-            ("Master+", "master_plus"),
-            ("Grandmaster+", "grandmaster_plus"),
-            ("Challenger", "challenger"),
-        ):
-            self.analysis_rank_combo.addItem(label, value)
-
-        self.set_combo_value(
-            self.analysis_rank_combo,
-            self.analysis_rank,
-        )
-        filters_layout.addWidget(
-            self.analysis_rank_combo,
-            1,
-            2,
-        )
-
-        self.analysis_region_combo = QComboBox()
-        self.analysis_region_combo.setObjectName("analysisCombo")
-
-        for label, value in (
-            ("Europa Oeste", "euw1"),
-            ("Europa Este", "eun1"),
-            ("Norteamérica", "na1"),
-            ("Corea", "kr"),
-            ("Brasil", "br1"),
-            ("Latinoamérica Norte", "la1"),
-            ("Latinoamérica Sur", "la2"),
-            ("Oceanía", "oc1"),
-            ("Japón", "jp1"),
-            ("Turquía", "tr1"),
-            ("Rusia", "ru"),
-        ):
-            self.analysis_region_combo.addItem(label, value)
-
-        self.set_combo_value(
-            self.analysis_region_combo,
-            self.analysis_region,
-        )
-        filters_layout.addWidget(
-            self.analysis_region_combo,
-            1,
-            3,
-        )
-
-        self.load_analysis_button = QPushButton(
-            "Cargar análisis"
-        )
-        self.load_analysis_button.setObjectName("primaryButton")
-        self.load_analysis_button.clicked.connect(
-            self.load_selected_analysis
-        )
-        filters_layout.addWidget(
-            self.load_analysis_button,
-            1,
-            4,
-        )
-
-        layout.addWidget(filters)
-
-        sources = QFrame()
-        sources.setObjectName("analysisSourcesBar")
-
-        sources_layout = QHBoxLayout(sources)
-        sources_layout.setContentsMargins(12, 8, 12, 8)
-        sources_layout.setSpacing(8)
-
-        source_title = QLabel("FUENTE")
-        source_title.setObjectName("filterLabel")
-        sources_layout.addWidget(source_title)
-
-        self.lolalytics_button = QPushButton(
-            "LoLalytics"
-        )
-        self.lolalytics_button.setObjectName(
-            "analysisSourceButton"
-        )
-        self.lolalytics_button.setCheckable(True)
-        self.lolalytics_button.setChecked(True)
-        self.lolalytics_button.clicked.connect(
-            lambda: self.select_analysis_source(
-                "lolalytics"
-            )
-        )
-        sources_layout.addWidget(self.lolalytics_button)
-
-        self.ugg_button = QPushButton("U.GG")
-        self.ugg_button.setObjectName("analysisSourceButton")
-        self.ugg_button.setCheckable(True)
-        self.ugg_button.clicked.connect(
-            lambda: self.select_analysis_source("ugg")
-        )
-        sources_layout.addWidget(self.ugg_button)
-
-        self.leagueofgraphs_button = QPushButton(
-            "LeagueOfGraphs"
-        )
-        self.leagueofgraphs_button.setObjectName(
-            "analysisSourceButton"
-        )
-        self.leagueofgraphs_button.setCheckable(True)
-        self.leagueofgraphs_button.clicked.connect(
-            lambda: self.select_analysis_source(
-                "leagueofgraphs"
-            )
-        )
-        sources_layout.addWidget(
-            self.leagueofgraphs_button
-        )
-
-        self.adblock_button = QPushButton(
-            "Bloqueador: SÍ"
-        )
-        self.adblock_button.setObjectName(
-            "analysisSourceButton"
-        )
-        self.adblock_button.setCheckable(True)
-        self.adblock_button.setChecked(True)
-        self.adblock_button.clicked.connect(
-            self.toggle_analysis_adblock
-        )
-
-        sources_layout.addWidget(self.adblock_button)
-
-        self.analysis_status = QLabel(
-            "LoLalytics seleccionado. Introduce un campeón "
-            "y pulsa “Cargar análisis”."
-        )
-        self.analysis_web_view = QWebEngineView()
-        self.analysis_web_view.setObjectName(
-            "analysisWebView"
-        )
-
-        self.analysis_web_page = QuietWebEnginePage(
-            self.analysis_web_view
-        )
-
-        self.analysis_web_view.setPage(
-            self.analysis_web_page
-        )
-
-        self.analysis_adblocker = AdBlockInterceptor(
-            self.analysis_web_view
-        )
-
-        self.analysis_web_view.page().profile().setUrlRequestInterceptor(
-            self.analysis_adblocker
-        )
-        
-        self.analysis_web_view.setMinimumHeight(620)
-        self.analysis_web_view.loadStarted.connect(
-            self.analysis_load_started
-        )
-        self.analysis_web_view.loadFinished.connect(
-            self.analysis_load_finished
-        )
-        
-        sources_layout.addStretch(1)
-
-        self.reload_analysis_button = QPushButton(
-            "Recargar"
-        )
-        self.reload_analysis_button.setObjectName(
-            "analysisSourceButton"
-        )
-        self.reload_analysis_button.clicked.connect(
-            self.analysis_web_view.reload
-        )
-
-        sources_layout.addWidget(
-            self.reload_analysis_button
-        )
-
-        self.open_external_button = QPushButton(
-            "Abrir en navegador"
-        )
-        self.open_external_button.setObjectName(
-            "secondaryButton"
-        )
-        self.open_external_button.clicked.connect(
-            self.open_current_analysis_externally
-        )
-        sources_layout.addWidget(self.open_external_button)
-
-        layout.addWidget(sources)
-
-        layout.addWidget(self.analysis_web_view, 1)
-
-        self.analysis_source = "lolalytics"
-        self.current_analysis_url = ""
-
-        if self.analysis_champion:
-            QTimer.singleShot(
-                0,
-                self.load_selected_analysis,
-            )
+        page.setWindowFlags(Qt.WindowType.Widget)
         return page
+
+    def open_local_analysis(self) -> None:
+        dialog = LocalAnalysisDialog(
+            self,
+            version=getattr(self, "version", "16.17.1"),
+            item_catalog=getattr(self, "item_catalog", None),
+        )
+        dialog.exec()
+
+    def _handle_page_changed(self, index: int) -> None:
+        return
 
     def toggle_analysis_adblock(
         self,
         enabled: bool,
     ) -> None:
-        if enabled:
-            self.analysis_web_view.page().profile().setUrlRequestInterceptor(
-                self.analysis_adblocker
-            )
-
-            self.adblock_button.setText(
-                "Bloqueador: SÍ"
-            )
-
-            self.set_analysis_status(
-                "Bloqueador activado. Recarga la página "
-                "para aplicar los cambios.",
-                "success",
-            )
-        else:
-            self.analysis_web_view.page().profile().setUrlRequestInterceptor(
-                None
-            )
-
-            self.adblock_button.setText(
-                "Bloqueador: NO"
-            )
-
-            self.set_analysis_status(
-                "Bloqueador desactivado.",
-                "idle",
-            )
+        return
 
     def set_combo_value(
         self,
@@ -1027,183 +637,29 @@ class MainWindow(QMainWindow):
         url: str,
         source_name: str,
     ) -> None:
-        self.save_analysis_preferences()
-
-        if QDesktopServices.openUrl(
-            QUrl(url)
-        ):
-            self.set_analysis_status(
-                f"Abriendo {source_name}.",
-                "success",
-            )
-        else:
-            self.set_analysis_status(
-                f"No se pudo abrir {source_name}.",
-                "error",
-            )
-
-    def open_ugg_analysis(self) -> None:
-        values = self.analysis_values()
-
-        if values is None:
-            return
-
-        champion, role, _, _ = values
-
-        self.open_analysis_url(
-            (
-                "https://u.gg/lol/champions/"
-                f"{champion}/build/{role}"
-            ),
-            "U.GG",
-        )
-
-    def open_leagueofgraphs_analysis(self) -> None:
-        values = self.analysis_values()
-
-        if values is None:
-            return
-
-        champion, role, _, _ = values
-
-        url = (
-            "https://www.leagueofgraphs.com/"
-            "champions/builds/"
-            f"{champion}/{role}"
-        )
-
-        self.open_analysis_url(
-            url,
-            "LeagueOfGraphs",
-        )
+        return
 
     def select_analysis_source(
         self,
         source: str,
     ) -> None:
-        self.analysis_source = source
-
-        self.lolalytics_button.setChecked(
-            source == "lolalytics"
-        )
-        self.ugg_button.setChecked(source == "ugg")
-        self.leagueofgraphs_button.setChecked(
-            source == "leagueofgraphs"
-        )
-
-        source_names = {
-            "lolalytics": "LoLalytics",
-            "ugg": "U.GG",
-            "leagueofgraphs": "LeagueOfGraphs",
-        }
-
-        self.set_analysis_status(
-            f"{source_names[source]} seleccionado. "
-            "Pulsa “Cargar análisis”.",
-            "idle",
-        )
+        return
 
     def load_selected_analysis(self) -> None:
-        values = self.analysis_values()
-
-        if values is None:
-            return
-
-        champion, role, rank, region = values
-
-        self.save_analysis_preferences()
-
-        if self.analysis_source == "ugg":
-            url = (
-                "https://u.gg/lol/champions/"
-                f"{champion}/build/{role}"
-            )
-            source_name = "U.GG"
-
-        elif self.analysis_source == "leagueofgraphs":
-            url = (
-                "https://www.leagueofgraphs.com/"
-                "champions/builds/"
-                f"{champion}/{role}"
-            )
-            source_name = "LeagueOfGraphs"
-
-        else:
-            url = (
-                "https://lolalytics.com/lol/"
-                f"{champion}/build/"
-                f"?lane={role}"
-            )
-            source_name = "LoLalytics"
-
-        self.current_analysis_url = url
-
-        self.set_analysis_status(
-            f"Cargando {source_name}…",
-            "loading",
-        )
-
-        self.analysis_web_view.load(QUrl(url))
+        return
 
     def open_current_analysis_externally(self) -> None:
-        if not self.current_analysis_url:
-            self.load_selected_analysis()
-
-        if not self.current_analysis_url:
-            return
-
-        opened = QDesktopServices.openUrl(
-            QUrl(self.current_analysis_url)
-        )
-
-        if opened:
-            self.set_analysis_status(
-                "Abierto en el navegador.",
-                "success",
-            )
-        else:
-            self.set_analysis_status(
-                "No se pudo abrir el navegador.",
-                "error",
-            )
+        return
 
     def analysis_load_started(self) -> None:
-        self.load_analysis_button.setEnabled(False)
+        return
 
     def analysis_load_finished(
         self,
         success: bool,
     ) -> None:
-        self.load_analysis_button.setEnabled(True)
+        return
 
-        if success:
-            self.set_analysis_status(
-                "Análisis cargado en el visor.",
-                "success",
-            )
-        else:
-            self.set_analysis_status(
-                "El sitio no pudo cargarse en el visor. "
-                "Prueba “Abrir en navegador”.",
-                "error",
-            )
-
-
-    def open_lolalytics_analysis(self) -> None:
-        values = self.analysis_values()
-
-        if values is None:
-            return
-
-        champion, role, _, _ = values
-
-        self.open_analysis_url(
-            (
-                "https://lolalytics.com/lol/"
-                f"{champion}/build/?lane={role}"
-            ),
-            "LoLalytics",
-        )
 
     def set_combo_value(
         self,
@@ -1912,10 +1368,49 @@ class MainWindow(QMainWindow):
 
         self.api_key_status = QLabel()
         self.api_key_status.setObjectName("apiKeyStatus")
-        self.api_key_status.setWordWrap(True)
-        panel_layout.addWidget(self.api_key_status)
-
         self.update_api_key_status()
+
+        gemini_title = QLabel("IA Gemini (Google AI Studio)")
+        gemini_title.setObjectName("settingsGroupTitle")
+        panel_layout.addWidget(gemini_title)
+
+        gemini_description = QLabel(
+            "Introduce tu API key de Google AI Studio (Gemini) para habilitar "
+            "el re-análisis inteligente de campeones desde la pestaña de edición."
+        )
+        gemini_description.setObjectName("mutedText")
+        gemini_description.setWordWrap(True)
+        panel_layout.addWidget(gemini_description)
+
+        self.gemini_api_key_input = QLineEdit()
+        self.gemini_api_key_input.setObjectName("apiKeyInput")
+        self.gemini_api_key_input.setPlaceholderText("AIzaSy...")
+        self.gemini_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gemini_api_key_input.setText(self.gemini_api_key)
+        panel_layout.addWidget(self.gemini_api_key_input)
+
+        gemini_actions = QHBoxLayout()
+        gemini_actions.setSpacing(10)
+
+        self.save_gemini_api_key_button = QPushButton("Guardar y comprobar Gemini Key")
+        self.save_gemini_api_key_button.setObjectName("primaryButton")
+        self.save_gemini_api_key_button.clicked.connect(self.save_and_validate_gemini_api_key)
+        gemini_actions.addWidget(self.save_gemini_api_key_button)
+
+        self.clear_gemini_api_key_button = QPushButton("Eliminar clave Gemini")
+        self.clear_gemini_api_key_button.setObjectName("secondaryButton")
+        self.clear_gemini_api_key_button.clicked.connect(self.clear_gemini_api_key)
+        gemini_actions.addWidget(self.clear_gemini_api_key_button)
+
+        gemini_actions.addStretch(1)
+        panel_layout.addLayout(gemini_actions)
+
+        self.gemini_api_key_status = QLabel()
+        self.gemini_api_key_status.setObjectName("apiKeyStatus")
+        self.gemini_api_key_status.setWordWrap(True)
+        panel_layout.addWidget(self.gemini_api_key_status)
+
+        self.update_gemini_api_key_status()
 
         self.show_overlay_button = QPushButton("Mostrar overlay")
         self.show_overlay_button.setObjectName("primaryButton")
@@ -2066,6 +1561,53 @@ class MainWindow(QMainWindow):
         self.api_key_status.style().polish(
             self.api_key_status
         )
+
+    def update_gemini_api_key_status(self) -> None:
+        if self.gemini_api_key:
+            self.gemini_api_key_status.setText("Hay una Gemini API key guardada. Pulsa 'Guardar y comprobar' para validarla.")
+            self.gemini_api_key_status.setProperty("state", "saved")
+        else:
+            self.gemini_api_key_status.setText("No hay una Gemini API key configurada.")
+            self.gemini_api_key_status.setProperty("state", "missing")
+
+        self.gemini_api_key_status.style().unpolish(self.gemini_api_key_status)
+        self.gemini_api_key_status.style().polish(self.gemini_api_key_status)
+
+    def save_and_validate_gemini_api_key(self) -> None:
+        api_key = self.gemini_api_key_input.text().strip()
+
+        self.save_gemini_api_key_button.setEnabled(False)
+        self.gemini_api_key_status.setText("Comprobando Gemini API key...")
+        self.gemini_api_key_status.setProperty("state", "checking")
+        self.gemini_api_key_status.style().unpolish(self.gemini_api_key_status)
+        self.gemini_api_key_status.style().polish(self.gemini_api_key_status)
+
+        valid, message = self.settings_service.validate_gemini_api_key(api_key)
+
+        self.save_gemini_api_key_button.setEnabled(True)
+
+        if valid:
+            self.settings_service.save_gemini_api_key(api_key)
+            self.gemini_api_key = api_key
+            self.gemini_api_key_status.setText(message)
+            self.gemini_api_key_status.setProperty("state", "valid")
+        else:
+            self.settings_service.clear_gemini_api_key()
+            self.gemini_api_key = ""
+            self.gemini_api_key_status.setText(message)
+            self.gemini_api_key_status.setProperty("state", "invalid")
+
+        self.gemini_api_key_status.style().unpolish(self.gemini_api_key_status)
+        self.gemini_api_key_status.style().polish(self.gemini_api_key_status)
+
+    def clear_gemini_api_key(self) -> None:
+        self.settings_service.clear_gemini_api_key()
+        self.gemini_api_key = ""
+        self.gemini_api_key_input.clear()
+        self.gemini_api_key_status.setText("Gemini API key eliminada de la configuración local.")
+        self.gemini_api_key_status.setProperty("state", "missing")
+        self.gemini_api_key_status.style().unpolish(self.gemini_api_key_status)
+        self.gemini_api_key_status.style().polish(self.gemini_api_key_status)
 
     def set_analysis_status(
         self,

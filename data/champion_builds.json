@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "archetypes": {
+    "bruiser_ad": {
+      "label": "Bruiser AD",
+      "core": ["3078", "3071", "3053"],
+      "situational": ["3153", "6692", "3033", "3065", "3047", "3111"]
+    },
+    "assassin_lethality": {
+      "label": "Asesino de letalidad",
+      "core": ["6692", "3142", "6694"],
+      "situational": ["3036", "6676", "3139", "3047", "3111"]
+    },
+    "crit_ad": {
+      "label": "AD crítico",
+      "core": ["3031", "3006", "3036"],
+      "situational": ["3153", "6673", "6676", "3047", "3111"]
+    },
+    "tank": {
+      "label": "Tanque de pelea",
+      "core": ["3068", "3053", "3748"],
+      "situational": ["3075", "3065", "3143", "3110", "3047", "3111"]
+    },
+    "on_hit": {
+      "label": "Impacto y velocidad",
+      "core": ["3153", "3091", "3078"],
+      "situational": ["6672", "3115", "3053", "3047", "3111"]
+    },
+    "bruiser_ap": {
+      "label": "Bruiser AP",
+      "core": ["4633", "3116", "3157"],
+      "situational": ["3065", "4645", "3089", "3111"]
+    },
+    "assassin_ap": {
+      "label": "Asesino AP",
+      "core": ["3152", "3100", "3089"],
+      "situational": ["3157", "3135", "4645", "3111"]
+    },
+    "control_ap": {
+      "label": "Control AP",
+      "core": ["6657", "3116", "3157"],
+      "situational": ["3089", "3100", "3135", "3020"]
+    },
+    "burst_ap": {
+      "label": "Burst AP",
+      "core": ["3089", "3135", "3152"],
+      "situational": ["3157", "3116", "4645", "3020"]
+    },
+    "poke_ad": {
+      "label": "Poke AD",
+      "core": ["3031", "3042", "6692"],
+      "situational": ["3036", "3153", "6672", "3117"]
+    },
+    "poke_ap": {
+      "label": "Poke AP",
+      "core": ["3135", "3089", "3020"],
+      "situational": ["3116", "3157", "3083", "3111"]
+    },
+    "split_push": {
+      "label": "Split push",
+      "core": ["3078", "3748", "3053"],
+      "situational": ["3153", "3075", "3065", "3047"]
+    },
+    "utility": {
+      "label": "Utilidad y protección",
+      "core": ["3107", "3190", "3222"],
+      "situational": ["6617", "3109", "3110", "3111"]
+    }
+  },
+  "champions": {
+    "Akali": {"recommendation": "assassin_ap", "note": "Akali juega alrededor de burst AP y movilidad; counterea carries frágiles y sufre contra control y resistencia mágica."},
+    "Alistar": {"recommendation": "tank", "note": "Alistar juega alrededor de iniciación y protección; counterea composiciones sin movilidad y sufre contra poke y disengage."},
+    "Amumu": {"recommendation": "tank", "note": "Amumu juega alrededor de control en área; counterea equipos agrupados y sufre contra invasión, limpieza y distancia."},
+    "Anivia": {"recommendation": "control_ap", "note": "Anivia juega alrededor de control de zona y escalado AP; counterea melees y sufre contra movilidad y presión temprana."},
+    "Annie": {"recommendation": "burst_ap", "note": "Annie juega alrededor de stun y burst AP; counterea objetivos frágiles y sufre contra alcance y limpieza."},
+    "Aphelios": {"recommendation": "crit_ad", "note": "Aphelios juega alrededor de DPS y escalado crítico; counterea peleas prolongadas y sufre contra asesinos y alcance."},
+    "Blitzcrank": {"recommendation": "tank", "note": "Blitzcrank juega alrededor de picks con el gancho; counterea objetivos inmóviles y sufre contra poke y minions."},
+    "Briar": {
+      "recommendation": "bruiser_ad",
+      "default_style": "bruiser_ad",
+      "styles": ["bruiser_ad", "tank", "on_hit", "crit_ad", "assassin_lethality", "bruiser_ap", "assassin_ap", "control_ap", "burst_ap", "poke_ad", "poke_ap", "split_push", "utility"],
+      "note": "Briar aprovecha AD, velocidad de ataque, curación y tiempo prolongado de combate; el estilo se ajusta según daño, control y resistencias enemigas."
+    },
+    "Darius": {"recommendation": "bruiser_ad", "note": "Darius juega alrededor de peleas largas y acumulaciones; counterea melees y sufre contra kite y control."},
+    "Diana": {"recommendation": "assassin_ap", "note": "Diana juega alrededor de entrada explosiva y AP; counterea carries agrupados y sufre contra disengage."},
+    "DrMundo": {"recommendation": "tank", "note": "DrMundo juega alrededor de vida, regeneración y frontline; counterea daño sin anti-curación y sufre contra porcentaje de vida."},
+    "Ekko": {"recommendation": "assassin_ap", "note": "Ekko juega alrededor de burst, movilidad y reposicionamiento; counterea carries aislados y sufre contra control."},
+    "Ezreal": {"recommendation": "poke_ad", "note": "Ezreal juega alrededor de poke y movilidad; counterea melees y sufre contra engage fiable y escudos."},
+    "Gnar": {"recommendation": "bruiser_ad", "note": "Gnar juega alrededor de rango, transformaciones y control; counterea tanques y sufre contra all-in coordinado."},
+    "Hwei": {"recommendation": "control_ap", "note": "Hwei juega alrededor de control de zona y poke AP; counterea equipos agrupados y sufre contra asesinos."},
+    "Irelia": {"recommendation": "on_hit", "note": "Irelia juega alrededor de movilidad y DPS sostenido; counterea campeones blandos y sufre contra control y armadura."},
+    "Lissandra": {"recommendation": "control_ap", "note": "Lissandra juega alrededor de control y engage AP; counterea asesinos y sufre contra alcance y purificación."},
+    "Lucian": {"recommendation": "crit_ad", "note": "Lucian juega alrededor de trades cortos y presión temprana; counterea objetivos frágiles y sufre contra tanques."},
+    "Lulu": {"recommendation": "utility", "note": "Lulu juega alrededor de buffs, peel y protección; counterea dive y sufre contra poke y anti-escudos."},
+    "Lux": {"recommendation": "burst_ap", "note": "Lux juega alrededor de poke, raíces y burst AP; counterea objetivos inmóviles y sufre contra movilidad."},
+    "Malphite": {"recommendation": "tank", "note": "Malphite juega alrededor de resistencia e iniciación; counterea composiciones AD y sufre contra daño mágico y porcentaje."},
+    "Malzahar": {"recommendation": "control_ap", "note": "Malzahar juega alrededor de push y supresión; counterea objetivos inmóviles y sufre contra limpieza."},
+    "Maokai": {"recommendation": "tank", "note": "Maokai juega alrededor de control, visión y frontline; counterea engage enemigo y sufre contra poke."},
+    "Milio": {"recommendation": "utility", "note": "Milio juega alrededor de alcance, curación y limpieza; counterea control y sufre contra asesinos de backline."},
+    "Mordekaiser": {"recommendation": "bruiser_ap", "note": "Mordekaiser juega alrededor de duelos y daño sostenido AP; counterea campeones aislables y sufre contra kite."},
+    "Morgana": {"recommendation": "control_ap", "note": "Morgana juega alrededor de raíces y escudo negro; counterea engage y sufre contra poke y movilidad."},
+    "Nasus": {"recommendation": "split_push", "note": "Nasus juega alrededor de acumulaciones y split push; counterea melees sin presión y sufre contra kite y cortes de curación."},
+    "Pantheon": {"recommendation": "bruiser_ad", "note": "Pantheon juega alrededor de presión temprana y picks; counterea carries frágiles y sufre contra tanques."},
+    "Poppy": {"recommendation": "tank", "note": "Poppy juega alrededor de control y negación de movilidad; counterea dive y sufre contra poke sostenido."},
+    "Qiyana": {"recommendation": "assassin_lethality", "note": "Qiyana juega alrededor de burst y terreno; counterea carries blandos y sufre contra armadura y control."},
+    "Rammus": {"recommendation": "tank", "note": "Rammus juega alrededor de armadura y taunt; counterea composiciones AD y sufre contra AP y porcentaje."},
+    "Rengar": {"recommendation": "assassin_lethality", "note": "Rengar juega alrededor de emboscadas y picks; counterea backlines frágiles y sufre contra visión y armadura."},
+    "Rumble": {"recommendation": "bruiser_ap", "note": "Rumble juega alrededor de presión de línea y daño en área; counterea melees y sufre contra rango."},
+    "Seraphine": {"recommendation": "utility", "note": "Seraphine juega alrededor de poke, control y utilidad; counterea equipos agrupados y sufre contra engage rápido."},
+    "Swain": {"recommendation": "bruiser_ap", "note": "Swain juega alrededor de peleas largas y drenaje; counterea melees y sufre contra alcance y anti-curación."},
+    "Sylas": {"recommendation": "bruiser_ap", "note": "Sylas juega alrededor de trades prolongados y ultimates robadas; counterea composiciones con ultimates decisivas y sufre contra poke."},
+    "Syndra": {"recommendation": "burst_ap", "note": "Syndra juega alrededor de control y ejecución AP; counterea objetivos frágiles y sufre contra movilidad."},
+    "Taric": {"recommendation": "utility", "note": "Taric juega alrededor de peel, curación y invulnerabilidad; counterea dive y sufre contra poke y separación."},
+    "Teemo": {"recommendation": "poke_ap", "note": "Teemo juega alrededor de poke, visión y control de zonas; counterea melees y sufre contra limpieza y alcance."},
+    "Thresh": {"recommendation": "utility", "note": "Thresh juega alrededor de picks, peel y linterna; counterea carries inmóviles y sufre contra poke."},
+    "TwistedFate": {"recommendation": "poke_ap", "note": "Twisted Fate juega alrededor de prioridad y picks globales; counterea líneas laterales y sufre contra presión directa."},
+    "Twitch": {"recommendation": "crit_ad", "note": "Twitch juega alrededor de escalado y daño en área; counterea equipos agrupados y sufre contra visión y asesinos."},
+    "Urgot": {"recommendation": "bruiser_ad", "note": "Urgot juega alrededor de rango corto y ejecución; counterea melees y sufre contra kite y armadura."},
+    "Varus": {"recommendation": "poke_ad", "note": "Varus juega alrededor de poke y control a distancia; counterea tanques y sufre contra dive."},
+    "Volibear": {"recommendation": "bruiser_ad", "note": "Volibear juega alrededor de duelos, curación e iniciación; counterea melees y sufre contra kite."},
+    "Warwick": {"recommendation": "bruiser_ad", "note": "Warwick juega alrededor de sustain y cazas; counterea objetivos heridos y sufre contra anti-curación."},
+    "Xayah": {"recommendation": "crit_ad", "note": "Xayah juega alrededor de plumas, DPS y autoprotección; counterea dive y sufre contra alcance."},
+    "Xerath": {"recommendation": "poke_ap", "note": "Xerath juega alrededor de poke y alcance AP; counterea objetivos inmóviles y sufre contra engage."},
+    "Yasuo": {"recommendation": "crit_ad", "note": "Yasuo juega alrededor de críticos, movilidad y ventanas de viento; counterea skillshots y sufre contra control."},
+    "Yunara": {"recommendation": "crit_ad", "note": "Yunara juega alrededor de DPS y escalado crítico; counterea peleas prolongadas y sufre contra dive."},
+    "Zoe": {"recommendation": "burst_ap", "note": "Zoe juega alrededor de poke, burbujas y picks; counterea objetivos aislados y sufre contra frontline."}
+  },
+  "fallback": {
+    "recommendation": "bruiser_ad",
+    "styles": ["bruiser_ad", "tank", "on_hit", "crit_ad", "assassin_lethality", "bruiser_ap", "assassin_ap", "control_ap", "burst_ap", "poke_ad", "poke_ap", "split_push", "utility"],
+    "note": "Perfil general adaptable; añade perfiles específicos por campeón cuando estén disponibles."
+  }
+}

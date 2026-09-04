@@ -1,0 +1,4983 @@
+[
+  {
+    "id": "3040",
+    "item": "Abrazo del serafín",
+    "name_en": "Seraph's Embrace",
+    "basic_info": {
+      "id": "3040",
+      "name": "Abrazo del serafín",
+      "name_en": "Seraph's Embrace",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Lifeline"
+    },
+    "stats": {
+      "ability_power": 70,
+      "mana": 1000,
+      "ability_haste": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Asombro",
+        "Awe",
+        "Lifeline",
+        "Salvavidas"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.54,
+      "hypercarry": 2.03,
+      "durability": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "2522",
+    "item": "Actualizador",
+    "name_en": "Actualizer",
+    "basic_info": {
+      "id": "2522",
+      "name": "Actualizador",
+      "name_en": "Actualizer",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 90,
+      "mana": 300,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Mana Made Real",
+        "Maná hecho realidad"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.69,
+      "hypercarry": 1.33
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "2510",
+    "item": "Amanecer y anochecer",
+    "name_en": "Dusk and Dawn",
+    "basic_info": {
+      "id": "2510",
+      "name": "Amanecer y anochecer",
+      "name_en": "Dusk and Dawn",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 60,
+      "health": 300,
+      "attack_speed_percent": 20,
+      "ability_haste": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Hoja encantada",
+        "Spellblade"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.66,
+      "hypercarry": 1.92,
+      "durability": 1.3
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2503",
+    "item": "Antorcha de fuego negro",
+    "name_en": "Blackfire Torch",
+    "basic_info": {
+      "id": "2503",
+      "name": "Antorcha de fuego negro",
+      "name_en": "Blackfire Torch",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 80,
+      "mana": 600,
+      "ability_haste": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Baleful Blaze",
+        "Blackfire",
+        "Fuego negro",
+        "Llamarada maligna"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.62,
+      "hypercarry": 1.67
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6696",
+    "item": "Arco axiomático",
+    "name_en": "Axiom Arc",
+    "basic_info": {
+      "id": "6696",
+      "name": "Arco axiomático",
+      "name_en": "Axiom Arc",
+      "tier": "Legendary",
+      "gold_cost": 2750,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "ability_haste": 20,
+      "lethality": 18
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Flujo",
+        "Flux"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2750 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "lethality": 1.36,
+      "hypercarry": 1.67
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6673",
+    "item": "Arcoescudo inmortal",
+    "name_en": "Immortal Shieldbow",
+    "basic_info": {
+      "id": "6673",
+      "name": "Arcoescudo inmortal",
+      "name_en": "Immortal Shieldbow",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Lifeline"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Lifeline",
+        "Salvavidas"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "critic": 1.5,
+      "hypercarry": 1.2,
+      "durability": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3083",
+    "item": "Armadura de Warmog",
+    "name_en": "Warmog's Armor",
+    "basic_info": {
+      "id": "3083",
+      "name": "Armadura de Warmog",
+      "name_en": "Warmog's Armor",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "None"
+    },
+    "stats": {
+      "health": 1000,
+      "base_health_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Corazón de Warmog",
+        "Vitalidad de Warmog",
+        "Warmog's Heart",
+        "Warmog's Vitality"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "durability": 2.0
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2525",
+    "item": "Arnés de protoplasma",
+    "name_en": "Protoplasm Harness",
+    "basic_info": {
+      "id": "2525",
+      "name": "Arnés de protoplasma",
+      "name_en": "Protoplasm Harness",
+      "tier": "Legendary",
+      "gold_cost": 2600,
+      "item_group": "Lifeline"
+    },
+    "stats": {
+      "health": 600,
+      "ability_haste": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Lifeline",
+        "Salvavidas"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2600 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.87,
+      "durability": 1.8
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3046",
+    "item": "Bailarín espectral",
+    "name_en": "Phantom Dancer",
+    "basic_info": {
+      "id": "3046",
+      "name": "Bailarín espectral",
+      "name_en": "Phantom Dancer",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_speed_percent": 65,
+      "movement_speed_percent": 10,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Spectral Waltz",
+        "Vals espectral"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "critic": 1.5,
+      "mobility": 1.2,
+      "hypercarry": 1.81
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6333",
+    "item": "Baile de la muerte",
+    "name_en": "Death's Dance",
+    "basic_info": {
+      "id": "6333",
+      "name": "Baile de la muerte",
+      "name_en": "Death's Dance",
+      "tier": "Legendary",
+      "gold_cost": 3300,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 60,
+      "armor": 50,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Defy",
+        "Ignora el dolor",
+        "Ignore Pain",
+        "Ignore Pain's",
+        "Reto"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Crowd_Control"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.6,
+      "hypercarry": 1.5,
+      "durability": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2524",
+    "item": "Bandlemusa",
+    "name_en": "Bandlepipes",
+    "basic_info": {
+      "id": "2524",
+      "name": "Bandlemusa",
+      "name_en": "Bandlepipes",
+      "tier": "Legendary",
+      "gold_cost": 2300,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 200,
+      "armor": 20,
+      "magic_resistance": 20,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Fanfare",
+        "Fanfarria"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.5,
+      "durability": 1.6
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6616",
+    "item": "Bastón de aguas fluidas",
+    "name_en": "Staff of Flowing Water",
+    "basic_info": {
+      "id": "6616",
+      "name": "Bastón de aguas fluidas",
+      "name_en": "Staff of Flowing Water",
+      "tier": "Legendary",
+      "gold_cost": 2250,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 35,
+      "ability_haste": 10,
+      "heal_and_shield_power_percent": 10,
+      "base_mana_regeneration_percent": 125
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Rapids",
+        "Rápidos"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2250 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.27,
+      "hypercarry": 1.33,
+      "heal_shield_power": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3135",
+    "item": "Bastón del Vacío",
+    "name_en": "Void Staff",
+    "basic_info": {
+      "id": "3135",
+      "name": "Bastón del Vacío",
+      "name_en": "Void Staff",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Blight"
+    },
+    "stats": {
+      "ability_power": 95,
+      "magic_penetration_percent": 40
+    },
+    "functionality": {
+      "has_passive": false,
+      "has_active": false,
+      "passive_names": []
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "Heavy_MR"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.73
+    },
+    "counter_weights": {
+      "magic_resistance": 0.8,
+      "survivability_vs_damage": 0.8
+    }
+  },
+  {
+    "id": "3003",
+    "item": "Bastón del arcángel",
+    "name_en": "Archangel's Staff",
+    "basic_info": {
+      "id": "3003",
+      "name": "Bastón del arcángel",
+      "name_en": "Archangel's Staff",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 70,
+      "mana": 600,
+      "ability_haste": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Asombro",
+        "Awe",
+        "Flujo de maná",
+        "Manaflow"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.54,
+      "hypercarry": 1.83
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3222",
+    "item": "Bendición de Mikael",
+    "name_en": "Mikael's Blessing",
+    "basic_info": {
+      "id": "3222",
+      "name": "Bendición de Mikael",
+      "name_en": "Mikael's Blessing",
+      "tier": "Legendary",
+      "gold_cost": 2300,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 250,
+      "ability_haste": 15,
+      "heal_and_shield_power_percent": 12,
+      "base_mana_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Purificar",
+        "Purify"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Shields",
+        "Crowd_Control"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.7,
+      "durability": 1.25,
+      "heal_shield_power": 1.24
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3053",
+    "item": "Calibrador de Sterak",
+    "name_en": "Sterak's Gage",
+    "basic_info": {
+      "id": "3053",
+      "name": "Calibrador de Sterak",
+      "name_en": "Sterak's Gage",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "Lifeline"
+    },
+    "stats": {
+      "health": 400,
+      "tenacity": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Las garras que atrapan",
+        "Lifeline",
+        "Salvavidas",
+        "The Claws that Catch"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.4,
+      "durability": 1.6
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "2065",
+    "item": "Canción de batalla de Shurelya",
+    "name_en": "Shurelya's Battlesong",
+    "basic_info": {
+      "id": "2065",
+      "name": "Canción de batalla de Shurelya",
+      "name_en": "Shurelya's Battlesong",
+      "tier": "Legendary",
+      "gold_cost": 2200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 50,
+      "movement_speed_percent": 4,
+      "ability_haste": 15,
+      "base_mana_regeneration_percent": 125
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Discurso inspirador",
+        "Inspiring Speech"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.38,
+      "mobility": 1.08,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3094",
+    "item": "Cañón de fuego rápido",
+    "name_en": "Rapid Firecannon",
+    "basic_info": {
+      "id": "3094",
+      "name": "Cañón de fuego rápido",
+      "name_en": "Rapid Firecannon",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_speed_percent": 35,
+      "movement_speed_percent": 4,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Francotirador",
+        "Sharpshooter"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "critic": 1.5,
+      "mobility": 1.08,
+      "hypercarry": 1.44
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3116",
+    "item": "Cetro de cristal de Rylai",
+    "name_en": "Rylai's Crystal Scepter",
+    "basic_info": {
+      "id": "3116",
+      "name": "Cetro de cristal de Rylai",
+      "name_en": "Rylai's Crystal Scepter",
+      "tier": "Legendary",
+      "gold_cost": 2600,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 65,
+      "health": 400
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Escarcha helada",
+        "Rimefrost"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2600 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.5,
+      "durability": 1.4
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3139",
+    "item": "Cimitarra mercurial",
+    "name_en": "Mercurial Scimitar",
+    "basic_info": {
+      "id": "3139",
+      "name": "Cimitarra mercurial",
+      "name_en": "Mercurial Scimitar",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 50,
+      "magic_resistance": 35,
+      "life_steal_percent": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "ACTIVA",
+        "ACTIVE",
+        "Fajín de mercurio",
+        "Quicksilver"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Crowd_Control"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.5,
+      "sustain": 1.33,
+      "durability": 1.35,
+      "hypercarry": 1.2
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3152",
+    "item": "Cintomisil hextech",
+    "name_en": "Hextech Rocketbelt",
+    "basic_info": {
+      "id": "3152",
+      "name": "Cintomisil hextech",
+      "name_en": "Hextech Rocketbelt",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 60,
+      "health": 350,
+      "ability_haste": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Supersonic",
+        "Supersónico"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.46,
+      "hypercarry": 1.67,
+      "durability": 1.35,
+      "mobility": 1.2
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6695",
+    "item": "Colmillo de serpiente",
+    "name_en": "Serpent's Fang",
+    "basic_info": {
+      "id": "6695",
+      "name": "Colmillo de serpiente",
+      "name_en": "Serpent's Fang",
+      "tier": "Legendary",
+      "gold_cost": 2500,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "lethality": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Shield Reaver",
+        "Siegaescudos"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor",
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2500 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "lethality": 1.3,
+      "hypercarry": 1.1
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3050",
+    "item": "Convergencia de Zeke",
+    "name_en": "Zeke's Convergence",
+    "basic_info": {
+      "id": "3050",
+      "name": "Convergencia de Zeke",
+      "name_en": "Zeke's Convergence",
+      "tier": "Legendary",
+      "gold_cost": 2200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 300,
+      "armor": 25,
+      "magic_resistance": 25,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Frostfire Tempest",
+        "Tempestad de fuego escarchado"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.33,
+      "durability": 1.8
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3742",
+    "item": "Coraza del muerto",
+    "name_en": "Dead Man's Plate",
+    "basic_info": {
+      "id": "3742",
+      "name": "Coraza del muerto",
+      "name_en": "Dead Man's Plate",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 350,
+      "armor": 55,
+      "movement_speed_percent": 4
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "A prueba de hundimientos",
+        "Naufragio",
+        "Shipwrecker",
+        "Unsinkable"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "mobility": 1.08,
+      "durability": 1.9
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3084",
+    "item": "Corazón de acero",
+    "name_en": "Heartsteel",
+    "basic_info": {
+      "id": "3084",
+      "name": "Corazón de acero",
+      "name_en": "Heartsteel",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "None"
+    },
+    "stats": {
+      "health": 900,
+      "base_health_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Colossal Consumption",
+        "Consumo colosal",
+        "Goliat",
+        "Goliath"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "High_Health"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "durability": 2.2
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3110",
+    "item": "Corazón de hielo",
+    "name_en": "Frozen Heart",
+    "basic_info": {
+      "id": "3110",
+      "name": "Corazón de hielo",
+      "name_en": "Frozen Heart",
+      "tier": "Legendary",
+      "gold_cost": 2500,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "mana": 400,
+      "armor": 75,
+      "ability_haste": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Caricia invernal",
+        "Winter's Caress"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2500 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.67,
+      "durability": 1.75
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6631",
+    "item": "Cortasendas",
+    "name_en": "Stridebreaker",
+    "basic_info": {
+      "id": "6631",
+      "name": "Cortasendas",
+      "name_en": "Stridebreaker",
+      "tier": "Legendary",
+      "gold_cost": 3300,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "health": 450,
+      "attack_speed_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Breaking Shockwave",
+        "Cleave",
+        "Hender",
+        "Onda de choque"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "hypercarry": 1.31,
+      "durability": 1.45,
+      "wave_clear": 1.2
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "4633",
+    "item": "Creagrietas",
+    "name_en": "Riftmaker",
+    "basic_info": {
+      "id": "4633",
+      "name": "Creagrietas",
+      "name_en": "Riftmaker",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "Blight"
+    },
+    "stats": {
+      "ability_power": 70,
+      "health": 350,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Corrupción del Vacío",
+        "Infusión del Vacío",
+        "Void Corruption",
+        "Void Infusion"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Heavy_MR"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.54,
+      "hypercarry": 1.5,
+      "durability": 1.55
+    },
+    "counter_weights": {
+      "magic_resistance": 0.3,
+      "survivability_vs_damage": 0.3
+    }
+  },
+  {
+    "id": "3071",
+    "item": "Cuchilla negra",
+    "name_en": "Black Cleaver",
+    "basic_info": {
+      "id": "3071",
+      "name": "Cuchilla negra",
+      "name_en": "Black Cleaver",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 45,
+      "health": 400,
+      "ability_haste": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Carve",
+        "Fervor",
+        "Trinchar"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "hypercarry": 1.77,
+      "durability": 1.4
+    },
+    "counter_weights": {
+      "armor": 0.3,
+      "survivability_vs_armor": 0.3
+    }
+  },
+  {
+    "id": "2512",
+    "item": "Dardos rastreademonios",
+    "name_en": "Fiendhunter Bolts",
+    "basic_info": {
+      "id": "2512",
+      "name": "Dardos rastreademonios",
+      "name_en": "Fiendhunter Bolts",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_speed_percent": 45,
+      "movement_speed_percent": 4,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Andanada inicial",
+        "Night Vigil",
+        "Opening Barrage",
+        "Vigilia nocturna"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "critic": 1.5,
+      "mobility": 1.08,
+      "hypercarry": 1.56
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2502",
+    "item": "Desesperanza eterna",
+    "name_en": "Unending Despair",
+    "basic_info": {
+      "id": "2502",
+      "name": "Desesperanza eterna",
+      "name_en": "Unending Despair",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 400,
+      "armor": 50,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Anguish",
+        "Angustia"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.5,
+      "durability": 1.9
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2530",
+    "item": "Diadema melodiosa",
+    "name_en": "Diadem of Songs",
+    "basic_info": {
+      "id": "2530",
+      "name": "Diadema melodiosa",
+      "name_en": "Diadem of Songs",
+      "tier": "Legendary",
+      "gold_cost": 2250,
+      "item_group": "None"
+    },
+    "stats": {
+      "health": 200,
+      "mana": 1000,
+      "heal_and_shield_power_percent": 8,
+      "base_mana_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Armonía",
+        "Consonance",
+        "Consonancia",
+        "Harmony"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2250 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "durability": 1.2,
+      "heal_shield_power": 1.36
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3115",
+    "item": "Diente de Nashor",
+    "name_en": "Nashor's Tooth",
+    "basic_info": {
+      "id": "3115",
+      "name": "Diente de Nashor",
+      "name_en": "Nashor's Tooth",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 80,
+      "attack_speed_percent": 50,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Icathian Bite",
+        "Mordisco de Icathia"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.62,
+      "hypercarry": 2.12
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6692",
+    "item": "Eclipse",
+    "name_en": "Eclipse",
+    "basic_info": {
+      "id": "6692",
+      "name": "Eclipse",
+      "name_en": "Eclipse",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 60,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Ever Rising Moon",
+        "Luna creciente"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.6,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "6655",
+    "item": "Eco de Luden",
+    "name_en": "Luden's Echo",
+    "basic_info": {
+      "id": "6655",
+      "name": "Eco de Luden",
+      "name_en": "Luden's Echo",
+      "tier": "Legendary",
+      "gold_cost": 2750,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 100,
+      "mana": 600,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Echo",
+        "Eco"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2750 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.77,
+      "hypercarry": 1.33,
+      "wave_clear": 1.1
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6620",
+    "item": "Ecos de Helia",
+    "name_en": "Echoes of Helia",
+    "basic_info": {
+      "id": "6620",
+      "name": "Ecos de Helia",
+      "name_en": "Echoes of Helia",
+      "tier": "Legendary",
+      "gold_cost": 2200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 35,
+      "health": 200,
+      "ability_haste": 20,
+      "base_mana_regeneration_percent": 125
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Absorbealmas",
+        "Soul Charges",
+        "Soul Siphon",
+        "cargas de alma"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.27,
+      "hypercarry": 1.67,
+      "durability": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3302",
+    "item": "El final",
+    "name_en": "Terminus",
+    "basic_info": {
+      "id": "3302",
+      "name": "El final",
+      "name_en": "Terminus",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 30,
+      "attack_speed_percent": 35
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Juxtaposition",
+        "Shadow",
+        "Sombra",
+        "Yuxtaposición"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.3,
+      "hypercarry": 1.44
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3121",
+    "item": "El gran invierno",
+    "name_en": "Fimbulwinter",
+    "basic_info": {
+      "id": "3121",
+      "name": "El gran invierno",
+      "name_en": "Fimbulwinter",
+      "tier": "Legendary",
+      "gold_cost": 2400,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 550,
+      "mana": 1000,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Asombro",
+        "Awe",
+        "Eterno",
+        "Everlasting"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2400 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.5,
+      "durability": 1.55
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "6699",
+    "item": "Espada ciclovoltaica",
+    "name_en": "Voltaic Cyclosword",
+    "basic_info": {
+      "id": "6699",
+      "name": "Espada ciclovoltaica",
+      "name_en": "Voltaic Cyclosword",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "ability_haste": 10,
+      "lethality": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Firmament",
+        "Firmamento",
+        "Galvanizado",
+        "Galvanize"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "lethality": 1.2,
+      "hypercarry": 1.33
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3073",
+    "item": "Experimento de hexarmadura",
+    "name_en": "Experimental Hexplate",
+    "basic_info": {
+      "id": "3073",
+      "name": "Experimento de hexarmadura",
+      "name_en": "Experimental Hexplate",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "health": 450,
+      "attack_speed_percent": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Hexcarga",
+        "Hexcharged",
+        "Overdrive",
+        "Sobrecarga"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "hypercarry": 1.25,
+      "durability": 1.45
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3156",
+    "item": "Fauces de Malmortius",
+    "name_en": "Maw of Malmortius",
+    "basic_info": {
+      "id": "3156",
+      "name": "Fauces de Malmortius",
+      "name_en": "Maw of Malmortius",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "Lifeline"
+    },
+    "stats": {
+      "attack_damage": 60,
+      "magic_resistance": 40,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Lifeline",
+        "Salvavidas"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.6,
+      "hypercarry": 1.7,
+      "durability": 1.6
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3814",
+    "item": "Filo de la noche",
+    "name_en": "Edge of Night",
+    "basic_info": {
+      "id": "3814",
+      "name": "Filo de la noche",
+      "name_en": "Edge of Night",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 50,
+      "health": 250,
+      "lethality": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Annul",
+        "Anular"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor",
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.5,
+      "lethality": 1.3,
+      "durability": 1.25
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3142",
+    "item": "Filo fantasmal de Youmuu",
+    "name_en": "Youmuu's Ghostblade",
+    "basic_info": {
+      "id": "3142",
+      "name": "Filo fantasmal de Youmuu",
+      "name_en": "Youmuu's Ghostblade",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "movement_speed_percent": 4,
+      "lethality": 18
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Aparición",
+        "Haunt",
+        "Pasos de espectro",
+        "Wraith Step"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "lethality": 1.36,
+      "mobility": 1.18
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3031",
+    "item": "Filo infinito",
+    "name_en": "Infinity Edge",
+    "basic_info": {
+      "id": "3031",
+      "name": "Filo infinito",
+      "name_en": "Infinity Edge",
+      "tier": "Legendary",
+      "gold_cost": 3500,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 75,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": false,
+      "has_active": false,
+      "passive_names": []
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3500 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.75,
+      "critic": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6675",
+    "item": "Filofugaz de Navori",
+    "name_en": "Navori Flickerblade",
+    "basic_info": {
+      "id": "6675",
+      "name": "Filofugaz de Navori",
+      "name_en": "Navori Flickerblade",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_speed_percent": 40,
+      "movement_speed_percent": 4,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Transcendence",
+        "Trascendencia"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "critic": 1.5,
+      "mobility": 1.08,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3091",
+    "item": "Final del ingenio",
+    "name_en": "Wit's End",
+    "basic_info": {
+      "id": "3091",
+      "name": "Final del ingenio",
+      "name_en": "Wit's End",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "magic_resistance": 45,
+      "attack_speed_percent": 50,
+      "tenacity": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Fray",
+        "Refriega"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.82,
+      "durability": 1.45
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6610",
+    "item": "Firmamento desgarrado",
+    "name_en": "Sundered Sky",
+    "basic_info": {
+      "id": "6610",
+      "name": "Firmamento desgarrado",
+      "name_en": "Sundered Sky",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "health": 400,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Golpe de Escudo de Luz",
+        "Lightshield Strike"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "hypercarry": 1.33,
+      "durability": 1.4,
+      "heal_shield_power": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3032",
+    "item": "Flechas de los Yun Tal",
+    "name_en": "Yun Tal Wildarrows",
+    "basic_info": {
+      "id": "3032",
+      "name": "Flechas de los Yun Tal",
+      "name_en": "Yun Tal Wildarrows",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 50,
+      "attack_speed_percent": 45,
+      "critical_strike_chance_percent": 0
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Flurry",
+        "La práctica hace al asesino",
+        "Practice Makes Lethal",
+        "Ráfaga"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.5,
+      "hypercarry": 1.56
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3137",
+    "item": "Florescencia sepulcral",
+    "name_en": "Cryptbloom",
+    "basic_info": {
+      "id": "3137",
+      "name": "Florescencia sepulcral",
+      "name_en": "Cryptbloom",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 75,
+      "ability_haste": 20,
+      "magic_penetration_percent": 30
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Life from Death",
+        "Vida en la muerte"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "Heavy_MR"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.58,
+      "hypercarry": 1.67
+    },
+    "counter_weights": {
+      "magic_resistance": 0.6,
+      "survivability_vs_damage": 0.6
+    }
+  },
+  {
+    "id": "4401",
+    "item": "Fuerza de la naturaleza",
+    "name_en": "Force of Nature",
+    "basic_info": {
+      "id": "4401",
+      "name": "Fuerza de la naturaleza",
+      "name_en": "Force of Nature",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 400,
+      "magic_resistance": 55,
+      "movement_speed_percent": 4
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Entereza",
+        "Steadfast"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "mobility": 1.08,
+      "durability": 1.95
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3078",
+    "item": "Fuerza de trinidad",
+    "name_en": "Trinity Force",
+    "basic_info": {
+      "id": "3078",
+      "name": "Fuerza de trinidad",
+      "name_en": "Trinity Force",
+      "tier": "Legendary",
+      "gold_cost": 3333,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 36,
+      "health": 333,
+      "attack_speed_percent": 30,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Hoja encantada",
+        "Quicken",
+        "Spellblade",
+        "¡Adelante!"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3333 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.56,
+      "hypercarry": 1.88,
+      "durability": 1.33
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6664",
+    "item": "Fulgor vano",
+    "name_en": "Hollow Radiance",
+    "basic_info": {
+      "id": "6664",
+      "name": "Fulgor vano",
+      "name_en": "Hollow Radiance",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 400,
+      "magic_resistance": 40,
+      "ability_haste": 10,
+      "base_health_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Desolación",
+        "Desolate",
+        "Immolate",
+        "Inmolar"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.33,
+      "durability": 1.9,
+      "wave_clear": 1.1
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6662",
+    "item": "Guantelete de hielo",
+    "name_en": "Iceborn Gauntlet",
+    "basic_info": {
+      "id": "6662",
+      "name": "Guantelete de hielo",
+      "name_en": "Iceborn Gauntlet",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 300,
+      "armor": 50,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Hoja encantada",
+        "Spellblade"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.5,
+      "durability": 1.8,
+      "attack_damage": 1.2
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3179",
+    "item": "Guja sombría",
+    "name_en": "Umbral Glaive",
+    "basic_info": {
+      "id": "3179",
+      "name": "Guja sombría",
+      "name_en": "Umbral Glaive",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 60,
+      "ability_haste": 15,
+      "lethality": 18
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Acechador nocturno",
+        "Apagón",
+        "Blackout",
+        "Nightstalker"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.6,
+      "lethality": 1.36,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2517",
+    "item": "Hambre insaciable",
+    "name_en": "Endless Hunger",
+    "basic_info": {
+      "id": "2517",
+      "name": "Hambre insaciable",
+      "name_en": "Endless Hunger",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 65,
+      "omnivamp_percent": 5,
+      "tenacity": 20
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Famine",
+        "Feast",
+        "Festín",
+        "Hambruna"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.65,
+      "hypercarry": 1.2,
+      "sustain": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6698",
+    "item": "Hidra profana",
+    "name_en": "Profane Hydra",
+    "basic_info": {
+      "id": "6698",
+      "name": "Hidra profana",
+      "name_en": "Profane Hydra",
+      "tier": "Legendary",
+      "gold_cost": 2850,
+      "item_group": "Hydra"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "ability_haste": 10,
+      "lethality": 18
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Cleave",
+        "Cuchillada sacrílega",
+        "Hender",
+        "Heretical Cleave"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2850 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "lethality": 1.36,
+      "hypercarry": 1.33,
+      "wave_clear": 1.4
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3748",
+    "item": "Hidra titánica",
+    "name_en": "Titanic Hydra",
+    "basic_info": {
+      "id": "3748",
+      "name": "Hidra titánica",
+      "name_en": "Titanic Hydra",
+      "tier": "Legendary",
+      "gold_cost": 3300,
+      "item_group": "Hydra"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "health": 600
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Cleave",
+        "Creciente titánico",
+        "Hender",
+        "Titanic Crescent"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "durability": 1.6,
+      "wave_clear": 1.4
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3074",
+    "item": "Hidra voraz",
+    "name_en": "Ravenous Hydra",
+    "basic_info": {
+      "id": "3074",
+      "name": "Hidra voraz",
+      "name_en": "Ravenous Hydra",
+      "tier": "Legendary",
+      "gold_cost": 3300,
+      "item_group": "Hydra"
+    },
+    "stats": {
+      "attack_damage": 65,
+      "life_steal_percent": 12,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Cleave",
+        "Creciente voraz",
+        "Hender",
+        "Ravenous Crescent"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.65,
+      "hypercarry": 1.5,
+      "sustain": 1.4,
+      "wave_clear": 1.4
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3124",
+    "item": "Hoja de furia de Guinsoo",
+    "name_en": "Guinsoo's Rageblade",
+    "basic_info": {
+      "id": "3124",
+      "name": "Hoja de furia de Guinsoo",
+      "name_en": "Guinsoo's Rageblade",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 30,
+      "ability_power": 30,
+      "attack_speed_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Golpe furioso",
+        "Ira",
+        "Seething Strike",
+        "Wrath"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter",
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.3,
+      "attack_power": 1.23,
+      "hypercarry": 1.31
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3153",
+    "item": "Hoja del rey arruinado",
+    "name_en": "Blade of The Ruined King",
+    "basic_info": {
+      "id": "3153",
+      "name": "Hoja del rey arruinado",
+      "name_en": "Blade of The Ruined King",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "attack_speed_percent": 25,
+      "life_steal_percent": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Clawing Shadows",
+        "Filo de la niebla",
+        "Mist's Edge",
+        "Zarpazo sombrío"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "hypercarry": 1.31,
+      "sustain": 1.33
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.3
+    }
+  },
+  {
+    "id": "3085",
+    "item": "Huracán de Runaan",
+    "name_en": "Runaan's Hurricane",
+    "basic_info": {
+      "id": "3085",
+      "name": "Huracán de Runaan",
+      "name_en": "Runaan's Hurricane",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_speed_percent": 40,
+      "movement_speed_percent": 5,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Furia de viento",
+        "Wind's Fury"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "critic": 1.5,
+      "mobility": 1.1,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "4629",
+    "item": "Impulso cósmico",
+    "name_en": "Cosmic Drive",
+    "basic_info": {
+      "id": "4629",
+      "name": "Impulso cósmico",
+      "name_en": "Cosmic Drive",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 70,
+      "health": 350,
+      "movement_speed_percent": 4,
+      "ability_haste": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Danza de hechizos",
+        "Spelldance"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.54,
+      "mobility": 1.08,
+      "hypercarry": 1.83,
+      "durability": 1.35
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3504",
+    "item": "Incensario ardiente",
+    "name_en": "Ardent Censer",
+    "basic_info": {
+      "id": "3504",
+      "name": "Incensario ardiente",
+      "name_en": "Ardent Censer",
+      "tier": "Legendary",
+      "gold_cost": 2200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 45,
+      "movement_speed_percent": 4,
+      "heal_and_shield_power_percent": 10,
+      "base_mana_regeneration_percent": 125
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Sanctify",
+        "Santificar"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.35,
+      "mobility": 1.08,
+      "heal_shield_power": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "6665",
+    "item": "Jak'Sho el Proteico",
+    "name_en": "Jak'Sho, The Protean",
+    "basic_info": {
+      "id": "6665",
+      "name": "Jak'Sho el Proteico",
+      "name_en": "Jak'Sho, The Protean",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "Blight"
+    },
+    "stats": {
+      "health": 350,
+      "armor": 45,
+      "magic_resistance": 45
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Resiliencia del Vacío",
+        "Voidborn Resilience"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Heavy_MR"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "durability": 2.25
+    },
+    "counter_weights": {
+      "magic_resistance": 0.3,
+      "survivability_vs_damage": 0.3
+    }
+  },
+  {
+    "id": "3161",
+    "item": "Lanza de Shojin",
+    "name_en": "Spear of Shojin",
+    "basic_info": {
+      "id": "3161",
+      "name": "Lanza de Shojin",
+      "name_en": "Spear of Shojin",
+      "tier": "Legendary",
+      "gold_cost": 3100,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 45,
+      "health": 450
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Dragonforce",
+        "Focused Will",
+        "Fuerza dracónica",
+        "Voluntad centrada"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.45,
+      "durability": 1.45
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "4645",
+    "item": "Llamasombría",
+    "name_en": "Shadowflame",
+    "basic_info": {
+      "id": "4645",
+      "name": "Llamasombría",
+      "name_en": "Shadowflame",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 110,
+      "magic_penetration_flat": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Cinderbloom",
+        "Florascua"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "Heavy_MR"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.85
+    },
+    "counter_weights": {
+      "magic_resistance": 0.15
+    }
+  },
+  {
+    "id": "3119",
+    "item": "Llegada del invierno",
+    "name_en": "Winter's Approach",
+    "basic_info": {
+      "id": "3119",
+      "name": "Llegada del invierno",
+      "name_en": "Winter's Approach",
+      "tier": "Legendary",
+      "gold_cost": 2400,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 550,
+      "mana": 500,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Asombro",
+        "Awe",
+        "Flujo de maná",
+        "Manaflow"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2400 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.5,
+      "durability": 1.55
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "8010",
+    "item": "Maldición sanguinolenta",
+    "name_en": "Bloodletter's Curse",
+    "basic_info": {
+      "id": "8010",
+      "name": "Maldición sanguinolenta",
+      "name_en": "Bloodletter's Curse",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 65,
+      "health": 400,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Decadencia vil",
+        "Vile Decay"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.5,
+      "hypercarry": 1.5,
+      "durability": 1.4
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3118",
+    "item": "Malignidad",
+    "name_en": "Malignance",
+    "basic_info": {
+      "id": "3118",
+      "name": "Malignidad",
+      "name_en": "Malignance",
+      "tier": "Legendary",
+      "gold_cost": 2700,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 90,
+      "mana": 600,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Desdén",
+        "Hatefog",
+        "Niebla del odio",
+        "Scorn"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.69,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {
+      "magic_resistance": 0.3
+    }
+  },
+  {
+    "id": "3075",
+    "item": "Malla de espinas",
+    "name_en": "Thornmail",
+    "basic_info": {
+      "id": "3075",
+      "name": "Malla de espinas",
+      "name_en": "Thornmail",
+      "tier": "Legendary",
+      "gold_cost": 2450,
+      "item_group": "None"
+    },
+    "stats": {
+      "health": 150,
+      "armor": 75
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Espinas",
+        "Thorns"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2450 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "durability": 1.9
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3004",
+    "item": "Manamune",
+    "name_en": "Manamune",
+    "basic_info": {
+      "id": "3004",
+      "name": "Manamune",
+      "name_en": "Manamune",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 35,
+      "mana": 500,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Asombro",
+        "Awe",
+        "Flujo de maná",
+        "Manaflow"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.35,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "4005",
+    "item": "Mandato imperial",
+    "name_en": "Imperial Mandate",
+    "basic_info": {
+      "id": "4005",
+      "name": "Mandato imperial",
+      "name_en": "Imperial Mandate",
+      "tier": "Legendary",
+      "gold_cost": 2400,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 60,
+      "ability_haste": 15,
+      "base_mana_regeneration_percent": 150
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Command",
+        "Control",
+        "Orden"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2400 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.46,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6609",
+    "item": "Mecanoespada punki",
+    "name_en": "Chempunk Chainsword",
+    "basic_info": {
+      "id": "6609",
+      "name": "Mecanoespada punki",
+      "name_en": "Chempunk Chainsword",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 45,
+      "health": 450,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Esquilar",
+        "Hackshorn"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.45,
+      "hypercarry": 1.5,
+      "durability": 1.45
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3190",
+    "item": "Medallón de los Solari de Hierro",
+    "name_en": "Locket of the Iron Solari",
+    "basic_info": {
+      "id": "3190",
+      "name": "Medallón de los Solari de Hierro",
+      "name_en": "Locket of the Iron Solari",
+      "tier": "Legendary",
+      "gold_cost": 2200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 200,
+      "armor": 30,
+      "magic_resistance": 30,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Devoción",
+        "Devotion"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.33,
+      "durability": 1.8
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3165",
+    "item": "Morellonomicón",
+    "name_en": "Morellonomicon",
+    "basic_info": {
+      "id": "3165",
+      "name": "Morellonomicón",
+      "name_en": "Morellonomicon",
+      "tier": "Legendary",
+      "gold_cost": 2850,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 75,
+      "health": 350,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Grievous Wounds",
+        "Heridas graves"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2850 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.58,
+      "hypercarry": 1.6,
+      "durability": 1.35
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3042",
+    "item": "Muramana",
+    "name_en": "Muramana",
+    "basic_info": {
+      "id": "3042",
+      "name": "Muramana",
+      "name_en": "Muramana",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 35,
+      "mana": 1000,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Asombro",
+        "Awe",
+        "Impacto",
+        "Shock"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.35,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "8020",
+    "item": "Máscara abisal",
+    "name_en": "Abyssal Mask",
+    "basic_info": {
+      "id": "8020",
+      "name": "Máscara abisal",
+      "name_en": "Abyssal Mask",
+      "tier": "Legendary",
+      "gold_cost": 2650,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 350,
+      "magic_resistance": 45,
+      "ability_haste": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Deshacer",
+        "Unmake"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.5,
+      "durability": 1.8
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3095",
+    "item": "Navaja de asalto",
+    "name_en": "Stormrazor",
+    "basic_info": {
+      "id": "3095",
+      "name": "Navaja de asalto",
+      "name_en": "Stormrazor",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 50,
+      "attack_speed_percent": 25,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Bolt",
+        "Energized",
+        "Proyectil",
+        "Vigor"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.5,
+      "critic": 1.5,
+      "hypercarry": 1.31
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6621",
+    "item": "Núcleo albar",
+    "name_en": "Dawncore",
+    "basic_info": {
+      "id": "6621",
+      "name": "Núcleo albar",
+      "name_en": "Dawncore",
+      "tier": "Legendary",
+      "gold_cost": 2500,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 45,
+      "heal_and_shield_power_percent": 16,
+      "base_mana_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "First Light",
+        "Primera luz"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2500 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.35,
+      "heal_shield_power": 1.32
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3100",
+    "item": "Perdición del liche",
+    "name_en": "Lich Bane",
+    "basic_info": {
+      "id": "3100",
+      "name": "Perdición del liche",
+      "name_en": "Lich Bane",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 100,
+      "movement_speed_percent": 6,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Hoja encantada",
+        "Spellblade"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.97,
+      "mobility": 1.12,
+      "hypercarry": 1.33
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "4628",
+    "item": "Precisión infalible",
+    "name_en": "Horizon Focus",
+    "basic_info": {
+      "id": "4628",
+      "name": "Precisión infalible",
+      "name_en": "Horizon Focus",
+      "tier": "Legendary",
+      "gold_cost": 2700,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 75,
+      "ability_haste": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Concentración",
+        "Focus",
+        "Hiperdisparo",
+        "Hypershot"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.58,
+      "hypercarry": 1.83
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3143",
+    "item": "Presagio de Randuin",
+    "name_en": "Randuin's Omen",
+    "basic_info": {
+      "id": "3143",
+      "name": "Presagio de Randuin",
+      "name_en": "Randuin's Omen",
+      "tier": "Legendary",
+      "gold_cost": 2700,
+      "item_group": "None"
+    },
+    "stats": {
+      "health": 350,
+      "armor": 75
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Adaptabilidad",
+        "Humildad",
+        "Humility",
+        "Resilience"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "durability": 2.1
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3109",
+    "item": "Promesa de caballero",
+    "name_en": "Knight's Vow",
+    "basic_info": {
+      "id": "3109",
+      "name": "Promesa de caballero",
+      "name_en": "Knight's Vow",
+      "tier": "Legendary",
+      "gold_cost": 2300,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 200,
+      "armor": 40,
+      "ability_haste": 10,
+      "base_health_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Juramento",
+        "Pledge",
+        "Sacrifice",
+        "Sacrificio"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.33,
+      "durability": 1.6
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3087",
+    "item": "Puñal de Statikk",
+    "name_en": "Statikk Shiv",
+    "basic_info": {
+      "id": "3087",
+      "name": "Puñal de Statikk",
+      "name_en": "Statikk Shiv",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Boots"
+    },
+    "stats": {
+      "attack_damage": 45,
+      "ability_power": 45,
+      "attack_speed_percent": 30,
+      "movement_speed_percent": 4
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Electrochispa",
+        "Electrochoque",
+        "Electroshock",
+        "Electrospark"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter",
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.45,
+      "attack_power": 1.35,
+      "mobility": 1.08,
+      "hypercarry": 1.38
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2520",
+    "item": "Quiebrabastiones",
+    "name_en": "Bastionbreaker",
+    "basic_info": {
+      "id": "2520",
+      "name": "Quiebrabastiones",
+      "name_en": "Bastionbreaker",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Boots"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "ability_haste": 15,
+      "lethality": 22
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Carga moldeada",
+        "Sabotage",
+        "Sabotaje",
+        "Shaped Charge"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "lethality": 1.44,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6676",
+    "item": "Recaudadora",
+    "name_en": "The Collector",
+    "basic_info": {
+      "id": "6676",
+      "name": "Recaudadora",
+      "name_en": "The Collector",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 50,
+      "lethality": 10,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Death",
+        "Impuestos",
+        "Muerte",
+        "Taxes"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Marksman."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.5,
+      "critic": 1.5,
+      "lethality": 1.2
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3033",
+    "item": "Recordatorio letal",
+    "name_en": "Mortal Reminder",
+    "basic_info": {
+      "id": "3033",
+      "name": "Recordatorio letal",
+      "name_en": "Mortal Reminder",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 35,
+      "armor_penetration_percent": 30,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Grievous Wounds",
+        "Heridas graves"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.35,
+      "critic": 1.5,
+      "hypercarry": 1.1
+    },
+    "counter_weights": {
+      "armor": 0.6,
+      "survivability_vs_armor": 0.6
+    }
+  },
+  {
+    "id": "3036",
+    "item": "Recuerdos de lord Dominik",
+    "name_en": "Lord Dominik's Regards",
+    "basic_info": {
+      "id": "3036",
+      "name": "Recuerdos de lord Dominik",
+      "name_en": "Lord Dominik's Regards",
+      "tier": "Legendary",
+      "gold_cost": 3300,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 35,
+      "armor_penetration_percent": 35,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Giant Slayer",
+        "Verdugo de gigantes"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor",
+        "High_Health"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.35,
+      "critic": 1.5
+    },
+    "counter_weights": {
+      "armor": 0.7,
+      "survivability_vs_armor": 0.7,
+      "survivability_vs_damage": 0.3
+    }
+  },
+  {
+    "id": "3107",
+    "item": "Redención",
+    "name_en": "Redemption",
+    "basic_info": {
+      "id": "3107",
+      "name": "Redención",
+      "name_en": "Redemption",
+      "tier": "Legendary",
+      "gold_cost": 2300,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 30,
+      "ability_haste": 15,
+      "heal_and_shield_power_percent": 10,
+      "base_mana_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Intervención",
+        "Intervention"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "High_Health",
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.23,
+      "hypercarry": 1.5,
+      "heal_shield_power": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3157",
+    "item": "Reloj de arena de Zhonya",
+    "name_en": "Zhonya's Hourglass",
+    "basic_info": {
+      "id": "3157",
+      "name": "Reloj de arena de Zhonya",
+      "name_en": "Zhonya's Hourglass",
+      "tier": "Legendary",
+      "gold_cost": 3250,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 105,
+      "armor": 50
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "Tiempo detenido",
+        "Time Stop"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3250 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.81,
+      "durability": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6694",
+    "item": "Rencor de Serylda",
+    "name_en": "Serylda's Grudge",
+    "basic_info": {
+      "id": "6694",
+      "name": "Rencor de Serylda",
+      "name_en": "Serylda's Grudge",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 45,
+      "ability_haste": 15,
+      "armor_penetration_percent": 35
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Bitter Cold",
+        "Frío punzante"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.45,
+      "hypercarry": 1.5
+    },
+    "counter_weights": {
+      "armor": 0.7,
+      "survivability_vs_armor": 0.7
+    }
+  },
+  {
+    "id": "6617",
+    "item": "Renovación de piedra lunar",
+    "name_en": "Moonstone Renewer",
+    "basic_info": {
+      "id": "6617",
+      "name": "Renovación de piedra lunar",
+      "name_en": "Moonstone Renewer",
+      "tier": "Legendary",
+      "gold_cost": 2200,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 25,
+      "health": 200,
+      "ability_haste": 20,
+      "base_mana_regeneration_percent": 125
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Gracia estelar",
+        "Starlit Grace"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Support"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.19,
+      "hypercarry": 1.67,
+      "durability": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3181",
+    "item": "Rompecascos",
+    "name_en": "Hullbreaker",
+    "basic_info": {
+      "id": "3181",
+      "name": "Rompecascos",
+      "name_en": "Hullbreaker",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "health": 500,
+      "movement_speed_percent": 4
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Boarding Party",
+        "Cabecilla",
+        "Grupo de abordaje",
+        "Skipper"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "mobility": 1.08,
+      "durability": 1.5
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2504",
+    "item": "Rookern kaénico",
+    "name_en": "Kaenic Rookern",
+    "basic_info": {
+      "id": "2504",
+      "name": "Rookern kaénico",
+      "name_en": "Kaenic Rookern",
+      "tier": "Legendary",
+      "gold_cost": 2900,
+      "item_group": "None"
+    },
+    "stats": {
+      "health": 400,
+      "magic_resistance": 80,
+      "base_health_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Magebane",
+        "Perdición del mago"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "durability": 2.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3065",
+    "item": "Rostro espiritual",
+    "name_en": "Spirit Visage",
+    "basic_info": {
+      "id": "3065",
+      "name": "Rostro espiritual",
+      "name_en": "Spirit Visage",
+      "tier": "Legendary",
+      "gold_cost": 2700,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 400,
+      "magic_resistance": 50,
+      "ability_haste": 10,
+      "base_health_regeneration_percent": 100
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Boundless Vitality",
+        "Vitalidad ilimitada"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.33,
+      "durability": 1.9
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3146",
+    "item": "Sable-pistola hextech",
+    "name_en": "Hextech Gunblade",
+    "basic_info": {
+      "id": "3146",
+      "name": "Sable-pistola hextech",
+      "name_en": "Hextech Gunblade",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 40,
+      "ability_power": 80,
+      "omnivamp_percent": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": true,
+      "passive_names": [
+        "ACTIVA",
+        "ACTIVE",
+        "Lightning Bolt",
+        "Relámpago"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Mage."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.4,
+      "attack_power": 1.62,
+      "sustain": 2.0
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2501",
+    "item": "Sangría del soberano",
+    "name_en": "Overlord's Bloodmail",
+    "basic_info": {
+      "id": "2501",
+      "name": "Sangría del soberano",
+      "name_en": "Overlord's Bloodmail",
+      "tier": "Legendary",
+      "gold_cost": 3300,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 30,
+      "health": 550
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Retribución",
+        "Retribution",
+        "Tiranía",
+        "Tyranny"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.3,
+      "durability": 1.55
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3072",
+    "item": "Sanguinaria",
+    "name_en": "Bloodthirster",
+    "basic_info": {
+      "id": "3072",
+      "name": "Sanguinaria",
+      "name_en": "Bloodthirster",
+      "tier": "Legendary",
+      "gold_cost": 3400,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 80,
+      "life_steal_percent": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Escudo de icor",
+        "Ichorshield"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3400 de oro. Aporta estadísticas clave para Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.8,
+      "sustain": 1.5,
+      "heal_shield_power": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "3508",
+    "item": "Segador de esencia",
+    "name_en": "Essence Reaver",
+    "basic_info": {
+      "id": "3508",
+      "name": "Segador de esencia",
+      "name_en": "Essence Reaver",
+      "tier": "Legendary",
+      "gold_cost": 3050,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 50,
+      "ability_haste": 20,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Hoja encantada",
+        "Spellblade"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3050 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.7,
+      "critic": 1.5,
+      "hypercarry": 1.67
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6697",
+    "item": "Soberbia",
+    "name_en": "Hubris",
+    "basic_info": {
+      "id": "6697",
+      "name": "Soberbia",
+      "name_en": "Hubris",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Fatality"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "ability_haste": 10,
+      "lethality": 18
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Eminence",
+        "Eminencia"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Assassin",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "Heavy_Armor"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Assassin, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.85,
+      "lethality": 1.36,
+      "hypercarry": 1.33
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "4646",
+    "item": "Sobrecarga tormentosa",
+    "name_en": "Stormsurge",
+    "basic_info": {
+      "id": "4646",
+      "name": "Sobrecarga tormentosa",
+      "name_en": "Stormsurge",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 90,
+      "movement_speed_percent": 6,
+      "magic_penetration_flat": 15
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Alarido",
+        "Squall",
+        "Stormraider",
+        "Tensión tormentosa"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "Heavy_MR"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.69,
+      "mobility": 1.12
+    },
+    "counter_weights": {
+      "magic_resistance": 0.15
+    }
+  },
+  {
+    "id": "3089",
+    "item": "Sombrero mortal de Rabadon",
+    "name_en": "Rabadon's Deathcap",
+    "basic_info": {
+      "id": "3089",
+      "name": "Sombrero mortal de Rabadon",
+      "name_en": "Rabadon's Deathcap",
+      "tier": "Legendary",
+      "gold_cost": 3500,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 130
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Magical Opus",
+        "Obra mágica"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3500 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 2.3
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "6653",
+    "item": "Tormento de Liandry",
+    "name_en": "Liandry's Torment",
+    "basic_info": {
+      "id": "6653",
+      "name": "Tormento de Liandry",
+      "name_en": "Liandry's Torment",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 60,
+      "health": 300
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Suffering",
+        "Sufrimiento",
+        "Torment",
+        "Tormento"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage"
+      ],
+      "counter_mechanics": [
+        "High_Health"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.46,
+      "durability": 1.3
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.3
+    }
+  },
+  {
+    "id": "6657",
+    "item": "Vara de las edades",
+    "name_en": "Rod of Ages",
+    "basic_info": {
+      "id": "6657",
+      "name": "Vara de las edades",
+      "name_en": "Rod of Ages",
+      "tier": "Legendary",
+      "gold_cost": 2600,
+      "item_group": "None"
+    },
+    "stats": {
+      "ability_power": 45,
+      "health": 350,
+      "mana": 500
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Atemporal",
+        "Eternidad",
+        "Eternity",
+        "Timeless"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2600 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.35,
+      "durability": 1.35
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3102",
+    "item": "Velo del hada de la muerte",
+    "name_en": "Banshee's Veil",
+    "basic_info": {
+      "id": "3102",
+      "name": "Velo del hada de la muerte",
+      "name_en": "Banshee's Veil",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "ability_power": 105,
+      "magic_resistance": 40
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Annul",
+        "Anular"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Mage",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "Shields"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_power": 1.81,
+      "durability": 1.4
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.2
+    }
+  },
+  {
+    "id": "6672",
+    "item": "Verdugo de krakens",
+    "name_en": "Kraken Slayer",
+    "basic_info": {
+      "id": "6672",
+      "name": "Verdugo de krakens",
+      "name_en": "Kraken Slayer",
+      "tier": "Legendary",
+      "gold_cost": 3000,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "attack_damage": 45,
+      "attack_speed_percent": 40,
+      "movement_speed_percent": 4
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Abatir",
+        "Bring It Down"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.45,
+      "mobility": 1.08,
+      "hypercarry": 1.5,
+      "critic": 1.2
+    },
+    "counter_weights": {
+      "survivability_vs_damage": 0.3
+    }
+  },
+  {
+    "id": "3026",
+    "item": "Ángel de la guarda",
+    "name_en": "Guardian Angel",
+    "basic_info": {
+      "id": "3026",
+      "name": "Ángel de la guarda",
+      "name_en": "Guardian Angel",
+      "tier": "Legendary",
+      "gold_cost": 3200,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "armor": 45
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Rebirth",
+        "Renacimiento"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Fighter",
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Fighter, Tank."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "durability": 1.45,
+      "hypercarry": 1.3
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "3068",
+    "item": "Égida de fuego solar",
+    "name_en": "Sunfire Aegis",
+    "basic_info": {
+      "id": "3068",
+      "name": "Égida de fuego solar",
+      "name_en": "Sunfire Aegis",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "Annul"
+    },
+    "stats": {
+      "health": 350,
+      "armor": 50,
+      "ability_haste": 10
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Immolate",
+        "Inmolar"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Tank"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
+    },
+    "synergy_multipliers": {
+      "hypercarry": 1.33,
+      "durability": 1.95,
+      "wave_clear": 1.1
+    },
+    "counter_weights": {}
+  },
+  {
+    "id": "2523",
+    "item": "Óptica hextech C44",
+    "name_en": "Hexoptics C44",
+    "basic_info": {
+      "id": "2523",
+      "name": "Óptica hextech C44",
+      "name_en": "Hexoptics C44",
+      "tier": "Legendary",
+      "gold_cost": 2800,
+      "item_group": "None"
+    },
+    "stats": {
+      "attack_damage": 55,
+      "critical_strike_chance_percent": 25
+    },
+    "functionality": {
+      "has_passive": true,
+      "has_active": false,
+      "passive_names": [
+        "Arcane Aim",
+        "Magnificación",
+        "Magnification",
+        "Puntería arcana"
+      ]
+    },
+    "classifications": {
+      "intended_classes": [
+        "Marksman",
+        "Fighter"
+      ],
+      "counter_mechanics": [
+        "None"
+      ]
+    },
+    "analysis": {
+      "game_phase_power": "Linear",
+      "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Marksman, Fighter."
+    },
+    "synergy_multipliers": {
+      "attack_damage": 1.55,
+      "critic": 1.5
+    },
+    "counter_weights": {}
+  }
+]

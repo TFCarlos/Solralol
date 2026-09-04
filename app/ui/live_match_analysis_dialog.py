@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 
+import time
 from typing import Any
 
 
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -28,7 +30,7 @@ from app.services.live_analysis_models_and_calculator import (
 )
 
 import requests
-
+from app.ui.recommendation_panel import RecommendationPanel
 
 
 class VersusChart(QWidget):
@@ -351,6 +353,7 @@ class RiotComparisonBar(QWidget):
 
 class LiveMatchAnalysisDialog(QDialog):
     ROLE_LABELS = {"TOP": "TOP VS TOP", "JUNGLE": "JGL VS JGL", "MIDDLE": "MID VS MID", "BOTTOM": "BOT VS BOT", "UTILITY": "SUP VS SUP"}
+    UI_REFRESH_INTERVAL_SECONDS = 5.0
 
 
     def __init__(
@@ -370,7 +373,11 @@ class LiveMatchAnalysisDialog(QDialog):
 
         self.timeline_mode = "lane"
         self.current_role = "TOP"
+        self.current_view = "role"
         self.role_buttons: dict[str, QPushButton] = {}
+        self.recommendation_button: QPushButton | None = None
+        self.recommendation_panel: RecommendationPanel | None = None
+        self._last_ui_refresh = 0.0
 
 
         self.setObjectName("liveMatchAnalysisDialog")
@@ -391,13 +398,39 @@ class LiveMatchAnalysisDialog(QDialog):
         except Exception:
             pass
 
-
-    def update_session(self, session: dict[str, Any]):
+    def update_session(
+        self,
+        session: dict[str, Any],
+    ) -> None:
         if not session:
             return
+
+        previous_sync_status = self.session.get("final_sync", {}).get("status")
+        now = time.monotonic()
+        final_sync_changed = (
+            session.get("final_sync", {}).get("status")
+            != previous_sync_status
+        )
         self.session = session
+        if (
+            not final_sync_changed
+            and now - self._last_ui_refresh < self.UI_REFRESH_INTERVAL_SECONDS
+        ):
+            return
+        self._last_ui_refresh = now
         self._prepare_session()
         self._refresh_header()
+
+        if getattr(self, "current_view", "role") == "recommendations":
+            if (
+                getattr(self, "recommendation_panel", None)
+                is not None
+            ):
+                self.recommendation_panel.update_recommendations(
+                    self.session
+                )
+            return
+
         self.show_role(self.current_role)
 
 
@@ -458,10 +491,24 @@ class LiveMatchAnalysisDialog(QDialog):
             self.role_buttons[role] = button
             layout.addWidget(button)
         layout.addStretch(1)
+        
+        # Botón de recomendaciones
+        self.recommendation_button = QPushButton("📊 RECOMENDACIONES")
+        self.recommendation_button.setObjectName("recommendationTabButton")
+        self.recommendation_button.setCheckable(True)
+        self.recommendation_button.clicked.connect(
+            lambda checked=False: self.show_recommendations()
+        )
+        layout.addWidget(self.recommendation_button)
+        
         return layout
 
 
     def show_role(self, role):
+        if self.current_view == "recommendations" and self.recommendation_button:
+            self.recommendation_button.setChecked(False)
+        
+        self.current_view = "role"
         self.current_role = role
         if role in self.role_buttons:
             self.role_buttons[role].setChecked(True)
@@ -488,6 +535,45 @@ class LiveMatchAnalysisDialog(QDialog):
         scroll.setWidget(self._create_role_content(ally, ally_key, enemy, enemy_key))
         self.content_layout.addWidget(scroll, 1)
 
+
+    def show_recommendations(self) -> None:
+        """Muestra el panel de recomendaciones reutilizando su instancia."""
+        self.current_view = "recommendations"
+
+        for button in self.role_buttons.values():
+            button.setChecked(False)
+
+        if self.recommendation_button is not None:
+            self.recommendation_button.setChecked(True)
+
+        if self.recommendation_panel is None:
+            while self.content_layout.count():
+                item = self.content_layout.takeAt(0)
+                widget = item.widget()
+
+                if widget is not None:
+                    widget.setParent(None)
+                    widget.deleteLater()
+
+            self.recommendation_panel = RecommendationPanel(
+                self.content
+            )
+            self.recommendation_panel.configure(
+                self.assets,
+                self.item_catalog,
+            )
+            self.recommendation_panel.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
+            )
+            self.content_layout.addWidget(
+                self.recommendation_panel,
+                1,
+            )
+
+        self.recommendation_panel.update_recommendations(
+            self.session
+        )
 
     def _create_role_content(self, ally, ally_key, enemy, enemy_key):
         content = QWidget()
@@ -1204,13 +1290,6 @@ class LiveMatchAnalysisDialog(QDialog):
         # CS oficial total: súbditos de línea + monstruos neutrales.
         # Primero utiliza el total normalizado que ya produces.
         if metric == "cs":
-            print(
-                "DEBUG CS:",
-                "cs_total=", final.get("cs_total"),
-                "cs_minions=", final.get("cs_minions"),
-                "cs_jungle=", final.get("cs_jungle"),
-            )
-
             cs_total = final.get("cs_total")
 
             if cs_total is not None:

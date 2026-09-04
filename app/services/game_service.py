@@ -128,6 +128,18 @@ class GameService:
             )
         ]
 
+        champion_stats = active_player.get("championStats", {})
+        if not isinstance(champion_stats, dict):
+            champion_stats = {}
+        local_live_stats = {
+            **champion_stats,
+            **{
+                key: active_player[key]
+                for key in ("currentGold", "gold", "goldCurrent")
+                if key in active_player
+            },
+        }
+
         game_time = float(
             game_data.get(
                 "gameTime",
@@ -169,9 +181,6 @@ class GameService:
             "local_team": local_team,
             "enemies": enemies,
             "all_players": all_players,
-            "local_live_stats": active_player.get(
-                "championStats",
-                {},
-            ),
+            "local_live_stats": local_live_stats,
             "game_events": events,
         }

@@ -773,6 +773,198 @@ QWebEngineView#analysisWebView {
     background: #ffffff;
 }
 
+QFrame#recommendationPanel {
+    border: 1px solid rgba(217, 174, 79, 145);
+    border-radius: 12px;
+    background: #071221;
+}
+
+QFrame#recommendationHeader {
+    border: 1px solid rgba(89, 127, 177, 120);
+    border-radius: 9px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(20, 49, 83, 235), stop:1 rgba(37, 28, 47, 235));
+}
+
+QLabel#recommendationTitle {
+    color: #f4f7ff;
+    font-size: 20px;
+    font-weight: 900;
+}
+
+QLabel#recommendationStyle {
+    color: #e4bd5e;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+QLabel#recommendationGold {
+    color: #5ee7a5;
+    font-size: 15px;
+    font-weight: 900;
+}
+
+QComboBox#recommendationStyleSelector {
+    min-width: 170px;
+    padding: 5px 8px;
+    border: 1px solid rgba(217, 174, 79, 150);
+    border-radius: 5px;
+    color: #f0d37b;
+    background: rgba(9, 22, 41, 210);
+}
+
+QPushButton#recommendationBackButton {
+    max-width: 150px;
+    padding: 7px 10px;
+    border: 1px solid rgba(89, 127, 177, 150);
+    border-radius: 5px;
+    color: #c6d8ef;
+    background: rgba(20, 49, 83, 210);
+}
+
+QPushButton#recommendationBackButton:hover {
+    border-color: #d9ae4f;
+    color: #f3d276;
+}
+
+QLabel#recommendationRouteTitle {
+    color: #f4f7ff;
+    font-size: 20px;
+    font-weight: 900;
+}
+
+QFrame#recommendationItemRow {
+    min-height: 64px;
+    border: 1px solid rgba(89, 127, 177, 100);
+    border-radius: 7px;
+    background: rgba(14, 31, 53, 220);
+}
+
+QFrame#recommendationNextPurchase {
+    min-height: 86px;
+    border: 1px solid rgba(35, 205, 137, 170);
+    border-radius: 9px;
+    background: rgba(10, 50, 47, 225);
+}
+
+QLabel#recommendationLargeIcon {
+    border: 1px solid rgba(217, 174, 79, 170);
+    border-radius: 7px;
+    background: rgba(5, 15, 28, 230);
+}
+
+QFrame#recommendationPlayerHeader {
+    border: 1px solid rgba(86, 126, 179, 130);
+    border-radius: 8px;
+    background: rgba(5, 22, 40, 235);
+}
+
+QLabel#recommendationPortrait {
+    border: 2px solid #d9ae4f;
+    border-radius: 8px;
+}
+
+QLabel#recommendationPlayerName {
+    color: #f4f7ff;
+    font-size: 17px;
+    font-weight: 900;
+}
+
+QLabel#recommendationPlayerGold {
+    min-width: 90px;
+    color: #5ee7a5;
+    font-size: 17px;
+    font-weight: 900;
+}
+
+QLabel#recommendationPlayerMeta,
+QLabel#recommendationSectionTitle {
+    color: #b6c9e3;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+QFrame#recommendationInventory {
+    border: 1px solid rgba(86, 126, 179, 100);
+    border-radius: 8px;
+    background: rgba(9, 25, 45, 220);
+}
+
+QLabel#recommendationInventoryIcon {
+    border: 1px solid rgba(217, 174, 79, 140);
+    border-radius: 5px;
+    background: #071221;
+}
+
+QLabel#recommendationMuted {
+    color: #8298b8;
+}
+
+QLabel#recommendationCompatibilityNote {
+    padding: 9px 11px;
+    border-left: 3px solid #d9ae4f;
+    color: #e4bd5e;
+    background: rgba(80, 61, 25, 120);
+}
+
+QLabel#recommendationItemName {
+    color: #eef4ff;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+QLabel#recommendationNote,
+QLabel#recommendationReason {
+    color: #a8bbd5;
+    font-size: 13px;
+}
+
+QFrame#recommendationBuildCard,
+QFrame#recommendationSituational {
+    border: 1px solid rgba(89, 127, 177, 110);
+    border-radius: 9px;
+    background: rgba(14, 31, 53, 220);
+}
+
+QFrame#recommendationBuildCard:hover {
+    border-color: rgba(217, 174, 79, 190);
+    background: rgba(22, 43, 70, 235);
+}
+
+QFrame#recommendationSituational {
+    border-color: rgba(100, 217, 163, 130);
+    background: rgba(13, 43, 43, 190);
+}
+
+QLabel#recommendationBuildTitle {
+    color: #eef4ff;
+    font-size: 14px;
+    font-weight: 900;
+}
+
+QLabel#recommendationBadge {
+    padding: 3px 7px;
+    border: 1px solid rgba(217, 174, 79, 170);
+    border-radius: 5px;
+    color: #f0d37b;
+    background: rgba(80, 61, 25, 165);
+    font-size: 9px;
+    font-weight: 900;
+}
+
+QLabel#recommendationItems {
+    color: #d8e6f8;
+    font-family: "Cascadia Code";
+    font-size: 11px;
+}
+
+QLabel#recommendationEmptyState {
+    padding: 14px;
+    border: 1px dashed rgba(97, 148, 211, 110);
+    border-radius: 7px;
+    color: #9eb4d3;
+    background: rgba(9, 22, 41, 130);
+}
+
 QLabel#analysisStatus[state="idle"] {
     color: #9eb4d3;
 }
