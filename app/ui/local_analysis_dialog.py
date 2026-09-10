@@ -21,6 +21,43 @@ from app.ui.champion_ai_worker import ChampionAIWorker
 from app.ui.winrate_worker import WinrateUpdateWorker
 from data_dragon import get_champion_icon_path, get_item_icon_path, get_rune_icon_path
 
+RUNE_TREE_OPTIONS = {
+    "Precision": [
+        ["Press the Attack", "Lethal Tempo", "Fleet Footwork", "Conqueror"],
+        ["Overheal", "Triumph", "Presence of Mind"],
+        ["Legend: Alacrity", "Legend: Tenacity", "Legend: Bloodline"],
+        ["Coup de Grace", "Cut Down", "Last Stand"],
+    ],
+    "Resolve": [
+        ["Demolish", "Font of Life", "Shield Bash"],
+        ["Conditioning", "Second Wind", "Bone Plating"],
+        ["Overgrowth", "Revitalize", "Unflinching"],
+    ],
+    "Domination": [
+        ["Electrocute", "Predator", "Dark Harvest"],
+        ["Cheap Shot", "Taste of Blood", "Sudden Impact"],
+        ["Zombie Ward", "Ghost Poro", "Eyeball Collection"],
+        ["Treasure Hunter", "Relentless Hunter", "Ultimate Hunter"],
+    ],
+    "Sorcery": [
+        ["Summon Aery", "Arcane Comet", "Phase Rush"],
+        ["Manaflow Band", "Nimbus Cloak", "Transcendence"],
+        ["Celerity", "Absolute Focus", "Scorch"],
+        ["Waterwalking", "Gathering Storm", "Haste"],
+    ],
+    "Inspiration": [
+        ["Glacial Augment", "First Strike", "Unsealed Spellbook"],
+        ["Hextech Flashtraption", "Magical Footwear", "Cash Back"],
+        ["Future's Market", "Minion Dematerializer", "Biscuit Delivery"],
+        ["Cosmic Insight", "Approach Velocity", "Jack of All Trades"],
+    ],
+}
+RUNE_SHARD_OPTIONS = [
+    ["Adaptive Force", "Attack Speed", "Ability Haste"],
+    ["Adaptive Force", "Movement Speed", "Health Scaling"],
+    ["Health", "Tenacity and Slow Resist", "Health Scaling"],
+]
+
 
 class RadarWidget(QWidget):
     def __init__(self, values: list[tuple[str, float]], parent: QWidget | None = None) -> None:
@@ -516,50 +553,108 @@ class LocalAnalysisDialog(QDialog):
         card = QFrame()
         card.setObjectName("localRunePage")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(10, 7, 10, 7)
-        layout.setSpacing(4)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(7)
         name = QLabel(str(page.get("name", f"Página {index}")))
         name.setObjectName("localRunePageTitle")
         layout.addWidget(name)
-        primary = self._rune_row("PRINCIPAL", page.get("keystone", "Conqueror"), page.get("primary_tree", "Precision"))
-        secondary = self._rune_row("SECUNDARIA", page.get("secondary_tree", "Resolve"), "")
-        layout.addWidget(primary)
-        layout.addWidget(secondary)
-        runes = []
-        for key in ("slots", "secondary_slots", "shards", "runes"):
-            values = page.get(key, [])
-            if isinstance(values, list):
-                runes.extend(values)
-        details = QHBoxLayout()
-        details.setSpacing(8)
-        values = runes[:10] if runes else ["Adaptive Force", "Attack Speed", "Flat Health"]
-        for value in values:
-            details.addWidget(self._rune_detail_chip(str(value)))
-        details.addStretch(1)
-        layout.addLayout(details)
+
+        trees = QHBoxLayout()
+        trees.setSpacing(12)
+        primary_slots = page.get("slots", [])
+        if not isinstance(primary_slots, list) or not primary_slots:
+            primary_slots = page.get("runes", [])
+        trees.addWidget(self._rune_tree_panel(
+            "PRINCIPAL", str(page.get("primary_tree", "Precision")),
+            str(page.get("keystone", "Conqueror")), primary_slots, True,
+        ), 1)
+        trees.addWidget(self._rune_tree_panel(
+            "SECUNDARIA", str(page.get("secondary_tree", "Resolve")),
+            "", page.get("secondary_slots", []), False,
+        ), 1)
+        layout.addLayout(trees)
+
+        shards = page.get("shards", [])
+        if not isinstance(shards, list) or not shards:
+            shards = ["Adaptive Force", "Adaptive Force", "Health Scaling"]
+        shard_panel = QFrame()
+        shard_panel.setObjectName("localRuneShardsPanel")
+        shard_layout = QVBoxLayout(shard_panel)
+        shard_layout.setContentsMargins(8, 5, 8, 5)
+        shard_title = QLabel("FRAGMENTOS")
+        shard_title.setObjectName("localRuneSectionLabel")
+        shard_layout.addWidget(shard_title)
+        selected_shards = {str(value) for value in shards}
+        for row in RUNE_SHARD_OPTIONS:
+            shard_layout.addLayout(self._rune_option_row(row, selected_shards))
+        layout.addWidget(shard_panel)
         return card
 
     @staticmethod
-    def _rune_detail_chip(name: str) -> QWidget:
+    def _rune_tree_panel(caption: str, tree: str, keystone: str, runes: Any, is_primary: bool) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("localRuneTreePanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(5)
+        heading = QHBoxLayout()
+        label = QLabel(caption)
+        label.setObjectName("localRuneSectionLabel")
+        heading.addWidget(label)
+        heading_text = tree + (f" · {keystone}" if is_primary and keystone else "")
+        tree_label = QLabel(heading_text)
+        tree_label.setObjectName("localRuneTreeHeading")
+        heading.addWidget(tree_label)
+        heading.addStretch(1)
+        layout.addLayout(heading)
+
+        values = list(runes) if isinstance(runes, list) else []
+        selected = {str(value) for value in values}
+        options = RUNE_TREE_OPTIONS.get(tree, [values])
+        if is_primary:
+            layout.addLayout(LocalAnalysisDialog._rune_option_row(
+                options[0], selected | {keystone}, keystone,
+            ))
+            options = options[1:]
+        for row in options:
+            layout.addLayout(LocalAnalysisDialog._rune_option_row(row, selected))
+        return panel
+
+    @staticmethod
+    def _rune_option_row(names: list[str], selected: set[str], keystone: str = "") -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        for name in names:
+            object_name = "localRuneKeystone" if name == keystone else (
+                "localRuneSelectionActive" if name in selected else "localRuneSelection"
+            )
+            row.addWidget(LocalAnalysisDialog._rune_selection(name, object_name), 1)
+        row.addStretch(1)
+        return row
+
+    @staticmethod
+    def _rune_selection(name: str, object_name: str = "localRuneSelection") -> QWidget:
         chip = QWidget()
-        layout = QVBoxLayout(chip)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(2)
-        icon = QLabel("•")
-        icon.setObjectName("localRuneSmallIcon")
+        chip.setObjectName(object_name)
+        layout = QHBoxLayout(chip)
+        layout.setContentsMargins(3, 3, 5, 3)
+        layout.setSpacing(5)
+        icon = QLabel("R")
+        icon.setObjectName(
+            "localRuneSelectionIconActive"
+            if object_name in {"localRuneSelectionActive", "localRuneKeystone"}
+            else "localRuneSelectionIcon"
+        )
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setFixedSize(22, 22)
+        icon.setFixedSize(42, 42)
         path = get_rune_icon_path(name, "16.17.1")
         if path and path.exists():
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
                 icon.setText("")
-                icon.setPixmap(pixmap.scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignCenter)
-        label = QLabel(name)
-        label.setObjectName("localRuneDetails")
-        label.setToolTip(name)
-        layout.addWidget(label, 0, Qt.AlignmentFlag.AlignCenter)
+                icon.setPixmap(pixmap.scaled(38, 38, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        layout.addWidget(icon)
+        chip.setToolTip(name)
         return chip
 
     def _rune_row(self, caption: str, name: str, tree: str) -> QWidget:
@@ -645,6 +740,14 @@ class LocalAnalysisDialog(QDialog):
             QLabel#localChampionTitle { color: #f1f6ff; font-size: 18px; font-weight: 800; }
             QLabel#localChampionMeta { color: #9fc1d9; font-size: 11px; }
             QFrame#localRunePanel { background: #0b1b2c; border: 1px solid #234663; border-radius: 8px; }
+            QFrame#localRunePage { background: #081827; border: 1px solid #315b7e; border-radius: 7px; }
+            QFrame#localRuneTreePanel { background: #06131f; border: 1px solid #193750; border-radius: 6px; }
+            QWidget#localRuneSelection, QWidget#localRuneSelectionActive, QWidget#localRuneKeystone { background: transparent; border: none; }
+            QLabel#localRuneSelectionIcon, QLabel#localRuneSelectionIconActive { color: #7890a8; background: #081522; border: 2px solid #29445b; border-radius: 22px; font-size: 9px; font-weight: 800; }
+            QLabel#localRuneSelectionIconActive { color: #f6d477; background: #2a2111; border-color: #f0b944; }
+            QLabel#localRuneSectionLabel { color: #d9ae4f; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+            QLabel#localRuneTreeHeading { color: #77d8b0; font-size: 11px; font-weight: 800; }
+            QLabel#localRunePageTitle { color: #f1f6ff; font-size: 11px; font-weight: 800; }
             QLabel#localRuneSummary, QLabel#localRuneShards { color: #77d8b0; font-size: 11px; font-weight: 700; }
             QLabel#localRuneIcon { color: #f6d477; background: #342611; border: 1px solid #d9ae4f; border-radius: 14px; font-size: 9px; font-weight: 800; }
             QLabel#localRuneName { color: #e8f0ff; font-size: 11px; font-weight: 700; }

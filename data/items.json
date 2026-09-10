@@ -1,5 +1,5 @@
 {
-  "version": "16.17.1",
+  "version": "16.18.1",
   "items": {
     "1001": {
       "name": "Botas",
@@ -9218,7 +9218,7 @@
         "Effect1Amount": "0.08",
         "Effect2Amount": "2.5",
         "Effect3Amount": "2.5",
-        "Effect4Amount": "3",
+        "Effect4Amount": "4",
         "Effect5Amount": "4",
         "Effect6Amount": "0.1",
         "Effect7Amount": "0.1",
@@ -17533,7 +17533,7 @@
     },
     "3124": {
       "name": "Hoja de furia de Guinsoo",
-      "description": "<mainText><stats><attention>30</attention> de daño de ataque<br><attention>30</attention> de poder de habilidad<br><attention>25%</attention> de velocidad de ataque</stats><br><br><passive>Ira</passive><br>Los ataques infligen <magicDamage>30 de daño mágico adicional <OnHit>al impactar</OnHit></magicDamage>.<br><br><passive>Golpe furioso</passive><br>Los ataques otorgan un <attackSpeed>8% de velocidad de ataque</attackSpeed> durante 3 s (se acumula hasta 4 veces). <br>Con el máximo de acumulaciones, cada tercer ataque aplica dos veces los efectos <OnHit>al impactar</OnHit>.</mainText>",
+      "description": "<mainText><stats><attention>30</attention> de daño de ataque<br><attention>30</attention> de poder de habilidad<br><attention>25%</attention> de velocidad de ataque</stats><br><br><passive>Ira</passive><br>Los ataques infligen <magicDamage>30 de daño mágico adicional <OnHit>al impactar</OnHit></magicDamage>.<br><br><passive>Golpe furioso</passive><br>Los ataques otorgan un <attackSpeed>8% de velocidad de ataque</attackSpeed> durante 4 s (se acumula hasta 4 veces). <br>Con el máximo de acumulaciones, cada tercer ataque aplica dos veces los efectos <OnHit>al impactar</OnHit>.</mainText>",
       "colloq": "Guinsoo's Rageblade;Hoja de furia de Guinsoo",
       "plaintext": "",
       "from": [
@@ -17578,7 +17578,7 @@
         "Effect1Amount": "0.08",
         "Effect2Amount": "2.5",
         "Effect3Amount": "2.5",
-        "Effect4Amount": "3",
+        "Effect4Amount": "4",
         "Effect5Amount": "4",
         "Effect6Amount": "0.1",
         "Effect7Amount": "0.1",
@@ -17592,9 +17592,9 @@
       "depth": 3,
       "id": "3124",
       "name_es": "Hoja de furia de Guinsoo",
-      "description_es": "<mainText><stats><attention>30</attention> de daño de ataque<br><attention>30</attention> de poder de habilidad<br><attention>25%</attention> de velocidad de ataque</stats><br><br><passive>Ira</passive><br>Los ataques infligen <magicDamage>30 de daño mágico adicional <OnHit>al impactar</OnHit></magicDamage>.<br><br><passive>Golpe furioso</passive><br>Los ataques otorgan un <attackSpeed>8% de velocidad de ataque</attackSpeed> durante 3 s (se acumula hasta 4 veces). <br>Con el máximo de acumulaciones, cada tercer ataque aplica dos veces los efectos <OnHit>al impactar</OnHit>.</mainText>",
+      "description_es": "<mainText><stats><attention>30</attention> de daño de ataque<br><attention>30</attention> de poder de habilidad<br><attention>25%</attention> de velocidad de ataque</stats><br><br><passive>Ira</passive><br>Los ataques infligen <magicDamage>30 de daño mágico adicional <OnHit>al impactar</OnHit></magicDamage>.<br><br><passive>Golpe furioso</passive><br>Los ataques otorgan un <attackSpeed>8% de velocidad de ataque</attackSpeed> durante 4 s (se acumula hasta 4 veces). <br>Con el máximo de acumulaciones, cada tercer ataque aplica dos veces los efectos <OnHit>al impactar</OnHit>.</mainText>",
       "name_en": "Guinsoo's Rageblade",
-      "description_en": "<mainText><stats><attention>30</attention> Attack Damage<br><attention>30</attention> Ability Power<br><attention>25%</attention> Attack Speed</stats><br><br><passive>Wrath</passive><br>Attacks deal <magicDamage>30 bonus magic damage <OnHit>On-Hit</OnHit></magicDamage>.<br><br><passive>Seething Strike</passive><br>Attacks grant <attackSpeed>8% Attack Speed</attackSpeed> for 3 seconds. (stacks 4 times). <br>While fully stacked, every third Attack applies <OnHit>On-Hit</OnHit> effects twice.</mainText>"
+      "description_en": "<mainText><stats><attention>30</attention> Attack Damage<br><attention>30</attention> Ability Power<br><attention>25%</attention> Attack Speed</stats><br><br><passive>Wrath</passive><br>Attacks deal <magicDamage>30 bonus magic damage <OnHit>On-Hit</OnHit></magicDamage>.<br><br><passive>Seething Strike</passive><br>Attacks grant <attackSpeed>8% Attack Speed</attackSpeed> for 4 seconds. (stacks 4 times). <br>While fully stacked, every third Attack applies <OnHit>On-Hit</OnHit> effects twice.</mainText>"
     },
     "3128": {
       "name": "Tenaza de muerte ígnea",
@@ -34520,7 +34520,7 @@
     },
     "773102": {
       "name": "Velo del hada de la muerte",
-      "description": "<mainText><stats><attention>450</attention> de vida<br><attention>55</attention> de resistencia mágica</stats><br><br><jadeUnique>Intangibilidad:</jadeUnique> Otorga un <shield>escudo de hechizos</shield> que bloquea la siguiente habilidad enemiga. El <shield>escudo</shield> se regenera si no sufres daño de campeones enemigos durante 25 s.<br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>9 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo o cuando el <shield>escudo de hechizos</shield> se rompe.</mainText>",
+      "description": "<mainText><stats><attention>450</attention> de vida<br><attention>55</attention> de resistencia mágica</stats><br><br><jadeUnique>Intangibilidad:</jadeUnique> Otorga un <shield>escudo de hechizos</shield> que bloquea la siguiente habilidad enemiga. El <shield>escudo</shield> se regenera si no sufres daño de campeones enemigos durante 25 s.<br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>45 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo o cuando el <shield>escudo de hechizos</shield> se rompe.</mainText>",
       "colloq": "Banshee's Veil;Velo del hada de la muerte",
       "plaintext": "",
       "from": [
@@ -34569,9 +34569,9 @@
       "depth": 3,
       "id": "773102",
       "name_es": "Velo del hada de la muerte",
-      "description_es": "<mainText><stats><attention>450</attention> de vida<br><attention>55</attention> de resistencia mágica</stats><br><br><jadeUnique>Intangibilidad:</jadeUnique> Otorga un <shield>escudo de hechizos</shield> que bloquea la siguiente habilidad enemiga. El <shield>escudo</shield> se regenera si no sufres daño de campeones enemigos durante 25 s.<br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>9 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo o cuando el <shield>escudo de hechizos</shield> se rompe.</mainText>",
+      "description_es": "<mainText><stats><attention>450</attention> de vida<br><attention>55</attention> de resistencia mágica</stats><br><br><jadeUnique>Intangibilidad:</jadeUnique> Otorga un <shield>escudo de hechizos</shield> que bloquea la siguiente habilidad enemiga. El <shield>escudo</shield> se regenera si no sufres daño de campeones enemigos durante 25 s.<br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>45 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo o cuando el <shield>escudo de hechizos</shield> se rompe.</mainText>",
       "name_en": "Banshee's Veil",
-      "description_en": "<mainText><stats><attention>450</attention> Health<br><attention>55</attention> Magic Resist</stats><br><br><jadeUnique>Intangibility:</jadeUnique> Grants a <shield>Spell Shield</shield> that blocks the next enemy ability. This <shield>Shield</shield> refreshes after no damage is taken from enemy champions for 25 seconds.<br><jadeUnique>Shadow Mending:</jadeUnique> Grants <healing>9 Health Regen</healing> per 5 for up to 10 seconds after taking damage from an enemy champion or when the <shield>Spell Shield</shield> breaks.</mainText>"
+      "description_en": "<mainText><stats><attention>450</attention> Health<br><attention>55</attention> Magic Resist</stats><br><br><jadeUnique>Intangibility:</jadeUnique> Grants a <shield>Spell Shield</shield> that blocks the next enemy ability. This <shield>Shield</shield> refreshes after no damage is taken from enemy champions for 25 seconds.<br><jadeUnique>Shadow Mending:</jadeUnique> Grants <healing>45 Health Regen</healing> per 5 for up to 10 seconds after taking damage from an enemy champion or when the <shield>Spell Shield</shield> breaks.</mainText>"
     },
     "773105": {
       "name": "Protección de la legión",
@@ -36834,7 +36834,7 @@
     },
     "773211": {
       "name": "Hábito del espectro",
-      "description": "<mainText><stats><attention>200</attention> de vida<br><attention>45</attention> de resistencia mágica</stats><br><br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>3 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo.</mainText>",
+      "description": "<mainText><stats><attention>200</attention> de vida<br><attention>45</attention> de resistencia mágica</stats><br><br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>15 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo.</mainText>",
       "colloq": "Spectre's Cowl;Hábito del espectro",
       "plaintext": "",
       "from": [
@@ -36879,9 +36879,9 @@
       "depth": 2,
       "id": "773211",
       "name_es": "Hábito del espectro",
-      "description_es": "<mainText><stats><attention>200</attention> de vida<br><attention>45</attention> de resistencia mágica</stats><br><br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>3 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo.</mainText>",
+      "description_es": "<mainText><stats><attention>200</attention> de vida<br><attention>45</attention> de resistencia mágica</stats><br><br><jadeUnique>Remiendo sombrío:</jadeUnique> Otorga <healing>15 de regeneración de vida</healing> cada 5 s durante un máximo de 10&nbsp;s tras recibir daño de un campeón enemigo.</mainText>",
       "name_en": "Spectre's Cowl",
-      "description_en": "<mainText><stats><attention>200</attention> Health<br><attention>45</attention> Magic Resist</stats><br><br><jadeUnique>Shadow Mending:</jadeUnique> Grants <healing>3 Health Regen</healing> per 5 seconds for up to 10 seconds after taking damage from an enemy champion.</mainText>"
+      "description_en": "<mainText><stats><attention>200</attention> Health<br><attention>45</attention> Magic Resist</stats><br><br><jadeUnique>Shadow Mending:</jadeUnique> Grants <healing>15 Health Regen</healing> per 5 seconds for up to 10 seconds after taking damage from an enemy champion.</mainText>"
     },
     "773222": {
       "name": "Crisol de Mikael",

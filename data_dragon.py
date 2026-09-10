@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import requests
@@ -11,6 +12,7 @@ ICON_DIR = DATA_DIR / "item_icons"
 CHAMPION_ICON_DIR = DATA_DIR / "champion_icons"
 CHAMPION_DATA_DIR = DATA_DIR / "champion_data"
 CHAMPION_MEMORY_CACHE: dict[str, dict] = {}
+RUNE_ICON_CATALOG_CACHE: dict[str, str] = {}
 
 
 def get_latest_version() -> str:
@@ -269,39 +271,142 @@ def get_rune_icon_path(
 ) -> Path | None:
     """Obtiene el icono de una runa desde los assets de Data Dragon."""
     paths = {
+        "Press the Attack": "Styles/Precision/PressTheAttack/PressTheAttack.png",
+        "Lethal Tempo": "Styles/Precision/LethalTempo/LethalTempoTemp.png",
+        "Fleet Footwork": "Styles/Precision/FleetFootwork/FleetFootwork.png",
         "Conquistador": "Styles/Precision/Conqueror/Conqueror.png",
         "Conqueror": "Styles/Precision/Conqueror/Conqueror.png",
+        "Overheal": "Styles/Precision/Overheal/Overheal.png",
+        "Triumph": "Styles/Precision/Triumph/Triumph.png",
         "Triunfo": "Styles/Precision/Triumph/Triumph.png",
+        "Presence of Mind": "Styles/Precision/PresenceOfMind/PresenceOfMind.png",
+        "Legend: Alacrity": "Styles/Precision/LegendAlacrity/LegendAlacrity.png",
         "Leyenda: Presteza": "Styles/Precision/LegendAlacrity/LegendAlacrity.png",
+        "Legend: Tenacity": "Styles/Precision/LegendTenacity/LegendTenacity.png",
+        "Legend: Bloodline": "Styles/Precision/LegendBloodline/LegendBloodline.png",
+        "Coup de Grace": "Styles/Precision/CoupDeGrace/CoupDeGrace.png",
         "Golpe de gracia": "Styles/Precision/CoupDeGrace/CoupDeGrace.png",
+        "Cut Down": "Styles/Precision/CutDown/CutDown.png",
+        "Last Stand": "Styles/Precision/LastStand/LastStand.png",
+        "Demolish": "Styles/Resolve/Demolish/Demolish.png",
+        "Font of Life": "Styles/Resolve/FontOfLife/FontOfLife.png",
+        "Shield Bash": "Styles/Resolve/ShieldBash/ShieldBash.png",
+        "Conditioning": "Styles/Resolve/Conditioning/Conditioning.png",
+        "Second Wind": "Styles/Resolve/SecondWind/SecondWind.png",
+        "Bone Plating": "Styles/Resolve/BonePlating/BonePlating.png",
+        "Overgrowth": "Styles/Resolve/Overgrowth/Overgrowth.png",
+        "Revitalize": "Styles/Resolve/Revitalize/Revitalize.png",
+        "Unflinching": "Styles/Resolve/Unflinching/Unflinching.png",
         "Electrocutar": "Styles/Domination/Electrocute/Electrocute.png",
         "Electrocute": "Styles/Domination/Electrocute/Electrocute.png",
+        "Predator": "Styles/Domination/Predator/Predator.png",
+        "Dark Harvest": "Styles/Domination/DarkHarvest/DarkHarvest.png",
+        "Cheap Shot": "Styles/Domination/CheapShot/CheapShot.png",
+        "Taste of Blood": "Styles/Domination/TasteOfBlood/TasteOfBlood.png",
+        "Sudden Impact": "Styles/Domination/SuddenImpact/SuddenImpact.png",
         "Impacto repentino": "Styles/Domination/SuddenImpact/SuddenImpact.png",
+        "Zombie Ward": "Styles/Domination/ZombieWard/ZombieWard.png",
+        "Eyeball Collection": "Styles/Domination/EyeballCollection/EyeballCollection.png",
         "Colección de globos": "Styles/Domination/EyeballCollection/EyeballCollection.png",
+        "Treasure Hunter": "Styles/Domination/TreasureHunter/TreasureHunter.png",
         "Cazador de tesoros": "Styles/Domination/TreasureHunter/TreasureHunter.png",
+        "Summon Aery": "Styles/Sorcery/SummonAery/SummonAery.png",
+        "Arcane Comet": "Styles/Sorcery/ArcaneComet/ArcaneComet.png",
         "Cometa": "Styles/Sorcery/ArcaneComet/ArcaneComet.png",
+        "Phase Rush": "Styles/Sorcery/PhaseRush/PhaseRush.png",
+        "Manaflow Band": "Styles/Sorcery/ManaflowBand/ManaflowBand.png",
+        "Nimbus Cloak": "Styles/Sorcery/NimbusCloak/NimbusCloak.png",
+        "Transcendence": "Styles/Sorcery/Transcendence/Transcendence.png",
+        "Celerity": "Styles/Sorcery/Celerity/Celerity.png",
+        "Absolute Focus": "Styles/Sorcery/AbsoluteFocus/AbsoluteFocus.png",
+        "Scorch": "Styles/Sorcery/Scorch/Scorch.png",
+        "Waterwalking": "Styles/Sorcery/Waterwalking/Waterwalking.png",
+        "Gathering Storm": "Styles/Sorcery/GatheringStorm/GatheringStorm.png",
+        "Glacial Augment": "Styles/Inspiration/GlacialAugment/GlacialAugment.png",
+        "First Strike": "Styles/Inspiration/FirstStrike/FirstStrike.png",
+        "Unsealed Spellbook": "Styles/Inspiration/UnsealedSpellbook/UnsealedSpellbook.png",
+        "Magical Footwear": "Styles/Inspiration/MagicalFootwear/MagicalFootwear.png",
+        "Cash Back": "Styles/Inspiration/CashBack/CashBack.png",
+        "Future's Market": "Styles/Inspiration/FuturesMarket/FuturesMarket.png",
+        "Minion Dematerializer": "Styles/Inspiration/MinionDematerializer/MinionDematerializer.png",
+        "Biscuit Delivery": "Styles/Inspiration/BiscuitDelivery/BiscuitDelivery.png",
+        "Cosmic Insight": "Styles/Inspiration/CosmicInsight/CosmicInsight.png",
+        "Approach Velocity": "Styles/Inspiration/ApproachVelocity/ApproachVelocity.png",
+        "Adaptive Force": "StatMods/AdaptiveForceIcon.png",
+        "Attack Speed": "StatMods/AttackSpeedIcon.png",
+        "Ability Haste": "StatMods/AbilityHasteIcon.png",
+        "Movement Speed": "StatMods/MovementSpeedIcon.png",
+        "Health Scaling": "StatMods/HealthScalingIcon.png",
+        "Health": "StatMods/HealthIcon.png",
+        "Tenacity and Slow Resist": "StatMods/TenacityIcon.png",
         "Dominación": "Styles/Domination/Domination.png",
         "Precision": "Styles/Precision/Precision.png",
         "Resolve": "Styles/Resolve/Resolve.png",
         "Inspiration": "Styles/Inspiration/Inspiration.png",
     }
-    asset_path = paths.get(rune_name)
-    if not asset_path:
-        return None
-    local_path = DATA_DIR / "rune_icons" / f"{rune_name}.png"
+    aliases = {
+        "Conquistador": "Conqueror",
+        "Triunfo": "Triumph",
+        "Leyenda: Presteza": "Legend: Alacrity",
+        "Golpe de gracia": "Coup de Grace",
+        "Electrocutar": "Electrocute",
+        "Impacto repentino": "Sudden Impact",
+        "Colección de globos": "Eyeball Collection",
+        "Cazador de tesoros": "Treasure Hunter",
+        "Cometa": "Arcane Comet",
+    }
+    lookup_name = aliases.get(rune_name, rune_name)
+    asset_path = paths.get(rune_name) or paths.get(lookup_name)
+    local_name = re.sub(r"[^A-Za-z0-9._-]+", "_", lookup_name).strip("_")
+    local_path = DATA_DIR / "rune_icons" / f"{local_name}.png"
     if local_path.exists():
         return local_path
+
+    if not asset_path:
+        asset_path = _rune_icon_catalog(version).get(lookup_name.lower())
+    if asset_path:
+        try:
+            url_path = asset_path if asset_path.startswith("perk-images/") else f"perk-images/{asset_path}"
+            response = requests.get(f"{DD_BASE_URL}/cdn/img/{url_path}", timeout=10)
+            response.raise_for_status()
+            local_path.parent.mkdir(exist_ok=True)
+            local_path.write_bytes(response.content)
+            return local_path
+        except requests.RequestException:
+            # Las rutas estáticas pueden quedar obsoletas; reintentar con el catálogo oficial.
+            dynamic_path = _rune_icon_catalog(version).get(lookup_name.lower())
+            if dynamic_path and dynamic_path != asset_path:
+                try:
+                    url_path = dynamic_path if dynamic_path.startswith("perk-images/") else f"perk-images/{dynamic_path}"
+                    response = requests.get(f"{DD_BASE_URL}/cdn/img/{url_path}", timeout=10)
+                    response.raise_for_status()
+                    local_path.parent.mkdir(exist_ok=True)
+                    local_path.write_bytes(response.content)
+                    return local_path
+                except requests.RequestException:
+                    pass
+    return None
+
+
+def _rune_icon_catalog(version: str) -> dict[str, str]:
+    if RUNE_ICON_CATALOG_CACHE:
+        return RUNE_ICON_CATALOG_CACHE
     try:
         response = requests.get(
-            f"{DD_BASE_URL}/cdn/img/perk-images/{asset_path}",
+            f"{DD_BASE_URL}/cdn/{version}/data/en_US/runesReforged.json",
             timeout=10,
         )
         response.raise_for_status()
-        local_path.parent.mkdir(exist_ok=True)
-        local_path.write_bytes(response.content)
-        return local_path
-    except requests.RequestException:
-        return None
+        for style in response.json():
+            RUNE_ICON_CATALOG_CACHE[str(style.get("name", "")).lower()] = style.get("icon", "")
+            for slot in style.get("slots", []):
+                for rune in slot.get("runes", []):
+                    name = str(rune.get("name", "")).lower()
+                    if name:
+                        RUNE_ICON_CATALOG_CACHE[name] = rune.get("icon", "")
+    except (requests.RequestException, ValueError, TypeError):
+        return {}
+    return RUNE_ICON_CATALOG_CACHE
 
 
 def get_champion_data(
