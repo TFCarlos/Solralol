@@ -10,7 +10,7 @@ from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QHBoxLayout, QHeaderView, QLabel, QProgressBar,
-    QPushButton, QScrollArea, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
+    QPushButton, QScrollArea, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
     QTextEdit, QVBoxLayout, QWidget,
 )
 
@@ -18,7 +18,7 @@ from app.services.item_synergy_calculator_service import ItemSynergyCalculatorSe
 from app.services.settings_service import SettingsService
 from app.services.synergy_recommendation_service import SynergyRecommendationService
 from app.ui.champion_ai_worker import ChampionAIWorker
-from app.ui.winrate_worker import WinrateUpdateWorker
+from app.ui.champion_scraper_worker import ChampionScraperWorker
 from data_dragon import get_champion_icon_path, get_item_icon_path, get_rune_icon_path
 
 RUNE_TREE_OPTIONS = {
@@ -265,12 +265,14 @@ class LocalAnalysisDialog(QDialog):
     def __init__(self, parent: QWidget | None = None, version: str | None = None, item_catalog: dict | None = None) -> None:
         super().__init__(parent)
         self.version = version or "16.17.1"
+        self.setObjectName("localAnalysisDialog")
         self.setWindowTitle("Análisis local · SolraLoL")
         self.resize(1100, 760)
         self.champions_path = Path(__file__).parents[2] / "data" / "champions_strict.json"
         self.items_path = Path(__file__).parents[2] / "data" / "legendary_items_strict.json"
         self.catalog_path = Path(__file__).parents[2] / "data" / "items.json"
         self.champions = self._load(self.champions_path)
+        self._known_champion_names = {str(entry.get("character", "")).casefold(): str(entry.get("character", "")) for entry in self.champions}
         self.items = self._load(self.items_path)
         raw_catalog = item_catalog if (item_catalog and isinstance(item_catalog, dict)) else self._load(self.catalog_path)
         if not raw_catalog:
@@ -292,6 +294,7 @@ class LocalAnalysisDialog(QDialog):
         root.setSpacing(14)
 
         tabs = QTabWidget()
+        tabs.setObjectName("localAnalysisTabs")
         analysis = QWidget()
         analysis.setObjectName("localAnalysisView")
         analysis_layout = QVBoxLayout(analysis)
@@ -328,11 +331,11 @@ class LocalAnalysisDialog(QDialog):
         self.winrate_progress_bar.setVisible(False)
         self.update_single_champ_btn = QPushButton("Actualizar campeón")
         self.update_single_champ_btn.setObjectName("secondaryButton")
-        self.update_single_champ_btn.setToolTip("Actualizar winrates de matchups únicamente del campeón seleccionado")
+        self.update_single_champ_btn.setToolTip("Descargar desde U.GG el build, runas y matchups del campeón seleccionado")
         self.update_single_champ_btn.clicked.connect(self._start_single_champion_winrate_update)
         self.update_winrates_btn = QPushButton("Actualizar todos")
         self.update_winrates_btn.setObjectName("updateWinratesBtn")
-        self.update_winrates_btn.setToolTip("Actualizar winrates de matchups para todos los campeones usando Riot Match V5 API")
+        self.update_winrates_btn.setToolTip("Descargar desde U.GG el build, runas y matchups de todos los campeones")
         self.update_winrates_btn.clicked.connect(self._start_all_champions_winrate_update)
         controls.addWidget(self.winrate_progress_label)
         controls.addWidget(self.winrate_progress_bar)
@@ -441,6 +444,7 @@ class LocalAnalysisDialog(QDialog):
         analysis_layout.addWidget(self.item_table)
         analysis_layout.addStretch(1)
         analysis_scroll = QScrollArea()
+        analysis_scroll.setObjectName("localAnalysisScroll")
         analysis_scroll.setWidgetResizable(True)
         analysis_scroll.setFrameShape(QFrame.Shape.NoFrame)
         analysis_scroll.setWidget(analysis)
@@ -543,19 +547,39 @@ class LocalAnalysisDialog(QDialog):
             if item.widget():
                 item.widget().deleteLater()
         pages = profile.get("common_runes", [])
-        if not isinstance(pages, list) or not pages:
+        if not self._valid_rune_pages(pages):
             pages = [self._default_rune_page(profile.get("basic_info", {}))]
-        for index, page in enumerate(pages):
+        for index, page in enumerate(pages[:2]):
             if isinstance(page, dict):
                 self.rune_pages_layout.addWidget(self._rune_page_card(page, index + 1), 1)
+
+    @staticmethod
+    def _valid_rune_pages(pages: Any) -> bool:
+        if not isinstance(pages, list) or not pages:
+            return False
+        for page in pages[:2]:
+            if not isinstance(page, dict):
+                return False
+            slots, secondary = page.get("slots"), page.get("secondary_slots")
+            if not isinstance(slots, list) or len(slots) != 3 or not isinstance(secondary, list) or len(secondary) != 2:
+                return False
+            if page.get("keystone") in slots or page.get("primary_tree") == page.get("secondary_tree"):
+                return False
+        return True
 
     def _rune_page_card(self, page: dict[str, Any], index: int) -> QFrame:
         card = QFrame()
         card.setObjectName("localRunePage")
+        card.setMaximumHeight(178)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(7)
-        name = QLabel(str(page.get("name", f"Página {index}")))
+        page_name = str(page.get("name", f"Página {index}"))
+        games = int(page.get("games", 0) or 0)
+        win_rate = page.get("win_rate")
+        suffix = f" · {float(win_rate):.1%}" if isinstance(win_rate, (int, float)) and win_rate else ""
+        suffix += f" · {games:,} partidas".replace(",", ".") if games else ""
+        name = QLabel(page_name + suffix)
         name.setObjectName("localRunePageTitle")
         layout.addWidget(name)
 
@@ -584,9 +608,7 @@ class LocalAnalysisDialog(QDialog):
         shard_title = QLabel("FRAGMENTOS")
         shard_title.setObjectName("localRuneSectionLabel")
         shard_layout.addWidget(shard_title)
-        selected_shards = {str(value) for value in shards}
-        for row in RUNE_SHARD_OPTIONS:
-            shard_layout.addLayout(self._rune_option_row(row, selected_shards))
+        shard_layout.addLayout(self._rune_option_row([str(value) for value in shards], set(shards)))
         layout.addWidget(shard_panel)
         return card
 
@@ -608,16 +630,10 @@ class LocalAnalysisDialog(QDialog):
         heading.addStretch(1)
         layout.addLayout(heading)
 
-        values = list(runes) if isinstance(runes, list) else []
-        selected = {str(value) for value in values}
-        options = RUNE_TREE_OPTIONS.get(tree, [values])
-        if is_primary:
-            layout.addLayout(LocalAnalysisDialog._rune_option_row(
-                options[0], selected | {keystone}, keystone,
-            ))
-            options = options[1:]
-        for row in options:
-            layout.addLayout(LocalAnalysisDialog._rune_option_row(row, selected))
+        values = [str(value) for value in runes] if isinstance(runes, list) else []
+        # Mostramos sólo las runas seleccionadas: no el árbol entero.
+        chosen = ([keystone] if is_primary and keystone else []) + values
+        layout.addLayout(LocalAnalysisDialog._rune_option_row(chosen, set(chosen), keystone))
         return panel
 
     @staticmethod
@@ -639,20 +655,25 @@ class LocalAnalysisDialog(QDialog):
         layout = QHBoxLayout(chip)
         layout.setContentsMargins(3, 3, 5, 3)
         layout.setSpacing(5)
-        icon = QLabel("R")
+        shard_marks = {
+            "Adaptive Force": "✦", "Attack Speed": "⚡", "Ability Haste": "⌛",
+            "Movement Speed": "➜", "Health Scaling": "♥", "Health": "♥",
+            "Tenacity and Slow Resist": "⛨",
+        }
+        icon = QLabel(shard_marks.get(name, "R"))
         icon.setObjectName(
             "localRuneSelectionIconActive"
             if object_name in {"localRuneSelectionActive", "localRuneKeystone"}
             else "localRuneSelectionIcon"
         )
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setFixedSize(42, 42)
+        icon.setFixedSize(30, 30)
         path = get_rune_icon_path(name, "16.17.1")
         if path and path.exists():
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
                 icon.setText("")
-                icon.setPixmap(pixmap.scaled(38, 38, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                icon.setPixmap(pixmap.scaled(27, 27, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         layout.addWidget(icon)
         chip.setToolTip(name)
         return chip
@@ -681,8 +702,8 @@ class LocalAnalysisDialog(QDialog):
     @staticmethod
     def _default_rune_page(basic: dict[str, Any]) -> dict[str, Any]:
         if str(basic.get("damage_type", "AD")) == "AP":
-            return {"name": "Página recomendada", "keystone": "Electrocutar", "primary_tree": "Dominación", "secondary_tree": "Inspiration", "runes": ["Impacto repentino", "Colección de globos", "Cazador de tesoros"]}
-        return {"name": "Página recomendada", "keystone": "Conquistador", "primary_tree": "Precision", "secondary_tree": "Resolve", "runes": ["Triunfo", "Leyenda: Presteza", "Golpe de gracia"]}
+            return {"name": "Página recomendada", "keystone": "Electrocutar", "primary_tree": "Dominación", "secondary_tree": "Inspiration", "slots": ["Impacto repentino", "Colección de globos", "Cazador de tesoros"], "secondary_slots": ["Magical Footwear", "Cosmic Insight"]}
+        return {"name": "Página recomendada", "keystone": "Conquistador", "primary_tree": "Precision", "secondary_tree": "Resolve", "slots": ["Triunfo", "Leyenda: Presteza", "Golpe de gracia"], "secondary_slots": ["Second Wind", "Overgrowth"]}
 
     @staticmethod
     def _rune_chip(mark: str, name: str, tree: str) -> QWidget:
@@ -727,7 +748,11 @@ class LocalAnalysisDialog(QDialog):
 
     def _apply_style(self) -> None:
         self.setStyleSheet("""
-            QDialog { background: #07111f; color: #e8f0ff; }
+            QDialog#localAnalysisDialog { background: #07111f; color: #e8f0ff; }
+            QWidget#localAnalysisView, QScrollArea#localAnalysisScroll, QScrollArea#localAnalysisScroll::viewport,
+            QScrollArea#localAnalysisScroll > QWidget > QWidget, QTabWidget#localAnalysisTabs::pane {
+                background: #07111f; color: #e8f0ff;
+            }
             QFrame#localAnalysisHeader {
                 background: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0,
                     stop: 0 #102b46, stop: 1 #0b192b);
@@ -782,14 +807,13 @@ class LocalAnalysisDialog(QDialog):
             QComboBox:focus, QTextEdit:focus { border-color: #d9ae4f; }
             QTableWidget { gridline-color: #193750; alternate-background-color: #10253b; }
             QHeaderView::section { background: #153452; color: #d9ae4f; border: 0; padding: 7px; font-weight: 700; }
-            QTabWidget::pane { border: 1px solid #234663; background: #091827; }
-            QTabBar::tab { background: #102238; color: #9db3ca; padding: 9px 16px; border: 1px solid #234663; }
+            QTabWidget#localAnalysisTabs::pane { border: 1px solid #234663; background: #07111f; }
+            QTabBar::tab { background: #0d2237; color: #9db3ca; padding: 9px 16px; border: 1px solid #234663; border-top-left-radius: 5px; border-top-right-radius: 5px; }
             QTabBar::tab:selected { background: #d9ae4f; color: #101a27; font-weight: 700; }
-            QPushButton { background: #d9ae4f; color: #101a27; border: 1px solid #f0cc70; border-radius: 6px; padding: 7px 12px; font-weight: 700; }
-            QPushButton:hover { background: #ebc56a; }
-            QPushButton#updateWinratesBtn { background: #d9ae4f; color: #101a27; border: 1px solid #f0cc70; border-radius: 6px; padding: 6px 12px; font-weight: 700; font-size: 11px; }
-            QPushButton#updateWinratesBtn:hover { background: #ebc56a; }
-            QPushButton#updateWinratesBtn:disabled { background: #203a52; color: #6f869e; border-color: #2a4c6c; }
+            QPushButton { min-height: 30px; background: #d9ae4f; color: #101a27; border: 1px solid #f0cc70; border-radius: 6px; padding: 6px 12px; font-weight: 700; font-size: 11px; }
+            QPushButton:hover { background: #ebc56a; border-color: #ffe09a; }
+            QPushButton:pressed { background: #bd9138; }
+            QPushButton:disabled { background: #203a52; color: #6f869e; border-color: #2a4c6c; }
             QLabel#winrateProgressLabel { color: #d9ae4f; font-size: 11px; font-weight: 700; padding-right: 4px; }
             QProgressBar#winrateProgressBar { border: 1px solid #234663; border-radius: 4px; background: #091827; }
             QProgressBar#winrateProgressBar::chunk { background-color: #d9ae4f; border-radius: 3px; }
@@ -825,8 +849,15 @@ class LocalAnalysisDialog(QDialog):
             f"{basic.get('play_style', 'Adaptable')}  ·  {basic.get('damage_type', 'Híbrido')}  ·  "
             f"Dificultad {basic.get('difficulty_floor', '?')}-{basic.get('difficulty_ceiling', '?')}/10"
         )
-        rune_primary, rune_secondary = self._recommended_runes(basic)
-        self.rune_summary.setText(f"RUNAS RECOMENDADAS   {rune_primary}  /  {rune_secondary}")
+        rune_page = self._ugg_rune_page(profile)
+        if rune_page:
+            self.rune_summary.setText(
+                "RUNAS U.GG · "
+                f"{rune_page.get('keystone', '')} · {rune_page.get('primary_tree', '')} / "
+                f"{rune_page.get('secondary_tree', '')}"
+            )
+        else:
+            self.rune_summary.setText("RUNAS U.GG · Pendiente de una importación válida")
         self._render_rune_pages(profile)
         champion_style = str(basic.get("play_style", "Adaptable"))
         self.style_value.setText(champion_style)
@@ -883,14 +914,12 @@ class LocalAnalysisDialog(QDialog):
         except Exception:
             return {}
 
-    @staticmethod
-    def _recommended_runes(basic: dict[str, Any]) -> tuple[str, str]:
-        damage = str(basic.get("damage_type", "AD"))
-        if damage == "AP":
-            return "Electrocutar / Dominación", "Inspiration"
-        if damage == "True":
-            return "Conquistador / Precision", "Resolve"
-        return "Conquistador / Precision", "Resolve"
+    def _ugg_rune_page(self, profile: dict[str, Any]) -> dict[str, Any] | None:
+        """Devuelve exclusivamente la primera página válida importada de U.GG."""
+        pages = profile.get("common_runes", [])
+        if not self._valid_rune_pages(pages):
+            return None
+        return pages[0] if isinstance(pages[0], dict) else None
 
     @staticmethod
     def _rune_parts(value: str) -> tuple[str, str]:
@@ -1022,6 +1051,8 @@ class LocalAnalysisDialog(QDialog):
                 item.widget().deleteLater()
         scaling = profile.get("power_curve_and_scaling", {})
         names = scaling.get("power_spike_items", []) if isinstance(scaling, dict) else []
+        # Las botas son una compra utilitaria; no deben mostrarse como spike.
+        names = [name for name in names if "botas" not in str(name).casefold() and "boots" not in str(name).casefold()]
         items_by_id = self._recommendation_items_by_id()
         catalog = self._catalog_items().get("items", {})
 
@@ -1188,10 +1219,18 @@ class LocalAnalysisDialog(QDialog):
         else:
             self.matchup_status.setText("Sin winrates configurados para este campeón.")
 
-    @staticmethod
-    def _extract_matchup_info(entry: Any) -> tuple[str, float, float, str, int, int, str]:
+    def _extract_matchup_info(self, entry: Any) -> tuple[str, float, float, str, int, int, str]:
         if isinstance(entry, dict):
-            name = str(entry.get("champion", "?"))
+            raw_name = str(entry.get("champion", "?"))
+            name = self._known_champion_names.get(raw_name.casefold(), "")
+            if not name:
+                # Los JSON creados por el parser antiguo pueden contener la
+                # tarjeta HTML completa. Sólo enseñamos un campeón reconocible.
+                import re
+                found = re.search(r"Games\s+vs\s+(.+?)(?:\s+(?:the|wins)\b|$)", raw_name, re.IGNORECASE)
+                name = self._known_champion_names.get(found.group(1).strip().casefold(), "") if found else ""
+            if not name:
+                name = "Campeón no disponible"
             wr_lane = float(entry.get("win_rate", 0.50) or 0.50)
             wr_overall = float(entry.get("overall_win_rate", entry.get("win_rate", 0.50)) or 0.50)
             tip = str(entry.get("tip", ""))
@@ -1215,6 +1254,7 @@ class LocalAnalysisDialog(QDialog):
         """Crea una tarjeta estilizada con la imagen del campeón, nombre, winrate de línea y winrate overall."""
         card = QFrame()
         card.setObjectName("matchupCardCounter" if is_counter else "matchupCardGood")
+        card.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         layout = QHBoxLayout(card)
         layout.setContentsMargins(6, 5, 8, 5)
         layout.setSpacing(8)
@@ -1235,6 +1275,9 @@ class LocalAnalysisDialog(QDialog):
         name_box.setSpacing(1)
         name_lbl = QLabel(champion_name)
         name_lbl.setObjectName("matchupChampName")
+        name_lbl.setMaximumWidth(135)
+        name_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        name_lbl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         name_box.addWidget(name_lbl)
 
         games_count_val = lane_games or overall_games
@@ -1328,14 +1371,7 @@ class LocalAnalysisDialog(QDialog):
         self._start_winrate_update(target_champion_name="")
 
     def _start_winrate_update(self, target_champion_name: str = "") -> None:
-        """Inicia el proceso de actualización de winrates mediante Riot Match V5."""
-        settings_service = SettingsService()
-        settings = settings_service.load()
-        api_key = settings.get("riot_api_key", "")
-        game_name = settings.get("riot_game_name", "")
-        tag_line = settings.get("riot_tag_line", "")
-        account_region = settings.get("riot_account_region", "europe")
-        platform_region = settings.get("riot_platform_region", "euw1")
+        """Inicia la sincronización pública con U.GG en un hilo secundario."""
 
         self.update_single_champ_btn.setEnabled(False)
         self.update_winrates_btn.setEnabled(False)
@@ -1346,22 +1382,17 @@ class LocalAnalysisDialog(QDialog):
         self.winrate_progress_label.setVisible(True)
 
         if target_champion_name:
-            self.status.setText(f"Actualizando winrates de matchups para '{target_champion_name}'...")
+            self.status.setText(f"Actualizando datos de U.GG para '{target_champion_name}'...")
         else:
-            self.status.setText("Actualizando winrates de matchups para todos los campeones...")
+            self.status.setText("Actualizando datos de U.GG para todos los campeones...")
 
-        self._winrate_worker = WinrateUpdateWorker(
-            api_key=api_key,
-            account_region=account_region,
-            platform_region=platform_region,
-            game_name=game_name,
-            tag_line=tag_line,
+        self._winrate_worker = ChampionScraperWorker(
             target_champion_name=target_champion_name,
             champions_path=self.champions_path,
             parent=self,
         )
         self._winrate_worker.progress.connect(self._on_winrate_progress)
-        self._winrate_worker.finished_calculation.connect(self._on_winrate_finished)
+        self._winrate_worker.finished_scraping.connect(self._on_winrate_finished)
         self._winrate_worker.error_occurred.connect(self._on_winrate_error)
         self._winrate_worker.start()
 
@@ -1377,9 +1408,10 @@ class LocalAnalysisDialog(QDialog):
         self.update_winrates_btn.setEnabled(True)
         self.champions = self._load(self.champions_path)
         self._refresh_analysis()
-        self.status.setText(
-            f"Winrates actualizados con éxito: {total_champs} campeón/es, {total_matchups} enfrentamientos calculados."
-        )
+        if total_matchups:
+            self.status.setText(f"Datos de U.GG actualizados: {total_matchups}/{total_champs} campeón/es sincronizados.")
+        else:
+            self.status.setText("U.GG no entregó todos los datos requeridos; no se modificó el JSON. Revisa tu conexión o el cambio de versión de U.GG.")
 
     def _on_winrate_error(self, error_msg: str) -> None:
         self.winrate_progress_bar.setVisible(False)

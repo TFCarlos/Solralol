@@ -332,13 +332,14 @@ def get_rune_icon_path(
         "Biscuit Delivery": "Styles/Inspiration/BiscuitDelivery/BiscuitDelivery.png",
         "Cosmic Insight": "Styles/Inspiration/CosmicInsight/CosmicInsight.png",
         "Approach Velocity": "Styles/Inspiration/ApproachVelocity/ApproachVelocity.png",
-        "Adaptive Force": "StatMods/AdaptiveForceIcon.png",
-        "Attack Speed": "StatMods/AttackSpeedIcon.png",
-        "Ability Haste": "StatMods/AbilityHasteIcon.png",
-        "Movement Speed": "StatMods/MovementSpeedIcon.png",
-        "Health Scaling": "StatMods/HealthScalingIcon.png",
-        "Health": "StatMods/HealthIcon.png",
-        "Tenacity and Slow Resist": "StatMods/TenacityIcon.png",
+        # Los fragmentos usan subcarpetas propias; no la ruta plana de runas.
+        "Adaptive Force": "StatMods/StatModsAdaptiveForceIcon/StatModsAdaptiveForceIcon.png",
+        "Attack Speed": "StatMods/StatModsAttackSpeedIcon/StatModsAttackSpeedIcon.png",
+        "Ability Haste": "StatMods/StatModsCDRScalingIcon/StatModsCDRScalingIcon.png",
+        "Movement Speed": "StatMods/StatModsMovementSpeedIcon/StatModsMovementSpeedIcon.png",
+        "Health Scaling": "StatMods/StatModsHealthScalingIcon/StatModsHealthScalingIcon.png",
+        "Health": "StatMods/StatModsHealthPlusIcon/StatModsHealthPlusIcon.png",
+        "Tenacity and Slow Resist": "StatMods/StatModsTenacityIcon/StatModsTenacityIcon.png",
         "Dominación": "Styles/Domination/Domination.png",
         "Precision": "Styles/Precision/Precision.png",
         "Resolve": "Styles/Resolve/Resolve.png",
@@ -407,6 +408,21 @@ def _rune_icon_catalog(version: str) -> dict[str, str]:
     except (requests.RequestException, ValueError, TypeError):
         return {}
     return RUNE_ICON_CATALOG_CACHE
+
+
+def download_all_rune_icons(version: str) -> int:
+    """Descarga en caché todos los iconos de runas y fragmentos oficiales."""
+    catalog = _rune_icon_catalog(version)
+    downloaded = 0
+    # El catálogo cubre runas y árboles; los fragmentos no figuran en él.
+    names = set(catalog) | {
+        "Adaptive Force", "Attack Speed", "Ability Haste", "Movement Speed",
+        "Health Scaling", "Health", "Tenacity and Slow Resist",
+    }
+    for name in names:
+        before = get_rune_icon_path(name, version)
+        downloaded += int(before is not None)
+    return downloaded
 
 
 def get_champion_data(
