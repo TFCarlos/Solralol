@@ -142,9 +142,20 @@ class DataDragonAssetService(QObject):
             f"{self.version}/img/item/{int(item_id)}.png"
         )
 
+    def profile_icon_url(self, icon_id: int) -> str:
+        return (
+            f"https://ddragon.leagueoflegends.com/cdn/"
+            f"{self.version}/img/profileicon/{int(icon_id)}.png"
+        )
+
     def _cache_path(self, url: str) -> Path:
         filename = url.rsplit("/", 1)[-1]
-        category = "items" if "/item/" in url else "champions"
+        if "/profileicon/" in url:
+            category = "profileicons"
+        elif "/item/" in url:
+            category = "items"
+        else:
+            category = "champions"
         return self.cache_dir / category / filename
 
     def request_pixmap(self, url: str, key: str) -> QPixmap:

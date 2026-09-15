@@ -8,14 +8,19 @@ from typing import Any
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -28,6 +33,9 @@ from app.services.live_analysis_models_and_calculator import (
     attach_achievements,
     calculate_post_stats,
 )
+from app.services.match_log_service import MatchLogService
+from app.services.settings_service import SettingsService
+from app.ui.match_ai_worker import MatchAIWorker
 
 import requests
 from app.ui.recommendation_panel import RecommendationPanel
@@ -377,6 +385,9 @@ class LiveMatchAnalysisDialog(QDialog):
         self.role_buttons: dict[str, QPushButton] = {}
         self.recommendation_button: QPushButton | None = None
         self.recommendation_panel: RecommendationPanel | None = None
+        self.ai_tab_button: QPushButton | None = None
+        self.ai_worker: MatchAIWorker | None = None
+        self.is_analyzing_ai = False
         self._last_ui_refresh = 0.0
 
 
@@ -500,14 +511,26 @@ class LiveMatchAnalysisDialog(QDialog):
             lambda checked=False: self.show_recommendations()
         )
         layout.addWidget(self.recommendation_button)
+
+        # Botón de Análisis con IA
+        self.ai_tab_button = QPushButton("🤖 ANALIZAR PARTIDA CON IA")
+        self.ai_tab_button.setObjectName("aiTabButton")
+        self.ai_tab_button.setCheckable(True)
+        self.ai_tab_button.clicked.connect(
+            lambda checked=False: self.show_ai_analysis()
+        )
+        layout.addWidget(self.ai_tab_button)
         
         return layout
 
 
     def show_role(self, role):
-        if self.current_view == "recommendations" and self.recommendation_button:
+        if self.recommendation_button:
             self.recommendation_button.setChecked(False)
-        
+        if self.ai_tab_button:
+            self.ai_tab_button.setChecked(False)
+        self.recommendation_panel = None
+
         self.current_view = "role"
         self.current_role = role
         if role in self.role_buttons:
@@ -546,6 +569,9 @@ class LiveMatchAnalysisDialog(QDialog):
         if self.recommendation_button is not None:
             self.recommendation_button.setChecked(True)
 
+        if self.ai_tab_button is not None:
+            self.ai_tab_button.setChecked(False)
+
         if self.recommendation_panel is None:
             while self.content_layout.count():
                 item = self.content_layout.takeAt(0)
@@ -574,6 +600,237 @@ class LiveMatchAnalysisDialog(QDialog):
         self.recommendation_panel.update_recommendations(
             self.session
         )
+
+    def show_ai_analysis(self) -> None:
+        """Muestra la pestaña de Análisis de Partida con IA."""
+        self.current_view = "ai_analysis"
+
+        for button in self.role_buttons.values():
+            button.setChecked(False)
+
+        if self.recommendation_button is not None:
+            self.recommendation_button.setChecked(False)
+
+        if self.ai_tab_button is not None:
+            self.ai_tab_button.setChecked(True)
+
+        self.recommendation_panel = None
+
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+
+        # Asegurar que el log de la partida se genera y guarda
+        try:
+            log_service = MatchLogService()
+            log_data, formatted_text = log_service.get_match_log(self.session)
+        except Exception:
+            formatted_text = ""
+
+        ai_widget = self._create_ai_analysis_view(formatted_text)
+        self.content_layout.addWidget(ai_widget, 1)
+
+    def _create_ai_analysis_view(self, formatted_log: str) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(12)
+
+        # Header card para el log y la IA
+        header_card = QFrame()
+        header_card.setObjectName("aiHeaderCard")
+        h_layout = QHBoxLayout(header_card)
+        h_layout.setContentsMargins(18, 14, 18, 14)
+        h_layout.setSpacing(14)
+
+        info_vbox = QVBoxLayout()
+        info_vbox.setSpacing(4)
+        title = QLabel("🤖 ANÁLISIS DE PARTIDA CON IA (GEMINI)")
+        title.setObjectName("aiHeaderTitle")
+        info_vbox.addWidget(title)
+
+        log_path_str = self.session.get("match_log_txt_path") or f"~/.solralol/match_logs/match_{self.session.get('session_id', 'id')}.log"
+        path_label = QLabel(f"📄 Fichero de Log: {log_path_str}")
+        path_label.setObjectName("aiLogPathLabel")
+        info_vbox.addWidget(path_label)
+        h_layout.addLayout(info_vbox, 1)
+
+        # Botón para inspeccionar el log
+        view_log_btn = QPushButton("📄 Ver Log de Partida")
+        view_log_btn.setObjectName("secondaryAiButton")
+        view_log_btn.clicked.connect(lambda: self._show_raw_log_dialog(formatted_log))
+        h_layout.addWidget(view_log_btn)
+
+        # Botón para ejecutar/re-ejecutar el análisis
+        has_analysis = bool(self.session.get("ai_analysis"))
+        analyze_btn = QPushButton("🔄 Re-analizar con IA" if has_analysis else "🤖 Analizar Partida con IA")
+        analyze_btn.setObjectName("primaryAiButton")
+        analyze_btn.setEnabled(not getattr(self, "is_analyzing_ai", False))
+        analyze_btn.clicked.connect(self._start_ai_analysis)
+        h_layout.addWidget(analyze_btn)
+
+        layout.addWidget(header_card)
+
+        # Cuerpo principal
+        if getattr(self, "is_analyzing_ai", False):
+            loading_card = QFrame()
+            loading_card.setObjectName("aiIntroCard")
+            l_layout = QVBoxLayout(loading_card)
+            l_layout.setContentsMargins(24, 32, 24, 32)
+            l_layout.setSpacing(16)
+            l_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            spin_lbl = QLabel("⏳ Generando análisis inteligente con Gemini IA...")
+            spin_lbl.setStyleSheet("color: #c4b5fd; font-size: 16px; font-weight: bold;")
+            spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            l_layout.addWidget(spin_lbl)
+
+            desc_lbl = QLabel("Procesando la cronología de eventos, farmeo, builds, asesinatos y muertes...")
+            desc_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+            desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            l_layout.addWidget(desc_lbl)
+
+            pbar = QProgressBar()
+            pbar.setRange(0, 0)
+            pbar.setMaximumWidth(400)
+            pbar.setStyleSheet("QProgressBar { min-height: 8px; border-radius: 4px; background: rgba(30, 41, 59, 200); } QProgressBar::chunk { background: #8b5cf6; border-radius: 4px; }")
+            l_layout.addWidget(pbar)
+
+            layout.addWidget(loading_card, 1)
+
+        elif has_analysis:
+            model_used = self.session.get("ai_analysis_model", "Gemini AI")
+            model_info = QLabel(f"✨ Análisis generado por {model_used}")
+            model_info.setStyleSheet("color: #a78bfa; font-size: 11px; font-weight: bold; margin-left: 4px;")
+            layout.addWidget(model_info)
+
+            text_browser = QTextBrowser()
+            text_browser.setObjectName("aiAnalysisTextBrowser")
+            text_browser.setOpenExternalLinks(True)
+            text_browser.setMarkdown(self.session["ai_analysis"])
+            layout.addWidget(text_browser, 1)
+
+        else:
+            intro_card = QFrame()
+            intro_card.setObjectName("aiIntroCard")
+            i_layout = QVBoxLayout(intro_card)
+            i_layout.setContentsMargins(28, 24, 28, 24)
+            i_layout.setSpacing(14)
+
+            head_lbl = QLabel("¿Qué evaluará la IA en esta partida?")
+            head_lbl.setStyleSheet("color: #c4b5fd; font-size: 18px; font-weight: bold;")
+            i_layout.addWidget(head_lbl)
+
+            items_text = (
+                "• 🟢🟡🔴 **Fases del juego:** Rendimiento en Early (0-15m), Mid (15-25m) y Late game.\n"
+                "• 🌾 **Farmeo y Eficiencia:** CS por minuto, curva de farmeo y brechas de oro vs el rival.\n"
+                "• ⚔️ **Build vs Equipo Enemigo:** Adaptación de ítems ante la composición y tipos de daño enemigos.\n"
+                "• ⏱️ **Velocidad de Compra y Tempos:** Eficiencia de recalls y aprovechamiento de power spikes.\n"
+                "• 🎯 **Kills vs Objetivos:** Identificación de bajas que dieron torres/dragones y **'kills vacías'**.\n"
+                "• 💀 **Muertes e Impacto:** Cómo afectaron tus muertes a la pérdida de objetivos estratégicos.\n"
+                "• 💡 **Consejos accionables:** Recomendaciones clave para tus siguientes partidas."
+            )
+            detail_lbl = QLabel()
+            detail_lbl.setTextFormat(Qt.TextFormat.MarkdownText)
+            detail_lbl.setText(items_text)
+            detail_lbl.setStyleSheet("color: #cbd5e1; font-size: 13px; line-height: 1.5;")
+            detail_lbl.setWordWrap(True)
+            i_layout.addWidget(detail_lbl)
+
+            start_btn = QPushButton("🚀 Comenzar Análisis con IA")
+            start_btn.setObjectName("primaryAiButton")
+            start_btn.setMinimumHeight(42)
+            start_btn.clicked.connect(self._start_ai_analysis)
+            i_layout.addWidget(start_btn, 0, Qt.AlignmentFlag.AlignLeft)
+
+            i_layout.addStretch(1)
+            layout.addWidget(intro_card, 1)
+
+        return container
+
+    def _start_ai_analysis(self) -> None:
+        settings = SettingsService().load()
+        api_key = settings.get("gemini_api_key", "").strip()
+
+        if not api_key:
+            QMessageBox.warning(
+                self,
+                "Gemini API Key Requerida",
+                "No has configurado tu Gemini API Key.\n\n"
+                "Por favor, ve a la pestaña de 'Ajustes' en la ventana principal de SolraLoL "
+                "y añade tu API Key gratuita de Google AI Studio."
+            )
+            return
+
+        self.is_analyzing_ai = True
+        self.show_ai_analysis()
+
+        self.ai_worker = MatchAIWorker(self.session, api_key, self)
+        self.ai_worker.finished_analysis.connect(self._on_ai_analysis_success)
+        self.ai_worker.error_occurred.connect(self._on_ai_analysis_error)
+        self.ai_worker.start()
+
+    def _on_ai_analysis_success(self, markdown_text: str, model_used: str) -> None:
+        self.is_analyzing_ai = False
+        self.session["ai_analysis"] = markdown_text
+        self.session["ai_analysis_model"] = model_used
+
+        try:
+            from app.services.match_log_service import MatchLogService
+            MatchLogService().save_match_log(self.session)
+        except Exception:
+            pass
+
+        self.show_ai_analysis()
+
+    def _on_ai_analysis_error(self, error_msg: str) -> None:
+        self.is_analyzing_ai = False
+        QMessageBox.critical(
+            self,
+            "Error en Análisis IA",
+            f"No se pudo completar el análisis de la partida con IA:\n\n{error_msg}"
+        )
+        self.show_ai_analysis()
+
+    def _show_raw_log_dialog(self, formatted_log: str) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Registro Oficial de Log de Partida · SolraLoL")
+        dialog.resize(950, 700)
+
+        d_layout = QVBoxLayout(dialog)
+        d_layout.setContentsMargins(18, 18, 18, 18)
+        d_layout.setSpacing(12)
+
+        title = QLabel("📄 Fichero de Log de Partida")
+        title.setStyleSheet("color: #c4b5fd; font-size: 15px; font-weight: bold;")
+        d_layout.addWidget(title)
+
+        text_edit = QTextBrowser()
+        text_edit.setPlainText(formatted_log)
+        text_edit.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 11px; color: #cbd5e1; background: #090e1c; border: 1px solid rgba(138, 92, 246, 120); border-radius: 8px; padding: 10px;")
+        d_layout.addWidget(text_edit, 1)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch(1)
+
+        copy_btn = QPushButton("📋 Copiar Log")
+        copy_btn.setObjectName("secondaryAiButton")
+        def copy_log():
+            QApplication.clipboard().setText(formatted_log)
+            copy_btn.setText("✓ ¡Copiado!")
+        copy_btn.clicked.connect(copy_log)
+        btn_layout.addWidget(copy_btn)
+
+        close_btn = QPushButton("Cerrar")
+        close_btn.setObjectName("secondaryButton")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+
+        d_layout.addLayout(btn_layout)
+        dialog.exec()
 
     def _create_role_content(self, ally, ally_key, enemy, enemy_key):
         content = QWidget()
@@ -757,40 +1014,183 @@ class LiveMatchAnalysisDialog(QDialog):
         return header
 
 
+    def _extract_runes_data(self, player: dict) -> list[dict[str, Any]]:
+        runes = player.get("runes", {})
+        if not isinstance(runes, dict):
+            runes = {}
+
+        items = []
+        keystone = runes.get("keystone")
+        primary_tree = runes.get("primaryRuneTree") or runes.get("primary_tree")
+        secondary_tree = runes.get("secondaryRuneTree") or runes.get("secondary_tree")
+
+        def _val(x):
+            if isinstance(x, dict):
+                return x.get('displayName') or x.get('name') or ""
+            return str(x) if x else ""
+
+        k_name = _val(keystone)
+        p_name = _val(primary_tree)
+        s_name = _val(secondary_tree)
+
+        if k_name:
+            items.append({"label": "Clave", "name": k_name, "is_keystone": True})
+        if p_name and p_name.lower() != k_name.lower():
+            items.append({"label": "Principal", "name": p_name, "is_keystone": False})
+        if s_name:
+            items.append({"label": "Secundaria", "name": s_name, "is_keystone": False})
+
+        if not items and "live" in runes and isinstance(runes["live"], list):
+            for entry in runes["live"]:
+                name = _val(entry)
+                if name:
+                    items.append({"label": "Runa", "name": name, "is_keystone": False})
+
+        if not items:
+            champ_name = player.get("champion_name", "")
+            try:
+                from data_dragon import get_champion_data
+                champ_info = get_champion_data(champ_name) if champ_name else {}
+                common_runes = champ_info.get("common_runes", []) if isinstance(champ_info, dict) else []
+                if common_runes and isinstance(common_runes, list) and len(common_runes) > 0:
+                    first_page = common_runes[0]
+                    if isinstance(first_page, dict):
+                        k = first_page.get("keystone")
+                        p = first_page.get("primary_tree")
+                        s = first_page.get("secondary_tree")
+                        if k:
+                            items.append({"label": "Clave", "name": str(k), "is_keystone": True})
+                        if p:
+                            items.append({"label": "Principal", "name": str(p), "is_keystone": False})
+                        if s:
+                            items.append({"label": "Secundaria", "name": str(s), "is_keystone": False})
+            except Exception:
+                pass
+
+        return items
+
     def _create_runes_panel(self, player):
         frame = QFrame()
         frame.setObjectName("liveInfoPanel")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(10, 8, 10, 8)
-        title = QLabel("RUNAS · VISIBLES EN LIVE")
+        layout.setSpacing(6)
+
+        title = QLabel("RUNAS DEL JUGADOR")
         title.setObjectName("livePanelTitle")
         layout.addWidget(title)
-        runes = player.get("runes", {})
-        entries = runes.get("live", []) if isinstance(runes, dict) else []
-        if not entries:
-            entries = ["Runa no disponible"]
-        for entry in entries:
-            text = entry.get("displayName", entry.get("name", "Runa")) if isinstance(entry, dict) else str(entry)
-            layout.addWidget(QLabel(text))
-        return frame
 
+        runes_data = self._extract_runes_data(player)
+        if not runes_data:
+            empty_lbl = QLabel("Sin runas configuradas")
+            empty_lbl.setStyleSheet("color: #7890a8; font-size: 11px; font-style: italic;")
+            layout.addWidget(empty_lbl)
+            return frame
+
+        from data_dragon import get_rune_icon_path
+
+        runes_row = QHBoxLayout()
+        runes_row.setSpacing(12)
+
+        for item in runes_data:
+            rune_name = item["name"]
+            label_type = item["label"]
+            is_ks = item.get("is_keystone", False)
+
+            item_layout = QHBoxLayout()
+            item_layout.setSpacing(6)
+
+            icon_lbl = QLabel()
+            size = 32 if is_ks else 26
+            icon_lbl.setFixedSize(size, size)
+            icon_lbl.setObjectName("liveRuneIcon")
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            icon_path = None
+            try:
+                version = getattr(self.assets, "version", "16.18.1") if hasattr(self, "assets") else "16.18.1"
+                icon_path = get_rune_icon_path(rune_name, version)
+            except Exception:
+                pass
+
+            if icon_path and icon_path.exists():
+                pix = QPixmap(str(icon_path))
+                if not pix.isNull():
+                    icon_lbl.setPixmap(pix.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                else:
+                    icon_lbl.setText("⚡" if is_ks else "🔹")
+            else:
+                icon_lbl.setText("⚡" if is_ks else "🔹")
+
+            text_vbox = QVBoxLayout()
+            text_vbox.setSpacing(1)
+
+            lbl_tag = QLabel(label_type.upper())
+            lbl_tag.setStyleSheet("color: #d9ae4f; font-size: 9px; font-weight: 800;")
+
+            lbl_name = QLabel(rune_name)
+            lbl_name.setStyleSheet("color: #e2e8f0; font-size: 11px; font-weight: 700;")
+
+            text_vbox.addWidget(lbl_tag)
+            text_vbox.addWidget(lbl_name)
+
+            item_layout.addWidget(icon_lbl)
+            item_layout.addLayout(text_vbox)
+
+            runes_row.addLayout(item_layout)
+
+        runes_row.addStretch(1)
+        layout.addLayout(runes_row)
+        return frame
 
     def _create_awards_panel(self, player_key, side):
         frame = QFrame()
         frame.setObjectName("liveAwardsPanel")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(10, 8, 10, 8)
-        title = QLabel("LOGROS")
+        layout.setSpacing(6)
+        title = QLabel("LOGROS Y DESTACADOS")
         title.setObjectName("livePanelTitle")
         layout.addWidget(title)
         awards = self.session.get("achievements", {}).get(player_key, [])
         if not awards:
-            layout.addWidget(QLabel("Aún sin logros detectados"))
+            empty_lbl = QLabel("Sin logros detectados aún")
+            empty_lbl.setStyleSheet("color: #7890a8; font-size: 11px; font-style: italic;")
+            layout.addWidget(empty_lbl)
         else:
-            for award in awards:
-                badge = QLabel(str(award))
+            grid_layout = QGridLayout()
+            grid_layout.setContentsMargins(0, 0, 0, 0)
+            grid_layout.setSpacing(5)
+
+            for index, award in enumerate(awards):
+                text = str(award)
+                badge = QLabel(text)
                 badge.setObjectName("liveAchievementBadge")
-                layout.addWidget(badge)
+                badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                lower_text = text.lower()
+                if "early" in lower_text or "inicio" in lower_text:
+                    state_type = "early"
+                elif "mid" in lower_text:
+                    state_type = "mid"
+                elif "late" in lower_text or "tardío" in lower_text:
+                    state_type = "late"
+                elif "victoria" in lower_text or "mvp" in lower_text:
+                    state_type = "victory"
+                elif "crítico" in lower_text or "penetración" in lower_text or "daño" in lower_text:
+                    state_type = "offense"
+                elif "armadura" in lower_text or "antiheal" in lower_text or "resistencia" in lower_text:
+                    state_type = "defense"
+                else:
+                    state_type = "default"
+
+                badge.setProperty("type", state_type)
+
+                row = index // 2
+                col = index % 2
+                grid_layout.addWidget(badge, row, col)
+
+            layout.addLayout(grid_layout)
         return frame
 
 
@@ -801,18 +1201,15 @@ class LiveMatchAnalysisDialog(QDialog):
     ):
         frame = QFrame()
         frame.setObjectName("liveMetricSummary")
-
-
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(4)
+        layout.setSpacing(6)
 
+        title = QLabel("ESTADÍSTICAS Y ATRIBUTOS")
+        title.setObjectName("livePanelTitle")
+        layout.addWidget(title)
 
-        point = self._latest_player_point(
-            player_key
-        )
-
-
+        point = self._latest_player_point(player_key)
         post_stats = calculate_post_stats(
             self.session,
             player_key,
@@ -820,188 +1217,64 @@ class LiveMatchAnalysisDialog(QDialog):
             self.assets.version,
         )
 
-
-        layout.addWidget(
-            self._metric_line(
-                "KDA",
-                (
-                    f"{int(point.get('kills', 0) or 0)} / "
-                    f"{int(point.get('deaths', 0) or 0)} / "
-                    f"{int(point.get('assists', 0) or 0)}"
-                ),
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "Nivel",
-                int(point.get("level", 1) or 1),
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "CS",
-                int(point.get("cs", 0) or 0),
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "Oro estimado",
-                f"{int(point.get('estimated_gold', 0) or 0):,}",
-            )
-        )
-
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(4)
 
         raw_stats = point.get("stats", {})
-
-
         if not isinstance(raw_stats, dict):
             raw_stats = {}
 
-
-        if raw_stats.get("vision_score") is not None:
-            layout.addWidget(
-                self._metric_line(
-                    "Visión",
-                    int(
-                        raw_stats.get(
-                            "vision_score",
-                            0,
-                        ) or 0
-                    ),
-                )
-            )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "Vida máxima",
-                f"{int(post_stats.get('hp', 0) or 0):,}",
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "AD",
-                f"{float(post_stats.get('ad', 0) or 0):.1f}",
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "AP",
-                f"{float(post_stats.get('ap', 0) or 0):.1f}",
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "Armadura",
-                f"{float(post_stats.get('armor', 0) or 0):.1f}",
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "MR",
-                f"{float(post_stats.get('mr', 0) or 0):.1f}",
-            )
-        )
-
-
-        layout.addWidget(
-            self._metric_line(
-                "Letalidad",
-                f"{float(post_stats.get('lethality', 0) or 0):.1f}",
-            )
-        )
-
-
-        armor_pen = float(
-            post_stats.get(
-                "armor_pen_percent",
-                0,
-            ) or 0
-        )
-
-
+        armor_pen = float(post_stats.get("armor_pen_percent", 0) or 0)
         if armor_pen <= 1:
             armor_pen *= 100
 
-
-        layout.addWidget(
-            self._metric_line(
-                "Pen. armadura",
-                f"{armor_pen:.0f}%",
-            )
-        )
-
-
-        life_steal = float(
-            post_stats.get(
-                "life_steal_percent",
-                0,
-            ) or 0
-        )
-
-
+        life_steal = float(post_stats.get("life_steal_percent", 0) or 0)
         if life_steal <= 1:
             life_steal *= 100
 
-
-        layout.addWidget(
-            self._metric_line(
-                "Robo de vida",
-                f"{life_steal:.0f}%",
-            )
-        )
-
-
-        critical = float(
-            post_stats.get(
-                "crit",
-                0,
-            ) or 0
-        )
-
-
+        critical = float(post_stats.get("crit", 0) or 0)
         if critical <= 1:
             critical *= 100
 
+        metrics = [
+            ("KDA", f"{int(point.get('kills', 0) or 0)}/{int(point.get('deaths', 0) or 0)}/{int(point.get('assists', 0) or 0)}", "#e2e8f0"),
+            ("Nivel", f"{int(point.get('level', 1) or 1)}", "#cbd5e1"),
+            ("CS", f"{int(point.get('cs', 0) or 0)}", "#38bdf8"),
+            ("Oro estim.", f"{int(point.get('estimated_gold', 0) or 0):,}", "#facc15"),
+            ("Visión", f"{int(raw_stats.get('vision_score', 0) or 0)}", "#a78bfa"),
+            ("Vida máx.", f"{int(post_stats.get('hp', 0) or 0):,}", "#4ade80"),
+            ("AD", f"{float(post_stats.get('ad', 0) or 0):.1f}", "#f87171"),
+            ("AP", f"{float(post_stats.get('ap', 0) or 0):.1f}", "#c084fc"),
+            ("Armadura", f"{float(post_stats.get('armor', 0) or 0):.1f}", "#fbbf24"),
+            ("MR", f"{float(post_stats.get('mr', 0) or 0):.1f}", "#60a5fa"),
+            ("Letalidad", f"{float(post_stats.get('lethality', 0) or 0):.1f}", "#f97316"),
+            ("Pen. arm.", f"{armor_pen:.0f}%", "#fb923c"),
+            ("Robo vida", f"{life_steal:.0f}%", "#f43f5e"),
+            ("Crítico", f"{critical:.0f}%", "#eab308"),
+        ]
 
-        layout.addWidget(
-            self._metric_line(
-                "Crítico",
-                f"{critical:.0f}%",
-            )
-        )
+        for index, (label, val, val_color) in enumerate(metrics):
+            row_idx = index // 2
+            col_idx = (index % 2) * 2
 
+            lbl = QLabel(f"{label}:")
+            lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
 
-        quality = QLabel(
-            "≈ Estimado: base + nivel + objetos; "
-            "runas y buffs no incluidos para rivales."
-        )
+            val_lbl = QLabel(str(val))
+            val_lbl.setStyleSheet(f"color: {val_color}; font-size: 11px; font-weight: 800;")
+            val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
+            grid.addWidget(lbl, row_idx, col_idx)
+            grid.addWidget(val_lbl, row_idx, col_idx + 1)
 
-        quality.setObjectName(
-            "liveMetricEstimate"
-        )
+        layout.addLayout(grid)
 
-
-        quality.setWordWrap(True)
-
-
+        quality = QLabel("≈ Base + nivel + objetos")
+        quality.setObjectName("liveMetricEstimate")
+        quality.setStyleSheet("color: #64748b; font-size: 10px; font-style: italic; margin-top: 4px;")
         layout.addWidget(quality)
-
 
         return frame
 
@@ -1244,19 +1517,48 @@ class LiveMatchAnalysisDialog(QDialog):
         title = QLabel("INVENTARIO · TIEMPO REAL")
         title.setObjectName("livePanelTitle")
         layout.addWidget(title)
+
         point = self._latest_player_point(player_key)
         item_ids = point.get("items", player.get("items", []))
-        if not item_ids:
-            layout.addWidget(QLabel("Sin objetos"))
+
+        valid_items = []
+        for i in item_ids:
+            try:
+                val = int(i)
+                if val > 0:
+                    valid_items.append(val)
+            except (TypeError, ValueError):
+                continue
+
+        if not valid_items:
+            empty_lbl = QLabel("Sin objetos")
+            empty_lbl.setStyleSheet("color: #7890a8; font-size: 11px; font-style: italic;")
+            layout.addWidget(empty_lbl)
             return frame
+
         row = QHBoxLayout()
-        for item_id in item_ids:
-            icon = QLabel(str(item_id))
-            icon.setFixedSize(30, 30)
+        row.setSpacing(6)
+
+        for item_id in valid_items:
+            icon = QLabel()
+            icon.setFixedSize(32, 32)
             icon.setObjectName("liveEventIcon")
             icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.assets.set_label_image(icon, self.assets.item_url(int(item_id)), f"analysis-item:{item_id}:30", 30, Qt.AspectRatioMode.KeepAspectRatio)
+
+            item_info = self.item_catalog.get(item_id, {}) if hasattr(self, "item_catalog") and isinstance(self.item_catalog, dict) else {}
+            item_name = item_info.get("name", f"Objeto {item_id}") if isinstance(item_info, dict) else f"Objeto {item_id}"
+            icon.setToolTip(item_name)
+
+            icon_url = self.assets.item_url(item_id)
+            self.assets.set_label_image(
+                icon,
+                icon_url,
+                f"analysis-item:{item_id}:32",
+                32,
+                Qt.AspectRatioMode.KeepAspectRatio
+            )
             row.addWidget(icon)
+
         row.addStretch(1)
         layout.addLayout(row)
         return frame

@@ -119,6 +119,14 @@ class MainWindow(QMainWindow):
         str,
         str,
     )
+
+    profile_requested = Signal(
+        str,
+        str,
+        str,
+        str,
+        str,
+    )
         
     def __init__(self, version: str, item_catalog: dict) -> None:
         super().__init__()
@@ -243,6 +251,7 @@ class MainWindow(QMainWindow):
         )
 
         root.addWidget(self.pages, 1)
+        self.showMaximized()
 
     def create_header(self) -> QWidget:
         header = QWidget()
@@ -337,27 +346,143 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(18)
 
+    def create_home_page(self) -> QWidget:
+        page = QWidget()
+        page.setObjectName("homePage")
+
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(18)
+
+        # 1. Card Izquierda: Perfil del Invocador
+        self.summoner_card = QFrame()
+        self.summoner_card.setObjectName("summonerCard")
+        self.summoner_card.setMinimumWidth(260)
+        self.summoner_card.setMinimumHeight(220)
+        self.summoner_card.setMaximumHeight(245)
+        summoner_layout = QVBoxLayout(self.summoner_card)
+        summoner_layout.setContentsMargins(16, 14, 16, 14)
+        summoner_layout.setSpacing(8)
+
+        header_hbox = QHBoxLayout()
+        header_hbox.setSpacing(12)
+
+        self.profile_icon_label = QLabel("Icono")
+        self.profile_icon_label.setObjectName("profileIconLabel")
+        self.profile_icon_label.setFixedSize(48, 48)
+        self.profile_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.profile_icon_label.setStyleSheet("border: 2px solid #d9ae4f; border-radius: 9px; background: rgba(5, 12, 24, 180); color: #d9ae4f; font-weight: bold; font-size: 11px;")
+        header_hbox.addWidget(self.profile_icon_label)
+
+        id_vbox = QVBoxLayout()
+        id_vbox.setSpacing(2)
+        self.summoner_riot_id_label = QLabel(f"{self.riot_game_name}#{self.riot_tag_line}" if self.riot_game_name else "Invocador")
+        self.summoner_riot_id_label.setObjectName("summonerRiotId")
+        self.summoner_riot_id_label.setStyleSheet("color: #f4f7ff; font-size: 15px; font-weight: 800;")
+        id_vbox.addWidget(self.summoner_riot_id_label)
+
+        self.summoner_level_label = QLabel(f"Nivel — · {self.riot_platform_region.upper()}")
+        self.summoner_level_label.setObjectName("summonerLevel")
+        self.summoner_level_label.setStyleSheet("color: #8fa2bd; font-size: 11px;")
+        id_vbox.addWidget(self.summoner_level_label)
+
+        header_hbox.addLayout(id_vbox, 1)
+        summoner_layout.addLayout(header_hbox)
+
+        # Rango SoloQ Badge
+        self.soloq_tier_badge = QLabel("🏆 RANKED SOLOQ · UNRANKED")
+        self.soloq_tier_badge.setObjectName("soloqTierBadge")
+        self.soloq_tier_badge.setStyleSheet("padding: 5px 10px; border: 1px solid rgba(217, 174, 79, 150); border-radius: 6px; color: #f0cf78; background: rgba(76, 60, 30, 160); font-size: 11px; font-weight: 800;")
+        summoner_layout.addWidget(self.soloq_tier_badge)
+
+        self.soloq_winrate_label = QLabel("Winrate SoloQ: — (0V / 0D)")
+        self.soloq_winrate_label.setStyleSheet("color: #c9d9ee; font-size: 11px; font-weight: 600;")
+        summoner_layout.addWidget(self.soloq_winrate_label)
+
+        # Personaje más jugado
+        most_played_box = QFrame()
+        most_played_box.setStyleSheet("border: 1px solid rgba(97, 148, 211, 70); border-radius: 6px; background: rgba(10, 20, 36, 170);")
+        mp_layout = QHBoxLayout(most_played_box)
+        mp_layout.setContentsMargins(8, 6, 8, 6)
+        mp_layout.setSpacing(8)
+
+        self.most_played_icon = QLabel("M")
+        self.most_played_icon.setFixedSize(48, 48)
+        self.most_played_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.most_played_icon.setStyleSheet(
+            "border-radius: 6px; background: rgba(5, 12, 24, 180); color: #8fa2bd; font-size: 13px;"
+        )
+        mp_layout.addWidget(self.most_played_icon)
+
+        mp_text_vbox = QVBoxLayout()
+        mp_text_vbox.setSpacing(1)
+        self.most_played_title = QLabel("Más Jugado: —")
+        self.most_played_title.setStyleSheet("color: #e2e8f0; font-size: 11px; font-weight: 700;")
+        mp_text_vbox.addWidget(self.most_played_title)
+
+        self.most_played_stats = QLabel("0 partidas (0% WR)")
+        self.most_played_stats.setStyleSheet("color: #94a3b8; font-size: 10px;")
+        mp_text_vbox.addWidget(self.most_played_stats)
+
+        mp_layout.addLayout(mp_text_vbox, 1)
+        summoner_layout.addWidget(most_played_box)
+
+        # 2. Card Central: Contenedor con Título Externo + Gráfica de evolución SoloQ
+        soloq_card = QFrame()
+        soloq_card.setObjectName("soloqGraphCard")
+        soloq_card.setStyleSheet("QFrame#soloqGraphCard { border: 1px solid rgba(80, 118, 171, 95); border-radius: 12px; background: rgba(8, 19, 34, 220); }")
+        soloq_card.setMinimumHeight(220)
+        soloq_card.setMaximumHeight(245)
+        soloq_card_layout = QVBoxLayout(soloq_card)
+        soloq_card_layout.setContentsMargins(14, 12, 14, 12)
+        soloq_card_layout.setSpacing(6)
+
+        graph_header_label = QLabel("📈 TENDENCIA DE SOLOQ")
+        graph_header_label.setStyleSheet(
+            "color: #edd175; font-weight: 800; font-size: 10px; letter-spacing: 1px;"
+        )
+        soloq_card_layout.addWidget(graph_header_label)
+
+        from app.ui.soloq_graph_widget import SoloQGraphWidget
+        self.soloq_graph = SoloQGraphWidget()
+        soloq_card_layout.addWidget(self.soloq_graph, 1)
+
+        # 3. Card Derecha: Estado del Cliente
         hero = QFrame()
         hero.setObjectName("heroCard")
+        hero.setMinimumWidth(250)
+        hero.setMinimumHeight(220)
+        hero.setMaximumHeight(245)
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(32, 30, 32, 30)
-        hero_layout.setSpacing(8)
+        hero_layout.setContentsMargins(18, 16, 18, 16)
+        hero_layout.setSpacing(6)
 
         eyebrow = QLabel("ESTADO DEL CLIENTE")
         eyebrow.setObjectName("eyebrow")
+        eyebrow.setStyleSheet("font-size: 11px;")
         hero_layout.addWidget(eyebrow)
 
         self.home_title = QLabel("Esperando una partida")
         self.home_title.setObjectName("heroTitle")
+        self.home_title.setStyleSheet("font-size: 18px; font-weight: 800;")
         hero_layout.addWidget(self.home_title)
 
         self.home_text = QLabel(
             "Abre League of Legends y entra en una partida para activar el panel en vivo."
         )
         self.home_text.setObjectName("heroText")
+        self.home_text.setStyleSheet("font-size: 12px;")
         self.home_text.setWordWrap(True)
         hero_layout.addWidget(self.home_text)
-        layout.addWidget(hero)
+        hero_layout.addStretch(1)
+
+        # Disposición horizontal superior: [JUGADOR] [TENDENCIA] [ESTADO CLIENTE]
+        top_section = QHBoxLayout()
+        top_section.setSpacing(14)
+        top_section.addWidget(self.summoner_card, 2)
+        top_section.addWidget(soloq_card, 4)
+        top_section.addWidget(hero, 2)
+        layout.addLayout(top_section)
 
         metrics = QHBoxLayout()
         metrics.setSpacing(14)
@@ -451,11 +576,27 @@ class MainWindow(QMainWindow):
         )
         self.history_status.setObjectName("historyStatus")
         self.history_status.setWordWrap(True)
+        self.history_status.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.history_status.setMaximumHeight(24)
         activity_layout.addWidget(self.history_status)
 
-        self.history_list_layout = QVBoxLayout()
+        self.history_scroll = QScrollArea()
+        self.history_scroll.setObjectName("historyScrollArea")
+        self.history_scroll.setWidgetResizable(True)
+        self.history_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.history_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; } QWidget { background: transparent; }")
+        self.history_scroll.setMinimumHeight(300)
+
+        history_scroll_widget = QWidget()
+        self.history_list_layout = QVBoxLayout(history_scroll_widget)
+        self.history_list_layout.setContentsMargins(0, 0, 0, 0)
         self.history_list_layout.setSpacing(8)
-        activity_layout.addLayout(self.history_list_layout)
+
+        self.history_scroll.setWidget(history_scroll_widget)
+        activity_layout.addWidget(self.history_scroll, 1)
 
         layout.addWidget(activity)
 
@@ -822,6 +963,7 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         self.saved_games_content = QWidget()
+        self.saved_games_content.setObjectName("savedGamesContent")
         self.saved_games_layout = QVBoxLayout(
             self.saved_games_content
         )
@@ -889,6 +1031,12 @@ class MainWindow(QMainWindow):
 
         self.saved_games_layout.addStretch(1)
 
+    def delete_saved_game_session(self, session_id: str) -> None:
+        if not session_id:
+            return
+        self.live_match_tracker.delete_saved_session(session_id)
+        self.refresh_saved_games()
+
     def create_saved_game_row(
         self,
         session: dict,
@@ -897,28 +1045,71 @@ class MainWindow(QMainWindow):
         row.setObjectName("savedGameRow")
 
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(16, 13, 16, 13)
-        layout.setSpacing(10)
-
-        details = QVBoxLayout()
-        details.setSpacing(3)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(14)
 
         champion = session.get(
             "champion_name",
             "Desconocido",
         )
 
+        champ_icon = QLabel()
+        champ_icon.setFixedSize(44, 44)
+        champ_icon.setObjectName("savedGameChampIcon")
+        if champion and champion != "Desconocido" and hasattr(self, "data_dragon_assets"):
+            icon_url = self.data_dragon_assets.champion_url(champion)
+            self.data_dragon_assets.set_label_image(
+                champ_icon, icon_url, f"champ:{champion}", 44
+            )
+        layout.addWidget(champ_icon)
+
+        details = QVBoxLayout()
+        details.setSpacing(4)
+
         game_mode = session.get(
             "game_mode",
             "UNKNOWN",
         )
 
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+
         title = QLabel(
             f"{champion} · {game_mode}"
         )
-
         title.setObjectName("savedGameTitle")
-        details.addWidget(title)
+        title_row.addWidget(title)
+
+        final_sync = session.get(
+            "final_sync",
+            {},
+        )
+
+        sync_status = final_sync.get(
+            "status",
+            "live_only",
+        )
+
+        sync_texts = {
+            "live_only": "Solo telemetría LIVE",
+            "pending": "Pendiente de sincronización",
+            "not_found": "No encontrada en Riot",
+            "synced": "Sincronizada con Riot",
+            "failed": "Error al sincronizar",
+        }
+
+        status = QLabel(
+            sync_texts.get(
+                sync_status,
+                "Solo telemetría LIVE",
+            )
+        )
+        status.setObjectName("savedGameSync")
+        status.setProperty("state", sync_status)
+        title_row.addWidget(status)
+        title_row.addStretch(1)
+
+        details.addLayout(title_row)
 
         duration = self.format_match_duration(
             session.get(
@@ -940,40 +1131,10 @@ class MainWindow(QMainWindow):
         )
 
         subtitle = QLabel(
-            f"{started_at} · {duration} · "
-            f"{len(events)} eventos registrados"
+            f"📅 {started_at}  ·  ⏱ {duration}  ·  ⚡ {len(events)} eventos registrados"
         )
-
         subtitle.setObjectName("savedGameDetail")
         details.addWidget(subtitle)
-
-        final_sync = session.get(
-            "final_sync",
-            {},
-        )
-
-        sync_status = final_sync.get(
-            "status",
-            "live_only",
-        )
-
-        sync_texts = {
-            "live_only": "Solo telemetría LIVE",
-            "pending": "Pendiente de sincronización",
-            "synced": "Sincronizada con Riot",
-            "failed": "Error al sincronizar",
-        }
-
-        status = QLabel(
-            sync_texts.get(
-                sync_status,
-                "Solo telemetría LIVE",
-            )
-        )
-
-        status.setObjectName("savedGameSync")
-        status.setProperty("state", sync_status)
-        details.addWidget(status)
 
         sync_message = final_sync.get(
             "message",
@@ -984,14 +1145,11 @@ class MainWindow(QMainWindow):
             message = QLabel(
                 str(sync_message)
             )
-
             message.setObjectName(
                 "savedGameSyncMessage"
             )
-
             message.setWordWrap(True)
             message.setMaximumWidth(470)
-
             details.addWidget(message)
 
         layout.addLayout(details, 1)
@@ -1003,80 +1161,100 @@ class MainWindow(QMainWindow):
             )
         )
 
-        actions = QVBoxLayout()
-        actions.setSpacing(6)
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
 
         if session_id:
             if sync_status == "synced":
                 resync_button = QPushButton(
                     "Re-sincronizar"
                 )
-
                 resync_button.setObjectName(
                     "secondaryButton"
                 )
-
-                resync_button.setFixedWidth(108)
-
+                resync_button.setFixedWidth(125)
+                resync_button.setFixedHeight(36)
                 resync_button.setEnabled(
                     not self.postgame_sync_in_progress
                 )
-
                 resync_button.clicked.connect(
                     lambda checked=False, value=session_id:
                     self.request_resync_session(
                         value
                     )
                 )
-
                 actions.addWidget(resync_button)
 
             elif sync_status in {
                 "live_only",
                 "pending",
                 "failed",
+                "not_found",
             }:
-                sync_button = QPushButton(
-                    "Buscar Riot"
-                )
+                # Modos locales que nunca están en Riot Match-V5.
+                _practice_modes = {
+                    "PRACTICETOOL",
+                    "PRACTICE",
+                    "TUTORIAL",
+                    "CUSTOM",
+                    "CUSTOM_GAME",
+                }
+                _is_local_only = str(game_mode).upper() in _practice_modes
 
-                sync_button.setObjectName(
-                    "secondaryButton"
-                )
+                button_label = "Reintentar Riot" if sync_status == "not_found" else "Buscar Riot"
+                sync_button = QPushButton(button_label)
 
-                sync_button.setFixedWidth(108)
+                # Las partidas locales usan objectName diferente para mostrarse
+                # visualmente más apagadas que un botón deshabilitado normal.
+                # No disponible sincronizacion para practica, tutorial o personalizada.
+                if _is_local_only:
+                    sync_button.setObjectName("disabledSyncButton")
+                    sync_button.setToolTip(
+                        "Sin sincronización Riot (práctica / tutorial / personalizada)"
+                    )
+                else:
+                    sync_button.setObjectName("secondaryButton")
+                    if sync_status == "not_found":
+                        sync_button.setToolTip(
+                            "Puedes reintentar si crees que ya fue procesada por Riot."
+                        )
 
+                sync_button.setFixedWidth(125)
+                sync_button.setFixedHeight(36)
                 sync_button.setEnabled(
-                    not self.postgame_sync_in_progress
+                    not self.postgame_sync_in_progress and not _is_local_only
                 )
-
                 sync_button.clicked.connect(
                     lambda checked=False, value=session_id:
-                    self.request_saved_session_sync(
-                        value
-                    )
+                    self.request_saved_session_sync(value)
                 )
-
                 actions.addWidget(sync_button)
 
         open_button = QPushButton(
             "Abrir análisis"
         )
-
         open_button.setObjectName(
             "primaryButton"
         )
-
-        open_button.setFixedWidth(108)
-
+        open_button.setFixedWidth(125)
+        open_button.setFixedHeight(36)
         open_button.clicked.connect(
             lambda checked=False, value=session:
             self.open_saved_game_analysis(
                 value
             )
         )
-
         actions.addWidget(open_button)
+
+        delete_button = QPushButton("Eliminar")
+        delete_button.setObjectName("dangerButton")
+        delete_button.setFixedWidth(90)
+        delete_button.setFixedHeight(36)
+        if session_id:
+            delete_button.clicked.connect(
+                lambda checked=False, val=session_id: self.delete_saved_game_session(val)
+            )
+        actions.addWidget(delete_button)
 
         layout.addLayout(actions)
 
@@ -1671,6 +1849,13 @@ class MainWindow(QMainWindow):
             self.show_match_history_error
         )
 
+        self.profile_requested.connect(
+            self.match_history_worker.load_profile
+        )
+        self.match_history_worker.profile_ready.connect(
+            self.receive_summoner_profile
+        )
+
         self.history_thread.start()
 
         self.match_detail_requested.connect(
@@ -1713,6 +1898,10 @@ class MainWindow(QMainWindow):
 
         self.postgame_sync_worker.sync_failed.connect(
             self.receive_postgame_sync_error
+        )
+
+        self.postgame_sync_worker.sync_progress.connect(
+            self.on_postgame_sync_progress
         )
 
         self.postgame_sync_thread.start()
@@ -1835,6 +2024,9 @@ class MainWindow(QMainWindow):
             tag_line,
         )
 
+        self.match_history = []
+        self.render_match_history()
+
         self.history_is_loading = True
         self.refresh_history_button.setEnabled(False)
 
@@ -1849,9 +2041,63 @@ class MainWindow(QMainWindow):
             tag_line,
             self.riot_account_region,
             self.riot_platform_region,
-            5,
+            30,
         )
 
+        self.profile_requested.emit(
+            self.riot_api_key,
+            game_name,
+            tag_line,
+            self.riot_account_region,
+            self.riot_platform_region,
+        )
+
+    @Slot(dict)
+    def receive_summoner_profile(self, profile_data: dict[str, Any]) -> None:
+        if not profile_data:
+            return
+
+        riot_id = profile_data.get("riot_id", f"{self.riot_game_name}#{self.riot_tag_line}")
+        if hasattr(self, "summoner_riot_id_label"):
+            self.summoner_riot_id_label.setText(riot_id)
+
+        level = profile_data.get("summoner_level", 0)
+        if hasattr(self, "summoner_level_label"):
+            self.summoner_level_label.setText(f"Nivel {level} · {self.riot_platform_region.upper()}")
+
+        icon_id = profile_data.get("profile_icon_id")
+        if icon_id and hasattr(self, "profile_icon_label"):
+            icon_url = self.data_dragon_assets.profile_icon_url(icon_id)
+            self.data_dragon_assets.set_label_image(
+                self.profile_icon_label,
+                icon_url,
+                f"profileicon:{icon_id}",
+                54,
+            )
+
+        ranked_solo = profile_data.get("ranked_solo", {})
+        self.current_ranked_solo = ranked_solo
+        if ranked_solo and ranked_solo.get("tier_formatted") and hasattr(self, "soloq_tier_badge"):
+            tier_str = ranked_solo["tier_formatted"]
+            wr = ranked_solo.get("winrate", 0.0)
+            wins = ranked_solo.get("wins", 0)
+            losses = ranked_solo.get("losses", 0)
+            total = ranked_solo.get("total_games", wins + losses)
+
+            self.soloq_tier_badge.setText(f"🏆 {tier_str}")
+            self.soloq_winrate_label.setText(
+                f"Season Record: {wins}V / {losses}D ({total} partidas) · {wr}% WR Total"
+            )
+        elif hasattr(self, "soloq_tier_badge"):
+            self.soloq_tier_badge.setText("🏆 RANKED SOLOQ · UNRANKED")
+            self.soloq_winrate_label.setText("Season Record: Sin partidas de clasificatoria")
+
+        if hasattr(self, "match_history") and self.match_history:
+            self.update_soloq_dashboard_from_history(self.match_history)
+
+    @Slot(str)
+    def show_summoner_profile_error(self, message: str) -> None:
+        pass
 
     @Slot(list)
     def receive_match_history(
@@ -1863,6 +2109,7 @@ class MainWindow(QMainWindow):
 
         self.match_history = history
         self.render_match_history()
+        self.update_soloq_dashboard_from_history(history)
 
         if history:
             self.set_history_status(
@@ -1876,6 +2123,123 @@ class MainWindow(QMainWindow):
                 "empty",
             )
 
+    @staticmethod
+    def calculate_elo_points(tier: str, rank: str, lp: int) -> int:
+        tier_bases = {
+            "IRON": 0,
+            "BRONZE": 400,
+            "SILVER": 800,
+            "GOLD": 1200,
+            "PLATINUM": 1600,
+            "EMERALD": 2000,
+            "DIAMOND": 2400,
+            "MASTER": 2800,
+            "GRANDMASTER": 3200,
+            "CHALLENGER": 3600,
+        }
+        rank_offsets = {"IV": 0, "III": 100, "II": 200, "I": 300}
+        base = tier_bases.get(tier.upper(), 1200)
+        offset = rank_offsets.get(rank.upper(), 0)
+        return base + offset + max(0, lp)
+
+    @staticmethod
+    def elo_to_rank_label(elo: int) -> str:
+        if elo >= 2800:
+            if elo >= 3600:
+                return f"Aspirante ({elo - 3600} LP)"
+            elif elo >= 3200:
+                return f"Gran Máster ({elo - 3200} LP)"
+            else:
+                return f"Máster ({elo - 2800} LP)"
+        tier_bases = [
+            ("Hierro", 0),
+            ("Bronce", 400),
+            ("Plata", 800),
+            ("Oro", 1200),
+            ("Platino", 1600),
+            ("Esmeralda", 2000),
+            ("Diamante", 2400),
+        ]
+        tier_name = "Hierro"
+        base_val = 0
+        for name, val in tier_bases:
+            if elo >= val:
+                tier_name = name
+                base_val = val
+        rem = elo - base_val
+        div_idx = min(3, max(0, int(rem // 100)))
+        divs = ["IV", "III", "II", "I"]
+        lp = int(rem % 100)
+        return f"{tier_name} {divs[div_idx]} ({lp} LP)"
+
+    def update_soloq_dashboard_from_history(self, history: list[dict]) -> None:
+        if not history or not hasattr(self, "soloq_graph"):
+            return
+
+        from collections import Counter
+        champs = [h.get("champion_name") for h in history if h.get("champion_name")]
+        if champs:
+            counter = Counter(champs)
+            most_common_champ, count = counter.most_common(1)[0]
+            champ_wins = sum(1 for h in history if h.get("champion_name") == most_common_champ and h.get("win"))
+            champ_wr = round((champ_wins / count) * 100, 1)
+
+            if hasattr(self, "most_played_title"):
+                self.most_played_title.setText(f"Más Jugado: {most_common_champ}")
+            if hasattr(self, "most_played_stats"):
+                self.most_played_stats.setText(f"{count} partidas en historial ({champ_wr}% WR)")
+            if hasattr(self, "most_played_icon"):
+                self.data_dragon_assets.set_label_image(
+                    self.most_played_icon,
+                    self.data_dragon_assets.champion_url(most_common_champ),
+                    f"champion:{most_common_champ}:48",
+                    48,
+                )
+
+        # Filter history for Ranked Solo/Duo matches only (queue_id == 420 or missing queue_id as fallback)
+        ranked_matches = [
+            m for m in history
+            if m.get("queue_id") is None or m.get("queue_id") == 420
+        ]
+
+        if not ranked_matches:
+            self.soloq_graph.set_data([])
+            return
+
+        base_elo = 1200
+        if hasattr(self, "current_ranked_solo") and self.current_ranked_solo:
+            tier = str(self.current_ranked_solo.get("tier", "")).upper()
+            rank = str(self.current_ranked_solo.get("rank", "")).upper()
+            lp = int(self.current_ranked_solo.get("league_points", 0))
+            base_elo = self.calculate_elo_points(tier, rank, lp)
+
+        n = len(ranked_matches)
+        match_elos = [0] * n
+        curr = base_elo
+        for idx, match in enumerate(ranked_matches):
+            match_elos[idx] = curr
+            is_win = bool(match.get("win", False))
+            curr = curr - 25 if is_win else curr + 25
+
+        points = []
+        for i, match in enumerate(reversed(ranked_matches)):
+            orig_idx = n - 1 - i
+            elo_val = match_elos[orig_idx]
+            is_win = bool(match.get("win", False))
+            champ = match.get("champion_name", "Campeón")
+            elo_lbl = self.elo_to_rank_label(elo_val)
+
+            label_name = "Partida SoloQ (Última)" if i == n - 1 else f"Partida SoloQ #{i + 1}"
+
+            points.append({
+                "time_label": label_name,
+                "elo": elo_val,
+                "elo_label": elo_lbl,
+                "champion": champ,
+                "win": is_win,
+            })
+
+        self.soloq_graph.set_data(points)
 
     @Slot(str, int)
     def show_match_history_error(
@@ -1900,11 +2264,9 @@ class MainWindow(QMainWindow):
 
         self.set_history_status(message, "error")
 
-
     def enable_history_refresh(self) -> None:
         if not self.history_is_loading:
             self.refresh_history_button.setEnabled(True)
-
 
     def save_riot_id(
         self,
@@ -1929,7 +2291,6 @@ class MainWindow(QMainWindow):
 
         self.settings_service.save(self.settings)
 
-
     def render_match_history(self) -> None:
         while self.history_list_layout.count():
             item = self.history_list_layout.takeAt(0)
@@ -1943,13 +2304,13 @@ class MainWindow(QMainWindow):
                 self.create_match_history_row(match)
             )
 
-
     def create_match_history_row(
         self,
         match: dict,
     ) -> QWidget:
         row = QFrame()
         row.setObjectName("matchHistoryRow")
+        row.setMinimumHeight(50)
 
         result = "Victoria" if match.get("win") else "Derrota"
         result_state = (
@@ -2415,6 +2776,26 @@ class MainWindow(QMainWindow):
             self.riot_platform_region,
         )
 
+
+    @Slot(int, int, str)
+    def on_postgame_sync_progress(
+        self,
+        current: int,
+        total: int,
+        message: str,
+    ) -> None:
+        """
+        Actualiza la etiqueta de estado con el progreso de la sincronización.
+
+        Se llama desde el worker para cada paso: búsqueda de candidatos,
+        descarga de timeline, etc.
+        """
+        if hasattr(self, "saved_games_status"):
+            if total > 0:
+                label_text = f"⏳ Sincronizando: {message} ({current}/{total})"
+            else:
+                label_text = f"⏳ {message}"
+            self.saved_games_status.setText(label_text)
 
     @Slot(dict)
     def receive_postgame_sync(

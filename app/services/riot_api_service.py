@@ -209,6 +209,93 @@ class RiotApiService:
             )
         return result
 
+    def get_league_entries(
+        self,
+        summoner_id: str = "",
+        puuid: str = "",
+    ) -> list[dict[str, Any]]:
+        base_url = self.PLATFORM_BASE_URLS[self.platform_region]
+        if puuid:
+            try:
+                res = self._request(base_url, f"/lol/league/v4/entries/by-puuid/{puuid}")
+                if isinstance(res, list):
+                    return res
+            except Exception:
+                pass
+        if summoner_id:
+            try:
+                res = self._request(base_url, f"/lol/league/v4/entries/by-summoner/{summoner_id}")
+                if isinstance(res, list):
+                    return res
+            except Exception:
+                pass
+        return []
+
+    def get_full_summoner_profile(
+        self,
+        game_name: str,
+        tag_line: str,
+    ) -> dict[str, Any]:
+        account = self.get_account_by_riot_id(game_name, tag_line)
+        puuid = str(account["puuid"])
+        summoner = self.get_summoner_by_puuid(puuid)
+        summoner_id = str(summoner.get("id", ""))
+
+        entries = self.get_league_entries(summoner_id=summoner_id, puuid=puuid)
+
+        solo_entry = next(
+            (e for e in entries if isinstance(e, dict) and e.get("queueType") == "RANKED_SOLO_5x5"),
+            None
+        )
+
+        tier_translate = {
+            "IRON": "HIERRO",
+            "BRONZE": "BRONCE",
+            "SILVER": "PLATA",
+            "GOLD": "ORO",
+            "PLATINUM": "PLATINO",
+            "EMERALD": "ESMERALDA",
+            "DIAMOND": "DIAMANTE",
+            "MASTER": "MÁSTER",
+            "GRANDMASTER": "GRAN MÁSTER",
+            "CHALLENGER": "ASPIRANTE",
+        }
+
+        ranked_solo = {}
+        if solo_entry:
+            tier_raw = str(solo_entry.get("tier", "")).upper()
+            rank_raw = str(solo_entry.get("rank", "")).upper()
+            lp = int(solo_entry.get("leaguePoints", 0))
+            wins = int(solo_entry.get("wins", 0))
+            losses = int(solo_entry.get("losses", 0))
+            total = wins + losses
+            wr = round((wins / total * 100), 1) if total > 0 else 0.0
+
+            tier_es = tier_translate.get(tier_raw, tier_raw)
+            tier_str = f"{tier_es} {rank_raw} · {lp} LP" if rank_raw else f"{tier_es} · {lp} LP"
+
+            ranked_solo = {
+                "tier": tier_raw,
+                "rank": rank_raw,
+                "league_points": lp,
+                "wins": wins,
+                "losses": losses,
+                "total_games": total,
+                "winrate": wr,
+                "tier_formatted": tier_str,
+            }
+
+        return {
+            "game_name": game_name,
+            "tag_line": tag_line,
+            "riot_id": f"{game_name}#{tag_line}",
+            "puuid": puuid,
+            "summoner_id": summoner_id,
+            "profile_icon_id": int(summoner.get("profileIconId", 0)),
+            "summoner_level": int(summoner.get("summonerLevel", 0)),
+            "ranked_solo": ranked_solo,
+        }
+
     def get_emerald_plus_puuids(self, limit_per_tier: int = 10) -> list[str]:
         """Obtiene una lista representativa de PUUIDs de jugadores en Esmeralda+ (Esmeralda, Diamante, Master, GM, Challenger)."""
         base_url = self.PLATFORM_BASE_URLS[self.platform_region]
@@ -358,7 +445,7 @@ class RiotApiService:
         history = []
 
         for match_id in match_ids:
-            cached_match = self.cache.get_match(match_id)
+            cached_match = self.cache.get_match(match_id, puuid)
             if cached_match:
                 history.append(cached_match)
                 continue
@@ -369,7 +456,7 @@ class RiotApiService:
                 match_id,
                 puuid,
             )
-            self.cache.save_match(summary)
+            self.cache.save_match(summary, puuid)
             history.append(summary)
 
         return history
@@ -382,7 +469,10 @@ class RiotApiService:
     ) -> dict[str, Any]:
         """Devuelve detalle completo desde caché o Riot, sin repetir descargas."""
 
-        cached = self.cache.get_match(match_id)
+        account = self.get_account_by_riot_id(game_name, tag_line)
+        puuid = str(account["puuid"])
+
+        cached = self.cache.get_match(match_id, puuid)
         if cached and cached.get("detail_version") == 1:
             return cached
 
@@ -395,14 +485,13 @@ class RiotApiService:
                 cooldown,
             )
 
-        account = self.get_account_by_riot_id(game_name, tag_line)
         raw_match = self.get_match(match_id)
         detail = self._create_match_detail(
             raw_match,
             match_id,
-            str(account["puuid"]),
+            puuid,
         )
-        self.cache.save_match(detail)
+        self.cache.save_match(detail, puuid)
         return detail
 
     @staticmethod
@@ -416,7 +505,7 @@ class RiotApiService:
             match_id,
             puuid,
         )
-        return {
+        summary = {
             key: detail[key]
             for key in (
                 "match_id",
@@ -433,6 +522,8 @@ class RiotApiService:
                 "items",
             )
         }
+        summary["player_puuid"] = puuid
+        return summary
 
     @staticmethod
     def _create_match_detail(
@@ -500,6 +591,7 @@ class RiotApiService:
         return {
             "detail_version": 1,
             "match_id": match_id,
+            "player_puuid": puuid,
             "game_creation": info.get("gameCreation"),
             "game_duration": info.get("gameDuration"),
             "queue_id": info.get("queueId"),

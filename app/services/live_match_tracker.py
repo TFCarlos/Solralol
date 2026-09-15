@@ -58,6 +58,11 @@ class LiveMatchTracker:
             local_player.get("championName", "Desconocido")
         )
 
+        # Intentar obtener la versión del parche actual desde DataDragon.
+        # Si falla la petición, se usa un string vacío y el análisis usará
+        # la versión por defecto configurada en DataDragonAssetService.
+        game_version = self._fetch_current_version()
+
         self.session = {
             "schema_version": 2,
             "session_id": self._make_session_id(
@@ -67,6 +72,7 @@ class LiveMatchTracker:
             "started_at": started_at,
             "ended_at": None,
             "game_mode": snapshot.get("game_mode", "UNKNOWN"),
+            "game_version": game_version,
             "local_team": snapshot.get("local_team", ""),
             "local_player_key": "",
             "champion_name": champion_name,
@@ -133,6 +139,12 @@ class LiveMatchTracker:
         sessions = self.load_saved_sessions()
         sessions.append(completed)
         self._save_sessions(sessions[-self.MAX_SAVED_SESSIONS :])
+
+        try:
+            from app.services.match_log_service import MatchLogService
+            MatchLogService().save_match_log(completed)
+        except Exception:
+            pass
 
         self.session = None
         self.last_sample_time = -1.0
@@ -290,10 +302,20 @@ class LiveMatchTracker:
             "kills": self._int(scores.get("kills", 0)),
             "deaths": self._int(scores.get("deaths", 0)),
             "assists": self._int(scores.get("assists", 0)),
-            "cs": self._int(
-                scores.get(
-                    "creepScore",
-                    player.get("creepScore", 0),
+            "cs": (
+                self._int(
+                    scores.get(
+                        "creepScore",
+                        player.get("creepScore", 0),
+                    )
+                )
+                + self._int(
+                    scores.get("neutralMinionsKilled", 0)
+                    or (
+                        scores.get("neutralMinionsKilledYourJungle", 0)
+                        + scores.get("neutralMinionsKilledEnemyJungle", 0)
+                    )
+                    or player.get("neutralMinionsKilled", 0)
                 )
             ),
             "items": items,
@@ -958,3 +980,29 @@ class LiveMatchTracker:
                 indent=2,
             )
         temporary_path.replace(self.sessions_path)
+
+    @staticmethod
+    def _fetch_current_version() -> str:
+        """
+        Obtiene la versión actual del parche desde DataDragon.
+
+        Se usa al inicio de la sesión para guardar el parche en el que
+        se jugó la partida, de modo que el análisis pospartida pueda
+        resolver items y campeones con la versión exacta.
+
+        Devuelve un string vacío si la petición falla (sin conexión,
+        timeout, etc.) para no bloquear el inicio de la partida.
+        """
+        try:
+            import requests  # importación local para no añadir dep. circular
+            response = requests.get(
+                "https://ddragon.leagueoflegends.com/api/versions.json",
+                timeout=5,
+            )
+            response.raise_for_status()
+            versions = response.json()
+            if isinstance(versions, list) and versions:
+                return str(versions[0])
+        except Exception:
+            pass
+        return ""

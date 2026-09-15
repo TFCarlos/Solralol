@@ -23,15 +23,14 @@ class PostgameSyncWorker(QObject):
     """
     Ejecuta la sincronización Match-V5 fuera del hilo de interfaz.
 
-
     No modifica widgets ni archivos directamente desde este hilo.
     Devuelve la sesión sincronizada mediante señales Qt.
     """
 
-
     sync_ready = Signal(dict)
     sync_failed = Signal(str)
-
+    # Emite (paso_actual, total_pasos, descripcion) durante la sincronización.
+    sync_progress = Signal(int, int, str)
 
     @Slot(
         dict,
@@ -51,10 +50,10 @@ class PostgameSyncWorker(QObject):
         platform_region: str,
     ) -> None:
         print(f"[WORKER] Iniciando sincronización para {session.get('session_id')}")
-        
+
         try:
             print(f"[WORKER] Creando RiotApiService...")
-            
+
             riot_service = RiotApiService(
                 api_key=api_key,
                 account_region=account_region,
@@ -76,20 +75,23 @@ class PostgameSyncWorker(QObject):
             print(f"[WORKER] Llamando a service.sync_session()...")
 
             updated_session = service.sync_session(
-                session
+                session,
+                on_progress=self._emit_progress,
             )
 
             print(f"[WORKER] Sincronización completada: {updated_session.get('final_sync', {}).get('status')}")
 
-            self.sync_ready.emit(
-                updated_session
-            )
+            self.sync_ready.emit(updated_session)
 
         except Exception as error:
             print(f"[WORKER] Error: {error}")
             import traceback
             traceback.print_exc()
-            
+
             self.sync_failed.emit(
                 f"No se pudo sincronizar la partida: {error}"
             )
+
+    def _emit_progress(self, current: int, total: int, message: str) -> None:
+        """Emite la señal sync_progress desde el hilo del worker."""
+        self.sync_progress.emit(current, total, message)

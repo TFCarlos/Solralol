@@ -15,8 +15,8 @@ class PostgameSyncService:
     """Empareja una sesión LIVE finalizada con su Match-V5 oficial."""
 
 
-    MAX_CANDIDATES = 10
-    START_TOLERANCE_SECONDS = 12 * 60
+    MAX_CANDIDATES = 30
+    START_TOLERANCE_SECONDS = 20 * 60
     DURATION_TOLERANCE_SECONDS = 4 * 60
 
 
@@ -46,10 +46,14 @@ class PostgameSyncService:
     def sync_session(
         self,
         session: dict[str, Any],
+        on_progress=None,
     ) -> dict[str, Any]:
-        """Devuelve una copia enriquecida o una sesión con estado pending."""
-        updated = deepcopy(session)
+        """Devuelve una copia enriquecida o una sesión con estado pending.
 
+        ``on_progress(current, total, message)`` se llama en cada paso para
+        que el caller pueda actualizar la interfaz de usuario.
+        """
+        updated = deepcopy(session)
 
         if not self._can_sync(updated):
             return self._set_status(
@@ -58,8 +62,16 @@ class PostgameSyncService:
                 "Sin Riot ID o API key: se conserva telemetría LIVE.",
             )
 
+        def _progress(current: int, total: int, msg: str) -> None:
+            if callable(on_progress):
+                try:
+                    on_progress(current, total, msg)
+                except Exception:
+                    pass
 
         try:
+            _progress(0, 0, "Conectando con Riot…")
+
             service = RiotApiService(
                 api_key=self.api_key,
                 account_region=self.account_region,
@@ -71,27 +83,35 @@ class PostgameSyncService:
                 self.tag_line,
             )
             puuid = str(account["puuid"])
+
+            _progress(0, 0, "Obteniendo lista de partidas recientes…")
             match_ids = service.get_match_ids(
                 puuid,
                 count=self.MAX_CANDIDATES,
             )
-
 
             candidate = self._find_candidate(
                 service,
                 match_ids,
                 puuid,
                 updated,
+                on_progress=_progress,
             )
             if candidate is None:
+                # Si se buscó en MAX_CANDIDATES y no se encontró, la partida es
+                # demasiado antigua o no está disponible en Riot Match-V5.
+                n = len(match_ids)
                 return self._set_status(
                     updated,
-                    "pending",
-                    "Esperando a que Riot procese la partida.",
+                    "not_found",
+                    (
+                        f"Partida no disponible entre las {n} más recientes. "
+                        f"Si es reciente puede que no esté aún procesada."
+                    ),
                 )
 
-
             match_id, raw_match = candidate
+            _progress(0, 0, "Descargando timeline de la partida…")
             timeline = service.get_match_timeline(match_id)
             return self._merge_riot_data(
                 updated,
@@ -100,7 +120,6 @@ class PostgameSyncService:
                 match_id,
                 puuid,
             )
-
 
         except RiotApiError as error:
             status = "pending" if error.status_code in {404, 429} else "failed"
@@ -128,11 +147,21 @@ class PostgameSyncService:
         match_ids: list[str],
         puuid: str,
         session: dict[str, Any],
+        on_progress=None,
     ) -> tuple[str, dict[str, Any]] | None:
         best: tuple[float, str, dict[str, Any]] | None = None
+        total = len(match_ids)
+        print(
+            f"[SYNC] Buscando entre {total} partidas de Riot  —  "
+            f"'{session.get('champion_name')}' @ {session.get('started_at')}"
+        )
 
-
-        for match_id in match_ids:
+        for index, match_id in enumerate(match_ids, start=1):
+            if callable(on_progress):
+                try:
+                    on_progress(index, total, f"Revisando partida {index} de {total}…")
+                except Exception:
+                    pass
             raw_match = service.get_match(match_id)
             score = self._candidate_score(raw_match, puuid, session)
             if score is None:
@@ -140,9 +169,10 @@ class PostgameSyncService:
             if best is None or score < best[0]:
                 best = (score, match_id, raw_match)
 
-
         if best is None:
+            print(f"[SYNC] ✗ Ningún candidato válido entre {total} partidas revisadas.")
             return None
+        print(f"[SYNC] ✓ Mejor candidato: {best[1]} (score={best[0]:.1f})")
         return best[1], best[2]
 
 
@@ -157,7 +187,6 @@ class PostgameSyncService:
         if not isinstance(info, dict) or not isinstance(participants, list):
             return None
 
-
         participant = next(
             (
                 value
@@ -167,8 +196,8 @@ class PostgameSyncService:
             None,
         )
         if not isinstance(participant, dict):
+            print(f"[SYNC] ✗ puuid no encontrado en {raw_match.get('metadata', {}).get('matchId', '?')}")
             return None
-
 
         expected_champion = str(
             session.get("champion_name", "")
@@ -176,9 +205,10 @@ class PostgameSyncService:
         actual_champion = str(
             participant.get("championName", "")
         ).casefold()
+        match_id_label = raw_match.get("metadata", {}).get("matchId", "?")
         if expected_champion and expected_champion != actual_champion:
+            print(f"[SYNC] ✗ {match_id_label}: campeón '{actual_champion}' ≠ esperado '{expected_champion}'")
             return None
-
 
         started_at = self._parse_time(session.get("started_at"))
         riot_start = self._number(info.get("gameStartTimestamp")) / 1000
@@ -187,17 +217,23 @@ class PostgameSyncService:
         duration = self._number(info.get("gameDuration"))
         local_duration = self._number(session.get("duration"))
 
-
         start_difference = abs(game_start - started_at.timestamp())
         duration_difference = abs(duration - local_duration)
 
+        print(
+            f"[SYNC] ? {match_id_label}: champ={actual_champion} "
+            f"start_diff={start_difference:.0f}s (tol={self.START_TOLERANCE_SECONDS}s) "
+            f"dur_diff={duration_difference:.0f}s (tol={self.DURATION_TOLERANCE_SECONDS}s)"
+        )
 
         if start_difference > self.START_TOLERANCE_SECONDS:
+            print(f"[SYNC] ✗ {match_id_label}: start demasiado distante ({start_difference:.0f}s)")
             return None
         if local_duration and duration_difference > self.DURATION_TOLERANCE_SECONDS:
+            print(f"[SYNC] ✗ {match_id_label}: duración demasiado distante ({duration_difference:.0f}s)")
             return None
 
-
+        print(f"[SYNC] ✓ {match_id_label}: candidato válido (score={start_difference + duration_difference * 2:.1f})")
         return start_difference + duration_difference * 2
 
 
@@ -296,6 +332,13 @@ class PostgameSyncService:
             "source": "riot_match_v5",
             "message": "Partida sincronizada con Riot Match-V5.",
         }
+
+        try:
+            from app.services.match_log_service import MatchLogService
+            MatchLogService().save_match_log(session)
+        except Exception:
+            pass
+
         return session
 
 

@@ -28,7 +28,7 @@ def main() -> int:
         item_catalog=item_catalog,
     )
 
-    window.show()
+    window.showMaximized()
 
     return app.exec()
 

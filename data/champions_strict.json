@@ -163,7 +163,7 @@
     },
     "character": "Ahri",
     "combat_attributes": {
-      "attack_damage": 2,
+      "attack_damage": 1,
       "attack_power": 8,
       "critic": 1,
       "lethality": 1
@@ -2889,9 +2889,9 @@
       "dependency_on_gold": 6,
       "power_spike_level": 7,
       "power_spike_items": [
-        "Recaudadora",
         "Hidra titánica",
-        "Recuerdos de lord Dominik"
+        "Cuchilla negra",
+        "Botas de mercurio"
       ]
     },
     "common_runes": [
@@ -2918,69 +2918,69 @@
     "matchups": {
       "counters": [
         {
-          "champion": "Ekko",
-          "win_rate": 0.4689,
-          "overall_win_rate": 0.4689,
-          "lane_games": 241,
-          "overall_games": 241,
+          "champion": "Taliyah",
+          "win_rate": 0.44880000000000003,
+          "overall_win_rate": 0.44880000000000003,
+          "lane_games": 205,
+          "overall_games": 205,
           "primary_role": "Jungle",
-          "tip": "Briar gana el 46.9% de 241 partidas frente a Ekko. Juega la fase de líneas con cautela."
+          "tip": "Briar gana el 44.9% de 205 partidas frente a Taliyah. Juega la fase de líneas con cautela."
         },
         {
-          "champion": "Talon",
-          "win_rate": 0.49670000000000003,
-          "overall_win_rate": 0.49670000000000003,
-          "lane_games": 306,
-          "overall_games": 306,
+          "champion": "Olaf",
+          "win_rate": 0.4777,
+          "overall_win_rate": 0.4777,
+          "lane_games": 157,
+          "overall_games": 157,
           "primary_role": "Jungle",
-          "tip": "Briar gana el 49.7% de 306 partidas frente a Talon. Juega la fase de líneas con cautela."
+          "tip": "Briar gana el 47.8% de 157 partidas frente a Olaf. Juega la fase de líneas con cautela."
         },
         {
-          "champion": "Shaco",
-          "win_rate": 0.49770000000000003,
-          "overall_win_rate": 0.49770000000000003,
-          "lane_games": 215,
-          "overall_games": 215,
+          "champion": "Sejuani",
+          "win_rate": 0.48,
+          "overall_win_rate": 0.48,
+          "lane_games": 525,
+          "overall_games": 525,
           "primary_role": "Jungle",
-          "tip": "Briar gana el 49.8% de 215 partidas frente a Shaco. Juega la fase de líneas con cautela."
+          "tip": "Briar gana el 48.0% de 525 partidas frente a Sejuani. Juega la fase de líneas con cautela."
         }
       ],
       "good_against": [
         {
-          "champion": "Warwick",
-          "win_rate": 0.6446999999999999,
-          "overall_win_rate": 0.6446999999999999,
-          "lane_games": 152,
-          "overall_games": 152,
+          "champion": "Locke",
+          "win_rate": 0.5935,
+          "overall_win_rate": 0.5935,
+          "lane_games": 155,
+          "overall_games": 155,
           "primary_role": "Jungle",
-          "tip": "Briar gana el 64.5% de 152 partidas frente a Warwick. Puedes buscar presión en línea."
+          "tip": "Briar gana el 59.4% de 155 partidas frente a Locke. Puedes buscar presión en línea."
         },
         {
-          "champion": "Zed",
-          "win_rate": 0.6036,
-          "overall_win_rate": 0.6036,
-          "lane_games": 111,
-          "overall_games": 111,
+          "champion": "Maokai",
+          "win_rate": 0.5809000000000001,
+          "overall_win_rate": 0.5809000000000001,
+          "lane_games": 136,
+          "overall_games": 136,
           "primary_role": "Jungle",
-          "tip": "Briar gana el 60.4% de 111 partidas frente a Zed. Puedes buscar presión en línea."
+          "tip": "Briar gana el 58.1% de 136 partidas frente a Maokai. Puedes buscar presión en línea."
         },
         {
-          "champion": "Shyvana",
-          "win_rate": 0.5784,
-          "overall_win_rate": 0.5784,
-          "lane_games": 204,
-          "overall_games": 204,
+          "champion": "Naafiri",
+          "win_rate": 0.5798,
+          "overall_win_rate": 0.5798,
+          "lane_games": 733,
+          "overall_games": 733,
           "primary_role": "Jungle",
-          "tip": "Briar gana el 57.8% de 204 partidas frente a Shyvana. Puedes buscar presión en línea."
+          "tip": "Briar gana el 58.0% de 733 partidas frente a Naafiri. Puedes buscar presión en línea."
         }
       ],
       "summary": {
-        "total_games_analyzed": 6694,
+        "total_games_analyzed": 44030,
         "primary_role": "Jungle",
-        "lane_win_rate": 0.5391935483870968,
-        "lane_total_games": 6694,
-        "overall_win_rate": 0.5391935483870968,
-        "overall_total_games": 6694
+        "lane_win_rate": 0.5311360655737705,
+        "lane_total_games": 44030,
+        "overall_win_rate": 0.5311360655737705,
+        "overall_total_games": 44030
       }
     },
     "strategy_and_macro": {
@@ -2992,7 +2992,7 @@
       ],
       "about": "A blood-frenzied diver who must be leashed by allies, chasing down single targets with escalating attack speed."
     },
-    "ugg_last_updated": "2026-09-11T08:06:23.108921+00:00"
+    "ugg_last_updated": "2026-09-15T07:44:58.680149+00:00"
   },
   {
     "character": "Caitlyn",

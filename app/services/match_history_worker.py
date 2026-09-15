@@ -15,6 +15,34 @@ class MatchHistoryWorker(QObject):
     detail_ready = Signal(dict)
     detail_failed = Signal(str, int)
 
+    profile_ready = Signal(dict)
+    profile_failed = Signal(str)
+
+    @Slot(str, str, str, str, str)
+    def load_profile(
+        self,
+        api_key: str,
+        game_name: str,
+        tag_line: str,
+        account_region: str,
+        platform_region: str,
+    ) -> None:
+        try:
+            service = self._service(
+                api_key,
+                account_region,
+                platform_region,
+            )
+            profile = service.get_full_summoner_profile(
+                game_name=game_name,
+                tag_line=tag_line,
+            )
+        except Exception as error:
+            self.profile_failed.emit(str(error))
+            return
+
+        self.profile_ready.emit(profile)
+
     @staticmethod
     def _service(
         api_key: str,

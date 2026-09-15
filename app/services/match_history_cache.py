@@ -9,7 +9,7 @@ from typing import Any
 class MatchHistoryCache:
     """Caché local para minimizar solicitudes a Riot API."""
 
-    CACHE_VERSION = 1
+    CACHE_VERSION = 2
     RATE_LIMIT_COOLDOWN_SECONDS = 120
 
     def __init__(self) -> None:
@@ -44,6 +44,11 @@ class MatchHistoryCache:
 
         if not isinstance(data, dict):
             return self._default_data()
+
+        # Invalidate legacy version cache to purge un-keyed cross-player match entries
+        if data.get("version", 0) < self.CACHE_VERSION:
+            data["matches"] = {}
+            data["version"] = self.CACHE_VERSION
 
         default_data = self._default_data()
 
@@ -141,7 +146,15 @@ class MatchHistoryCache:
     def get_match(
         self,
         match_id: str,
+        puuid: str = "",
     ) -> dict[str, Any] | None:
+        if puuid:
+            key = f"{match_id}:{puuid.strip()}"
+            match = self.data["matches"].get(key)
+            if isinstance(match, dict):
+                return match.copy()
+            return None
+
         match = self.data["matches"].get(match_id)
 
         if not isinstance(match, dict):
@@ -152,23 +165,31 @@ class MatchHistoryCache:
     def save_match(
         self,
         match: dict[str, Any],
+        puuid: str = "",
     ) -> None:
         match_id = str(match.get("match_id", ""))
 
         if not match_id:
             return
 
-        self.data["matches"][match_id] = match.copy()
+        target_puuid = puuid or str(match.get("player_puuid", ""))
+        if target_puuid:
+            match["player_puuid"] = target_puuid
+            key = f"{match_id}:{target_puuid.strip()}"
+            self.data["matches"][key] = match.copy()
+        else:
+            self.data["matches"][match_id] = match.copy()
         self._save()
 
     def get_matches(
         self,
         match_ids: list[str],
+        puuid: str = "",
     ) -> list[dict[str, Any]]:
         matches = []
 
         for match_id in match_ids:
-            match = self.get_match(match_id)
+            match = self.get_match(match_id, puuid=puuid)
 
             if match:
                 matches.append(match)

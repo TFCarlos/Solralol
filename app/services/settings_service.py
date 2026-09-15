@@ -33,6 +33,10 @@ class SettingsService:
 
         return settings
 
+    def load_settings(self) -> dict:
+        """Alias de load() para compatibilidad."""
+        return self.load()
+
     def save(self, settings: dict) -> None:
         self.settings_path.parent.mkdir(
             parents=True,

@@ -186,7 +186,8 @@ QLabel#settingsLabel {
 }
 
 QPushButton#primaryButton,
-QPushButton#secondaryButton {
+QPushButton#secondaryButton,
+QPushButton#disabledSyncButton {
     min-height: 34px;
     padding: 8px 14px;
     border-radius: 8px;
@@ -211,6 +212,37 @@ QPushButton#secondaryButton {
 
 QPushButton#secondaryButton:hover {
     background: #285783;
+}
+
+/* Botón de sync desactivado permanentemente (práctica / tutorial / personalizada).
+   Más apagado que un :disabled normal para dejar claro que no aplica. */
+QPushButton#disabledSyncButton {
+    color: #3d4f63;
+    background: #0e1a26;
+    border: 1px solid #1e2e3f;
+    font-weight: 600;
+    opacity: 0.45;
+}
+
+QPushButton#disabledSyncButton:hover {
+    background: #0e1a26;
+    border: 1px solid #1e2e3f;
+}
+
+QPushButton#dangerButton {
+    min-height: 34px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    color: #ffd8d8;
+    background: #7a1c27;
+    border: 1px solid #aa3544;
+}
+
+QPushButton#dangerButton:hover {
+    color: #ffffff;
+    background: #962835;
+    border-color: #c44354;
 }
 
 QSlider::groove:horizontal {
@@ -979,7 +1011,8 @@ QLabel#savedGamesStatus {
     font-size: 11px;
 }
 
-QScrollArea#savedGamesScroll {
+QScrollArea#savedGamesScroll,
+QWidget#savedGamesContent {
     border: none;
     background: transparent;
 }
@@ -995,7 +1028,7 @@ QLabel#savedGamesEmpty {
 
 QFrame#savedGameRow {
     border: 1px solid rgba(86, 126, 179, 100);
-    border-radius: 10px;
+    border-radius: 12px;
     background: rgba(6, 15, 29, 170);
 }
 
@@ -1004,36 +1037,53 @@ QFrame#savedGameRow:hover {
     background: rgba(15, 29, 50, 215);
 }
 
+QLabel#savedGameChampIcon {
+    border: 1px solid rgba(217, 174, 79, 140);
+    border-radius: 8px;
+    background: rgba(5, 12, 24, 180);
+}
+
 QLabel#savedGameTitle {
     color: #eef4ff;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 800;
 }
 
 QLabel#savedGameDetail {
-    color: #a8bbd5;
+    color: #94a3b8;
     font-size: 11px;
 }
 
 QLabel#savedGameSync {
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 6px;
 }
 
-QLabel#savedGameSync[state="live_only"] {
-    color: #d9ae4f;
-}
-
+QLabel#savedGameSync[state="live_only"],
 QLabel#savedGameSync[state="pending"] {
-    color: #d9ae4f;
+    color: #facc15;
+    background: rgba(217, 174, 79, 40);
+    border: 1px solid rgba(217, 174, 79, 110);
+}
+
+QLabel#savedGameSync[state="not_found"] {
+    color: #94a3b8;
+    background: rgba(100, 116, 139, 30);
+    border: 1px solid rgba(100, 116, 139, 90);
 }
 
 QLabel#savedGameSync[state="synced"] {
-    color: #64d9a3;
+    color: #4ade80;
+    background: rgba(34, 197, 94, 40);
+    border: 1px solid rgba(34, 197, 94, 110);
 }
 
 QLabel#savedGameSync[state="failed"] {
-    color: #ff7081;
+    color: #f87171;
+    background: rgba(239, 68, 68, 40);
+    border: 1px solid rgba(239, 68, 68, 110);
 }
 
 QDialog#liveMatchAnalysisDialog {
@@ -1344,6 +1394,55 @@ QLabel#liveMetricEstimate {
     font-size: 9px;
 }
 
+QLabel#liveAchievementBadge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 8px;
+    border-radius: 6px;
+}
+
+QLabel#liveAchievementBadge[type="early"] {
+    color: #2dd4bf;
+    background: rgba(45, 212, 191, 35);
+    border: 1px solid rgba(45, 212, 191, 110);
+}
+
+QLabel#liveAchievementBadge[type="mid"] {
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 35);
+    border: 1px solid rgba(251, 191, 36, 110);
+}
+
+QLabel#liveAchievementBadge[type="late"] {
+    color: #c084fc;
+    background: rgba(192, 132, 252, 35);
+    border: 1px solid rgba(192, 132, 252, 110);
+}
+
+QLabel#liveAchievementBadge[type="victory"] {
+    color: #4ade80;
+    background: rgba(74, 222, 128, 35);
+    border: 1px solid rgba(74, 222, 128, 110);
+}
+
+QLabel#liveAchievementBadge[type="offense"] {
+    color: #fb923c;
+    background: rgba(251, 146, 60, 35);
+    border: 1px solid rgba(251, 146, 60, 110);
+}
+
+QLabel#liveAchievementBadge[type="defense"] {
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 35);
+    border: 1px solid rgba(56, 189, 248, 110);
+}
+
+QLabel#liveAchievementBadge[type="default"] {
+    color: #f0cf78;
+    background: rgba(217, 174, 79, 35);
+    border: 1px solid rgba(217, 174, 79, 110);
+}
+
 QLabel#livePlayerRank {
     min-width: 38px;
     padding: 4px 6px;
@@ -1379,6 +1478,124 @@ QLabel#savedGameSyncMessage {
     max-width: 560px;
     color: #9db2d0;
     font-size: 10px;
+}
+
+QPushButton#liveRoleButton,
+QPushButton#recommendationTabButton,
+QPushButton#aiTabButton {
+    min-height: 34px;
+    padding: 6px 14px;
+    border: 1px solid rgba(97, 148, 211, 110);
+    border-radius: 8px;
+    color: #c9d9ee;
+    background: rgba(14, 31, 53, 195);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QPushButton#liveRoleButton:hover,
+QPushButton#recommendationTabButton:hover {
+    border-color: rgba(217, 174, 79, 180);
+    color: #ffffff;
+    background: rgba(30, 58, 94, 210);
+}
+
+QPushButton#liveRoleButton:checked,
+QPushButton#recommendationTabButton:checked {
+    border: 1px solid #f0cc70;
+    color: #111827;
+    background: #d9ae4f;
+    font-weight: 800;
+}
+
+QPushButton#aiTabButton {
+    min-height: 34px;
+    padding: 6px 14px;
+    border: 1px solid rgba(138, 92, 246, 160);
+    border-radius: 8px;
+    color: #e2d9f3;
+    background: rgba(45, 24, 86, 185);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+QPushButton#aiTabButton:hover {
+    border-color: #a78bfa;
+    color: #ffffff;
+    background: rgba(76, 40, 140, 210);
+}
+
+QPushButton#aiTabButton:checked {
+    border-color: #f0cc70;
+    color: #111827;
+    background: #d9ae4f;
+}
+
+QFrame#aiHeaderCard {
+    border: 1px solid rgba(138, 92, 246, 140);
+    border-radius: 10px;
+    background: rgba(18, 12, 38, 220);
+}
+
+QLabel#aiHeaderTitle {
+    color: #c4b5fd;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+QLabel#aiLogPathLabel {
+    color: #94a3b8;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}
+
+QTextBrowser#aiAnalysisTextBrowser {
+    border: 1px solid rgba(138, 92, 246, 100);
+    border-radius: 10px;
+    padding: 16px;
+    background: rgba(9, 14, 28, 235);
+    color: #e2e8f0;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+QFrame#aiIntroCard {
+    border: 1px solid rgba(138, 92, 246, 120);
+    border-radius: 12px;
+    background: rgba(15, 20, 38, 210);
+}
+
+QPushButton#primaryAiButton {
+    min-height: 36px;
+    padding: 8px 18px;
+    border: 1px solid #a78bfa;
+    border-radius: 8px;
+    color: #ffffff;
+    background: rgba(109, 40, 217, 220);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+QPushButton#primaryAiButton:hover {
+    background: rgba(124, 58, 237, 240);
+    border-color: #ddd6fe;
+}
+
+QPushButton#secondaryAiButton {
+    min-height: 32px;
+    padding: 6px 14px;
+    border: 1px solid rgba(148, 163, 184, 120);
+    border-radius: 7px;
+    color: #cbd5e1;
+    background: rgba(30, 41, 59, 180);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QPushButton#secondaryAiButton:hover {
+    border-color: #94a3b8;
+    color: #ffffff;
+    background: rgba(51, 65, 85, 210);
 }
 
 """
