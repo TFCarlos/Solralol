@@ -21115,9 +21115,9 @@
       "dependency_on_gold": 7,
       "power_spike_level": 6,
       "power_spike_items": [
-        "Trinity Force",
-        "Kraken Slayer",
-        "Death's Dance"
+        "Grebas de berserker",
+        "Flechas de los Yun Tal",
+        "Recuerdos de lord Dominik"
       ]
     },
     "common_runes": [
@@ -21144,69 +21144,69 @@
     "matchups": {
       "counters": [
         {
-          "champion": "Cho'Gath",
-          "win_rate": 0.39,
-          "overall_win_rate": 0.39,
-          "lane_games": 100,
-          "overall_games": 100,
+          "champion": "Poppy",
+          "win_rate": 0.4483,
+          "overall_win_rate": 0.4483,
+          "lane_games": 145,
+          "overall_games": 145,
           "primary_role": "Top",
-          "tip": "Tryndamere gana el 39.0% de 100 partidas frente a Cho'Gath. Juega la fase de líneas con cautela."
+          "tip": "Tryndamere gana el 44.8% de 145 partidas frente a Poppy. Juega la fase de líneas con cautela."
+        },
+        {
+          "champion": "Heimerdinger",
+          "win_rate": 0.4526,
+          "overall_win_rate": 0.4526,
+          "lane_games": 137,
+          "overall_games": 137,
+          "primary_role": "Top",
+          "tip": "Tryndamere gana el 45.3% de 137 partidas frente a Heimerdinger. Juega la fase de líneas con cautela."
         },
         {
           "champion": "Malphite",
-          "win_rate": 0.4355,
-          "overall_win_rate": 0.4355,
-          "lane_games": 287,
-          "overall_games": 287,
+          "win_rate": 0.4598,
+          "overall_win_rate": 0.4598,
+          "lane_games": 1681,
+          "overall_games": 1681,
           "primary_role": "Top",
-          "tip": "Tryndamere gana el 43.5% de 287 partidas frente a Malphite. Juega la fase de líneas con cautela."
-        },
-        {
-          "champion": "Zaahen",
-          "win_rate": 0.46549999999999997,
-          "overall_win_rate": 0.46549999999999997,
-          "lane_games": 116,
-          "overall_games": 116,
-          "primary_role": "Top",
-          "tip": "Tryndamere gana el 46.5% de 116 partidas frente a Zaahen. Juega la fase de líneas con cautela."
+          "tip": "Tryndamere gana el 46.0% de 1.681 partidas frente a Malphite. Juega la fase de líneas con cautela."
         }
       ],
       "good_against": [
         {
-          "champion": "Irelia",
-          "win_rate": 0.6111,
-          "overall_win_rate": 0.6111,
-          "lane_games": 108,
-          "overall_games": 108,
+          "champion": "Varus",
+          "win_rate": 0.6154,
+          "overall_win_rate": 0.6154,
+          "lane_games": 104,
+          "overall_games": 104,
           "primary_role": "Top",
-          "tip": "Tryndamere gana el 61.1% de 108 partidas frente a Irelia. Puedes buscar presión en línea."
+          "tip": "Tryndamere gana el 61.5% de 104 partidas frente a Varus. Puedes buscar presión en línea."
         },
         {
           "champion": "Fiora",
-          "win_rate": 0.5909,
-          "overall_win_rate": 0.5909,
-          "lane_games": 132,
-          "overall_games": 132,
+          "win_rate": 0.5964,
+          "overall_win_rate": 0.5964,
+          "lane_games": 674,
+          "overall_games": 674,
           "primary_role": "Top",
-          "tip": "Tryndamere gana el 59.1% de 132 partidas frente a Fiora. Puedes buscar presión en línea."
+          "tip": "Tryndamere gana el 59.6% de 674 partidas frente a Fiora. Puedes buscar presión en línea."
         },
         {
           "champion": "Garen",
-          "win_rate": 0.588,
-          "overall_win_rate": 0.588,
-          "lane_games": 216,
-          "overall_games": 216,
+          "win_rate": 0.5783,
+          "overall_win_rate": 0.5783,
+          "lane_games": 1437,
+          "overall_games": 1437,
           "primary_role": "Top",
-          "tip": "Tryndamere gana el 58.8% de 216 partidas frente a Garen. Puedes buscar presión en línea."
+          "tip": "Tryndamere gana el 57.8% de 1.437 partidas frente a Garen. Puedes buscar presión en línea."
         }
       ],
       "summary": {
-        "total_games_analyzed": 3943,
+        "total_games_analyzed": 29208,
         "primary_role": "Top",
-        "lane_win_rate": 0.517325,
-        "lane_total_games": 3943,
-        "overall_win_rate": 0.517325,
-        "overall_total_games": 3943
+        "lane_win_rate": 0.5199641509433962,
+        "lane_total_games": 29208,
+        "overall_win_rate": 0.5199641509433962,
+        "overall_total_games": 29208
       }
     },
     "strategy_and_macro": {
@@ -21219,7 +21219,7 @@
       ],
       "about": "A barbarian king who spins for crits, gains rage from combat, and becomes unkillable temporarily with Undying Rage."
     },
-    "ugg_last_updated": "2026-09-11T08:10:44.009591+00:00"
+    "ugg_last_updated": "2026-09-15T11:56:15.201073+00:00"
   },
   {
     "character": "Twisted Fate",

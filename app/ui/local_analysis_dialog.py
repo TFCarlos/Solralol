@@ -498,6 +498,29 @@ class LocalAnalysisDialog(QDialog):
         root.addWidget(self.status)
         self._load_item_editor(0)
 
+    @staticmethod
+    def _valid_rune_page_dict(page: Any) -> bool:
+        """Valida la estructura interna de una única página de runas."""
+        if not isinstance(page, dict):
+            return False
+        slots = page.get("slots") or page.get("runes")
+        secondary = page.get("secondary_slots")
+        return isinstance(slots, list) and len(slots) >= 3 and isinstance(secondary, list) and len(secondary) >= 2
+
+    @staticmethod
+    def _valid_rune_pages(pages: Any) -> bool:
+        """Comprueba si la lista contiene al menos una página de runas válida."""
+        if not isinstance(pages, list) or not pages:
+            return False
+        return any(LocalAnalysisDialog._valid_rune_page_dict(p) for p in pages)
+
+    def _ugg_rune_page(self, profile: dict[str, Any]) -> dict[str, Any] | None:
+        """Devuelve exclusivamente la primera página válida importada de U.GG."""
+        pages = profile.get("common_runes", [])
+        if not self._valid_rune_pages(pages):
+            return None
+        return pages[0] if isinstance(pages[0], dict) else None
+
     def _create_champion_banner(self) -> QFrame:
         banner = QFrame()
         banner.setObjectName("localChampionBanner")
@@ -531,13 +554,15 @@ class LocalAnalysisDialog(QDialog):
         panel = QFrame()
         panel.setObjectName("localRunePanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(14, 8, 14, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(8)
+
         title = QLabel("RUNAS")
         title.setObjectName("localInsightTitle")
         layout.addWidget(title)
+
         self.rune_pages_layout = QHBoxLayout()
-        self.rune_pages_layout.setSpacing(10)
+        self.rune_pages_layout.setSpacing(12)
         layout.addLayout(self.rune_pages_layout)
         return panel
 
@@ -546,70 +571,167 @@ class LocalAnalysisDialog(QDialog):
             item = self.rune_pages_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
         pages = profile.get("common_runes", [])
-        if not self._valid_rune_pages(pages):
-            pages = [self._default_rune_page(profile.get("basic_info", {}))]
-        for index, page in enumerate(pages[:2]):
-            if isinstance(page, dict):
-                self.rune_pages_layout.addWidget(self._rune_page_card(page, index + 1), 1)
+        if not isinstance(pages, list):
+            pages = []
+
+        # Extraer página 1 y página 2
+        p1 = pages[0] if len(pages) > 0 and isinstance(pages[0], dict) else None
+        p2 = pages[1] if len(pages) > 1 and isinstance(pages[1], dict) else None
+
+        if not p1 or not self._valid_rune_page_dict(p1):
+            p1 = self._default_rune_page(profile.get("basic_info", {}))
+
+        # Tarjeta 1 (Izquierda - 50% espacio)
+        self.rune_pages_layout.addWidget(self._rune_page_card(p1, 1), 1)
+
+        # Tarjeta 2 (Derecha - 50% espacio o Vacía)
+        if p2 and self._valid_rune_page_dict(p2):
+            self.rune_pages_layout.addWidget(self._rune_page_card(p2, 2), 1)
+        else:
+            self.rune_pages_layout.addWidget(self._empty_rune_page_card(2), 1)
 
     @staticmethod
-    def _valid_rune_pages(pages: Any) -> bool:
-        if not isinstance(pages, list) or not pages:
+    def _valid_rune_page_dict(page: Any) -> bool:
+        if not isinstance(page, dict):
             return False
-        for page in pages[:2]:
-            if not isinstance(page, dict):
-                return False
-            slots, secondary = page.get("slots"), page.get("secondary_slots")
-            if not isinstance(slots, list) or len(slots) != 3 or not isinstance(secondary, list) or len(secondary) != 2:
-                return False
-            if page.get("keystone") in slots or page.get("primary_tree") == page.get("secondary_tree"):
-                return False
-        return True
+        slots = page.get("slots") or page.get("runes")
+        secondary = page.get("secondary_slots")
+        return isinstance(slots, list) and len(slots) >= 3 and isinstance(secondary, list) and len(secondary) >= 2
 
     def _rune_page_card(self, page: dict[str, Any], index: int) -> QFrame:
         card = QFrame()
         card.setObjectName("localRunePage")
-        card.setMaximumHeight(178)
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(7)
-        page_name = str(page.get("name", f"Página {index}"))
-        games = int(page.get("games", 0) or 0)
+        card.setMinimumHeight(175)
+
+        main_layout = QVBoxLayout(card)
+        main_layout.setContentsMargins(14, 12, 14, 12)
+        main_layout.setSpacing(8)
+
+        # Cabecera de la tarjeta
+        header = QHBoxLayout()
+        header.setSpacing(8)
+
+        primary_tree = str(page.get("primary_tree", "Precision"))
+        secondary_tree = str(page.get("secondary_tree", "Resolve"))
+        keystone = str(page.get("keystone", ""))
+
+        title_text = f"Página {index} · {primary_tree}" + (f" / {secondary_tree}" if secondary_tree else "")
+        title_lbl = QLabel(title_text)
+        title_lbl.setObjectName("localRunePageTitle")
+        header.addWidget(title_lbl)
+        header.addStretch(1)
+
         win_rate = page.get("win_rate")
-        suffix = f" · {float(win_rate):.1%}" if isinstance(win_rate, (int, float)) and win_rate else ""
-        suffix += f" · {games:,} partidas".replace(",", ".") if games else ""
-        name = QLabel(page_name + suffix)
-        name.setObjectName("localRunePageTitle")
-        layout.addWidget(name)
+        games = int(page.get("games", 0) or 0)
+        if isinstance(win_rate, (int, float)) and win_rate > 0:
+            badge_text = f"{win_rate:.1%}" + (f" ({games:,} partidas)".replace(",", ".") if games else "")
+            wr_badge = QLabel(badge_text)
+            wr_badge.setObjectName("localRuneWrBadge")
+            header.addWidget(wr_badge)
 
-        trees = QHBoxLayout()
-        trees.setSpacing(12)
-        primary_slots = page.get("slots", [])
-        if not isinstance(primary_slots, list) or not primary_slots:
-            primary_slots = page.get("runes", [])
-        trees.addWidget(self._rune_tree_panel(
-            "PRINCIPAL", str(page.get("primary_tree", "Precision")),
-            str(page.get("keystone", "Conqueror")), primary_slots, True,
-        ), 1)
-        trees.addWidget(self._rune_tree_panel(
-            "SECUNDARIA", str(page.get("secondary_tree", "Resolve")),
-            "", page.get("secondary_slots", []), False,
-        ), 1)
-        layout.addLayout(trees)
+        main_layout.addLayout(header)
 
-        shards = page.get("shards", [])
-        if not isinstance(shards, list) or not shards:
-            shards = ["Adaptive Force", "Adaptive Force", "Health Scaling"]
-        shard_panel = QFrame()
-        shard_panel.setObjectName("localRuneShardsPanel")
-        shard_layout = QVBoxLayout(shard_panel)
-        shard_layout.setContentsMargins(8, 5, 8, 5)
-        shard_title = QLabel("FRAGMENTOS")
-        shard_title.setObjectName("localRuneSectionLabel")
-        shard_layout.addWidget(shard_title)
-        shard_layout.addLayout(self._rune_option_row([str(value) for value in shards], set(shards)))
-        layout.addWidget(shard_panel)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setObjectName("localRuneDivider")
+        main_layout.addWidget(sep)
+
+        # Cuerpo dividido en 2 columnas principales
+        body = QHBoxLayout()
+        body.setSpacing(16)
+
+        # --- COLUMNA 1: RAMA PRINCIPAL ---
+        primary_col = QVBoxLayout()
+        primary_col.setSpacing(6)
+
+        p_hdr = QLabel("RAMA PRINCIPAL")
+        p_hdr.setObjectName("localRuneSectionLabel")
+        primary_col.addWidget(p_hdr)
+
+        p_tree_lbl = QLabel(f"{primary_tree} · {keystone}" if keystone else primary_tree)
+        p_tree_lbl.setObjectName("localRuneTreeHeading")
+        primary_col.addWidget(p_tree_lbl)
+
+        p_runes_row = QHBoxLayout()
+        p_runes_row.setSpacing(8)
+        if keystone:
+            p_runes_row.addWidget(self._rune_selection(keystone, is_keystone=True))
+
+        slots = page.get("slots") or page.get("runes", [])
+        for r_name in slots[:3]:
+            p_runes_row.addWidget(self._rune_selection(str(r_name), is_keystone=False))
+        p_runes_row.addStretch(1)
+        primary_col.addLayout(p_runes_row)
+        primary_col.addStretch(1)
+        body.addLayout(primary_col, 1)
+
+        v_sep = QFrame()
+        v_sep.setFrameShape(QFrame.Shape.VLine)
+        v_sep.setObjectName("localRuneVDivider")
+        body.addWidget(v_sep)
+
+        # --- COLUMNA 2: SECUNDARIAS (ARRIBA) Y FRAGMENTOS (ABAJO) ---
+        sec_col = QVBoxLayout()
+        sec_col.setSpacing(6)
+
+        # Bloque Superior: Runas Secundarias
+        s_hdr = QLabel("RAMA SECUNDARIA")
+        s_hdr.setObjectName("localRuneSectionLabel")
+        sec_col.addWidget(s_hdr)
+
+        sec_runes_row = QHBoxLayout()
+        sec_runes_row.setSpacing(8)
+        sec_slots = page.get("secondary_slots", [])
+        for r_name in sec_slots[:2]:
+            sec_runes_row.addWidget(self._rune_selection(str(r_name), is_keystone=False))
+        sec_runes_row.addStretch(1)
+        sec_col.addLayout(sec_runes_row)
+
+        # Bloque Inferior: Fragmentos de Estadísticas
+        shards_hdr = QLabel("FRAGMENTOS DE ESTADÍSTICAS")
+        shards_hdr.setObjectName("localRuneSectionLabel")
+        sec_col.addWidget(shards_hdr)
+
+        shards_row = QHBoxLayout()
+        shards_row.setSpacing(6)
+        shards = page.get("shards", ["Adaptive Force", "Adaptive Force", "Health Scaling"])
+        for shard_name in shards[:3]:
+            shards_row.addWidget(self._rune_selection(str(shard_name), is_shard=True))
+        shards_row.addStretch(1)
+        sec_col.addLayout(shards_row)
+
+        sec_col.addStretch(1)
+        body.addLayout(sec_col, 1)
+
+        main_layout.addLayout(body)
+        return card
+
+    def _empty_rune_page_card(self, index: int) -> QFrame:
+        card = QFrame()
+        card.setObjectName("localRunePageEmpty")
+        card.setMinimumHeight(175)
+
+        layout = QVBoxLayout(card)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(4)
+
+        icon = QLabel("⚔")
+        icon.setObjectName("localRuneEmptyIcon")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        title = QLabel(f"Página {index} vacía")
+        title.setObjectName("localRuneEmptyTitle")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        subtext = QLabel("Sin configuración alternativa importada de U.GG")
+        subtext.setObjectName("localRuneEmptySubtext")
+        subtext.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        layout.addWidget(icon)
+        layout.addWidget(title)
+        layout.addWidget(subtext)
         return card
 
     @staticmethod
@@ -649,31 +771,48 @@ class LocalAnalysisDialog(QDialog):
         return row
 
     @staticmethod
-    def _rune_selection(name: str, object_name: str = "localRuneSelection") -> QWidget:
+    def _rune_selection(name: str, is_keystone: bool = False, is_shard: bool = False) -> QWidget:
         chip = QWidget()
-        chip.setObjectName(object_name)
+        chip.setObjectName("localRuneChip")
         layout = QHBoxLayout(chip)
-        layout.setContentsMargins(3, 3, 5, 3)
-        layout.setSpacing(5)
-        shard_marks = {
-            "Adaptive Force": "✦", "Attack Speed": "⚡", "Ability Haste": "⌛",
-            "Movement Speed": "➜", "Health Scaling": "♥", "Health": "♥",
-            "Tenacity and Slow Resist": "⛨",
-        }
-        icon = QLabel(shard_marks.get(name, "R"))
-        icon.setObjectName(
-            "localRuneSelectionIconActive"
-            if object_name in {"localRuneSelectionActive", "localRuneKeystone"}
-            else "localRuneSelectionIcon"
-        )
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        icon = QLabel()
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setFixedSize(30, 30)
+
+        # Tamaños incrementados para mayor visibilidad
+        if is_keystone:
+            size, icon_size = 44, 36
+            icon.setObjectName("localRuneKeystoneIcon")
+        elif is_shard:
+            size, icon_size = 28, 20
+            icon.setObjectName("localRuneShardIcon")
+            shard_marks = {
+                "Adaptive Force": "✦", "Attack Speed": "⚡", "Ability Haste": "⌛",
+                "Movement Speed": "➜", "Health Scaling": "♥", "Health": "♥",
+                "Tenacity and Slow Resist": "⛨",
+            }
+            icon.setText(shard_marks.get(name, "✦"))
+        else:
+            size, icon_size = 36, 28
+            icon.setObjectName("localRuneNormalIcon")
+
+        icon.setFixedSize(size, size)
+
         path = get_rune_icon_path(name, "16.17.1")
         if path and path.exists():
             pixmap = QPixmap(str(path))
             if not pixmap.isNull():
                 icon.setText("")
-                icon.setPixmap(pixmap.scaled(27, 27, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                icon.setPixmap(
+                    pixmap.scaled(
+                        icon_size,
+                        icon_size,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+
         layout.addWidget(icon)
         chip.setToolTip(name)
         return chip
@@ -764,15 +903,58 @@ class LocalAnalysisDialog(QDialog):
             QLabel#localChampionPortrait { background: #071525; border: 2px solid #d9ae4f; border-radius: 8px; }
             QLabel#localChampionTitle { color: #f1f6ff; font-size: 18px; font-weight: 800; }
             QLabel#localChampionMeta { color: #9fc1d9; font-size: 11px; }
-            QFrame#localRunePanel { background: #0b1b2c; border: 1px solid #234663; border-radius: 8px; }
-            QFrame#localRunePage { background: #081827; border: 1px solid #315b7e; border-radius: 7px; }
+            QFrame#localRunePanel { background: #0a1827; border: 1px solid #1c3b57; border-radius: 10px; }
+           QFrame#localRunePage {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #0d2136, stop: 1 #081524);
+                border: 1px solid #234d75;
+                border-radius: 8px;
+            }
+            QFrame#localRunePageEmpty {
+                background: rgba(8, 20, 34, 0.45);
+                border: 1px dashed #1d3e5e;
+                border-radius: 8px;
+            }
+            QLabel#localRuneEmptyIcon { color: #3f6080; font-size: 22px; }
+            QLabel#localRuneEmptyTitle { color: #82a0be; font-size: 12px; font-weight: 700; }
+            QLabel#localRuneEmptySubtext { color: #4e6e8e; font-size: 10px; }
             QFrame#localRuneTreePanel { background: #06131f; border: 1px solid #193750; border-radius: 6px; }
             QWidget#localRuneSelection, QWidget#localRuneSelectionActive, QWidget#localRuneKeystone { background: transparent; border: none; }
             QLabel#localRuneSelectionIcon, QLabel#localRuneSelectionIconActive { color: #7890a8; background: #081522; border: 2px solid #29445b; border-radius: 22px; font-size: 9px; font-weight: 800; }
             QLabel#localRuneSelectionIconActive { color: #f6d477; background: #2a2111; border-color: #f0b944; }
-            QLabel#localRuneSectionLabel { color: #d9ae4f; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
-            QLabel#localRuneTreeHeading { color: #77d8b0; font-size: 11px; font-weight: 800; }
-            QLabel#localRunePageTitle { color: #f1f6ff; font-size: 11px; font-weight: 800; }
+            QLabel#localRuneSectionLabel { color: #d9ae4f; font-size: 9px; font-weight: 800; letter-spacing: 0.8px; }
+            QLabel#localRuneTreeHeading { color: #77d8b0; font-size: 11px; font-weight: 700; margin-bottom: 2px; }
+            QLabel#localRunePageTitle { color: #f0f5ff; font-size: 12px; font-weight: 800; }
+            QLabel#localRuneWrBadge {
+                color: #77d8b0;
+                background: #0f3026;
+                border: 1px solid #1f684e;
+                border-radius: 4px;
+                padding: 2px 7px;
+                font-size: 10px;
+                font-weight: 800;
+            }
+            QLabel#localRuneKeystoneIcon {
+                color: #f6d477;
+                background: #251e12;
+                border: 2px solid #f0b944;
+                border-radius: 22px;
+            }
+            QLabel#localRuneNormalIcon {
+                color: #8bb3d6;
+                background: #0d2238;
+                border: 1px solid #2a5278;
+                border-radius: 18px;
+            }
+            QLabel#localRuneShardIcon {
+                color: #7890a8;
+                background: #091726;
+                border: 1px solid #1c3954;
+                border-radius: 14px;
+                font-size: 10px;
+                font-weight: 800;
+            }
+            QFrame#localRuneDivider { color: #1a3854; background-color: #1a3854; max-height: 1px; border: none; }
+            QFrame#localRuneVDivider { color: #1a3854; background-color: #1a3854; max-width: 1px; border: none; }
             QLabel#localRuneSummary, QLabel#localRuneShards { color: #77d8b0; font-size: 11px; font-weight: 700; }
             QLabel#localRuneIcon { color: #f6d477; background: #342611; border: 1px solid #d9ae4f; border-radius: 14px; font-size: 9px; font-weight: 800; }
             QLabel#localRuneName { color: #e8f0ff; font-size: 11px; font-weight: 700; }
