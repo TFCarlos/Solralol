@@ -1359,9 +1359,30 @@ class LocalAnalysisDialog(QDialog):
             if not pixmap.isNull():
                 self.champion_portrait.setPixmap(pixmap.scaled(68, 68, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         self.champion_title.setText(f"{champion}  ·  {title}")
+
+        # Calcular Win Rate general: media de win_rate_vs_game_length si existe
+        wr_curve_raw = profile.get("win_rate_vs_game_length", [])
+        if wr_curve_raw and isinstance(wr_curve_raw, list):
+            wr_values = [float(e.get("winrate", 0)) for e in wr_curve_raw if isinstance(e, dict) and e.get("winrate")]
+            overall_wr = round(sum(wr_values) / len(wr_values), 1) if wr_values else None
+        else:
+            # Fallback: usar win_rate de la primera página de runas (U.GG)
+            runes_list = profile.get("common_runes", [])
+            ugg_wr_raw = runes_list[0].get("win_rate") if runes_list and isinstance(runes_list[0], dict) else None
+            if ugg_wr_raw is not None:
+                overall_wr = round(float(ugg_wr_raw) * 100, 1) if float(ugg_wr_raw) <= 1.0 else round(float(ugg_wr_raw), 1)
+            else:
+                overall_wr = None
+
+        # Línea predilecta: primer elemento de flex_potential
+        flex = basic.get("flex_potential") or []
+        primary_lane = flex[0] if flex else "—"
+
+        wr_text = f"{overall_wr}% WR" if overall_wr is not None else "WR N/D"
         self.champion_meta.setText(
             f"{basic.get('play_style', 'Adaptable')}  ·  {basic.get('damage_type', 'Híbrido')}  ·  "
-            f"Dificultad {basic.get('difficulty_floor', '?')}-{basic.get('difficulty_ceiling', '?')}/10"
+            f"Dificultad {basic.get('difficulty_floor', '?')}-{basic.get('difficulty_ceiling', '?')}/10  ·  "
+            f"🏆 {wr_text}  ·  🗺️ {primary_lane}"
         )
         rune_page = self._ugg_rune_page(profile)
         if rune_page:

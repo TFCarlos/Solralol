@@ -61,6 +61,9 @@ from app.services.postgame_sync_worker import (
 from app.ui.champion_card import ChampionCard
 from app.ui.overlay_window import OverlayWindow
 from app.ui.styles import CONTROL_WINDOW_STYLE
+from app.ui.champ_select_worker import ChampSelectWorker
+from app.ui.draft_tool_dialog import DraftToolDialog
+
 
 
 class Backdrop(QWidget):
@@ -198,6 +201,7 @@ class MainWindow(QMainWindow):
 
         self.current_live_session: dict | None = None
         self.live_analysis_dialog: LiveMatchAnalysisDialog | None = None
+        self.draft_tool_dialog: DraftToolDialog | None = None
 
         self.overlay = OverlayWindow(item_catalog)
 
@@ -213,12 +217,14 @@ class MainWindow(QMainWindow):
         self.setup_live_data_worker()
         self.setup_match_history_worker()
         self.setup_postgame_sync_worker()
+        self.setup_champ_select_worker()
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.request_snapshot)
         self.poll_timer.start(1000)
 
         self.request_snapshot()
+
 
     def build_ui(self) -> None:
         self.backdrop = Backdrop()
@@ -319,14 +325,23 @@ class MainWindow(QMainWindow):
         self.home_button.setChecked(True)
         self.live_button.setEnabled(False)
 
+        self.draft_nav_button = QPushButton("⚔️ Herramienta de Draft")
+        self.draft_nav_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.draft_nav_button.setStyleSheet(
+            "background-color: #059669; color: #FFFFFF; font-weight: bold; border-radius: 6px; padding: 6px 14px; margin-left: 8px;"
+        )
+        self.draft_nav_button.clicked.connect(self.open_draft_tool_dialog)
+
         layout.addWidget(self.home_button)
         layout.addWidget(self.analysis_button)
         layout.addWidget(self.live_button)
         layout.addWidget(self.saved_games_button)
         layout.addWidget(self.settings_button)
+        layout.addWidget(self.draft_nav_button)
         layout.addStretch(1)
 
         return navigation
+
 
     def create_nav_button(self, text: str, index: int) -> QPushButton:
         button = QPushButton(text)
@@ -3079,9 +3094,44 @@ class MainWindow(QMainWindow):
             f"{percent}%"
         )
 
+    def setup_champ_select_worker(self) -> None:
+        self.champ_select_worker = ChampSelectWorker(parent=self)
+        self.champ_select_worker.champ_select_started.connect(self._on_champ_select_started)
+        self.champ_select_worker.champ_select_updated.connect(self._on_champ_select_updated)
+        self.champ_select_worker.champ_select_ended.connect(self._on_champ_select_ended)
+        self.champ_select_worker.start()
+
+    def open_draft_tool_dialog(self) -> None:
+        if not self.draft_tool_dialog or not self.draft_tool_dialog.isVisible():
+            self.draft_tool_dialog = DraftToolDialog(self)
+            self.draft_tool_dialog.show()
+        else:
+            self.draft_tool_dialog.raise_()
+            self.draft_tool_dialog.activateWindow()
+
+    @Slot(dict)
+    def _on_champ_select_started(self, session: dict) -> None:
+        self.open_draft_tool_dialog()
+        if self.draft_tool_dialog:
+            self.draft_tool_dialog.update_from_lcu_session(session)
+
+    @Slot(dict)
+    def _on_champ_select_updated(self, session: dict) -> None:
+        if self.draft_tool_dialog and self.draft_tool_dialog.isVisible():
+            self.draft_tool_dialog.update_from_lcu_session(session)
+
+    def _on_champ_select_ended(self) -> None:
+        if self.draft_tool_dialog and self.draft_tool_dialog.isVisible():
+            self.draft_tool_dialog._set_lcu_managed_controls(False)
+
     def closeEvent(self, event) -> None:
         self.poll_timer.stop()
         self.overlay.close()
+
+        if hasattr(self, "champ_select_worker") and self.champ_select_worker.isRunning():
+            self.champ_select_worker.stop()
+            self.champ_select_worker.quit()
+            self.champ_select_worker.wait(2000)
 
         if self.worker_thread.isRunning():
             self.worker_thread.quit()
