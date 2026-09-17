@@ -1548,6 +1548,8 @@ class MainWindow(QMainWindow):
         self.api_key_status.setObjectName("apiKeyStatus")
         self.update_api_key_status()
 
+        panel_layout.addWidget(self.api_key_status)
+
         gemini_title = QLabel("IA Gemini (Google AI Studio)")
         gemini_title.setObjectName("settingsGroupTitle")
         panel_layout.addWidget(gemini_title)

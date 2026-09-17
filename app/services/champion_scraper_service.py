@@ -1,4 +1,4 @@
-"""Sincronización de builds, runas y matchups públicos desde U.GG."""
+"""Sincronización de builds, runas y matchups públicos desde U.GG y Lolalytics."""
 from __future__ import annotations
 
 import json
@@ -27,12 +27,13 @@ class ChampionScraperService:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://lolalytics.com/",
             "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
-            "sec-fetch-site": "cross-site",
+            "sec-fetch-site": "same-site",
         })
         self._live_patches: list[str] | None = None
         root = self.champions_path.parent
@@ -74,11 +75,6 @@ class ChampionScraperService:
             return None
 
     def _patches(self) -> list[str]:
-        """Obtiene primero el parche vivo, sin depender del catÃ¡logo local.
-
-        U.GG publica la temporada como 26.xx; otras fuentes aÃºn pueden usar
-        16.xx. Se prueban ambos formatos para el mismo nÃºmero de parche.
-        """
         if self._live_patches is not None:
             return self._live_patches
         values: list[str] = []
@@ -88,15 +84,12 @@ class ChampionScraperService:
             if match:
                 major, minor = match.groups()
                 values.extend((f"26.{minor}", f"{major}.{minor}"))
-        # Fallbacks only; the live result is always tried first.
         values.extend(("26.18", "16.18", "26.17", "16.17"))
         self._live_patches = list(dict.fromkeys(values))
         return self._live_patches
 
     def _overview(self, champion_id: int) -> Any | None:
         """Lee el JSON público que alimenta la página de build de U.GG."""
-        # U.GG rota versiones con cada parche. Probamos las vigentes y una
-        # basada en el catálogo local para que el scraper no quede acoplado.
         local_version = json.loads((self.champions_path.parent / "champion_catalog.json").read_text(encoding="utf-8")).get("version", "")
         patches = [patch.replace(".", "_") for patch in self._patches()]
         patches.append(str(local_version).rsplit(".", 1)[0].replace(".", "_"))
@@ -213,21 +206,18 @@ class ChampionScraperService:
         if full_names:
             result["full_build"] = full_names[:6]
 
-        # Starter items
         if starters and isinstance(starters, list) and isinstance(starters[0], dict):
             s_ids = starters[0].get("ids", [])
             starter_names = [self.item_names[str(i)] for i in s_ids if str(i) in self.item_names]
             if starter_names:
                 result["starter_items"] = starter_names
 
-        # Summoner spells
         if spells and isinstance(spells, list) and isinstance(spells[0], dict):
             sp_ids = spells[0].get("ids", [])
             spell_names = [self._SUMMONER_SPELLS.get(i, f"Hechizo {i}") for i in sp_ids if i in self._SUMMONER_SPELLS]
             if spell_names:
                 result["summoner_spells"] = spell_names
 
-        # Situational items
         situational: dict[str, list[str]] = {"corta_curas": [], "tanque": [], "asesino": [], "utilidad_y_defensa": []}
         for entry in (lasts if isinstance(lasts, list) else []):
             if isinstance(entry, dict):
@@ -242,22 +232,78 @@ class ChampionScraperService:
         if any(situational.values()):
             result["situational_items"] = situational
 
+        # Parse Emerald+ Standard Rune Page
+        runes_data = opdata.get("runes", [])
+        if isinstance(runes_data, list) and runes_data:
+            r = runes_data[0]
+            pri_tree_id = r.get("primary_page_id")
+            pri_ids = r.get("primary_rune_ids", [])
+            sec_tree_id = r.get("secondary_page_id")
+            sec_ids = r.get("secondary_rune_ids", [])
+            shard_ids = r.get("stat_mod_ids", [])
+            games = r.get("play", 0)
+            wins = r.get("win", 0)
+            if len(pri_ids) >= 4:
+                shards = [self._PERK_NAMES.get(i, str(i)) for i in shard_ids[:3]]
+                if len(shards) == 2:
+                    shards = [shards[0], shards[0], shards[1]]
+                trees = {8000: "Precision", 8100: "Domination", 8200: "Sorcery", 8300: "Inspiration", 8400: "Resolve"}
+                result["runes"] = [{
+                    "name": "Página 1 U.GG",
+                    "source": "U.GG",
+                    "primary_tree": trees.get(pri_tree_id, "Precision"),
+                    "secondary_tree": trees.get(sec_tree_id, "Resolve"),
+                    "keystone": self._PERK_NAMES.get(pri_ids[0], str(pri_ids[0])),
+                    "slots": [self._PERK_NAMES.get(i, str(i)) for i in pri_ids[1:4]],
+                    "secondary_slots": [self._PERK_NAMES.get(i, str(i)) for i in sec_ids[:2]],
+                    "shards": shards,
+                    "win_rate": round(wins / games, 4) if games > 0 else 0.0,
+                    "games": games
+                }]
+
         return result
 
     def _parse_overview(self, data: Any, role: str) -> dict[str, Any]:
+        """
+        Extrae la información completa del endpoint Overview de U.GG:
+        - Hechizos de invocador (summoner_spells)
+        - Ítems iniciales (starter_items)
+        - Core items e Ítems finales / Full Build (most_played_build)
+        - Páginas de runas (Recomendada y Mayor Winrate)
+        """
         pd = self._position_data(data, role)
         if not isinstance(pd, list):
             return {}
+
         result: dict[str, Any] = {}
+
+        # --- 1. HECHIZOS DE INVOCADOR (pd[2]) ---
+        if len(pd) > 2 and isinstance(pd[2], list) and len(pd[2]) > 2:
+            spells_block = pd[2]
+            raw_spells = spells_block[2] if isinstance(spells_block[2], list) else []
+            spell_names = [self.spell_names.get(str(s), str(s)) for s in raw_spells if str(s) in self.spell_names]
+            if spell_names:
+                result["summoner_spells"] = spell_names
+
+        # --- 2. ÍTEMS INICIALES (pd[4]) ---
+        if len(pd) > 4 and isinstance(pd[4], list) and len(pd[4]) > 2:
+            starters_block = pd[4]
+            raw_starters = starters_block[2] if isinstance(starters_block[2], list) else []
+            starter_names = [self.item_names.get(str(i), str(i)) for i in raw_starters if str(i) in self.item_names]
+            if starter_names:
+                result["starter_items"] = starter_names
+
+        # --- 3. CORE ITEMS Y FULL BUILD (pd[3] y pd[5]) ---
+        core = pd[3] if len(pd) > 3 and isinstance(pd[3], list) else []
+        core_ids = []
+        if len(core) > 2 and isinstance(core[2], list):
+            core_ids = [str(i) for i in core[2] if self._is_finished_item(str(i))]
         
-        # --- 1. CORE ITEMS & FULL BUILD ---
-        core = pd[3] if len(pd) > 3 else []
-        core_ids = [str(i) for i in (core[2] if isinstance(core, list) and len(core) > 2 else []) if self._is_finished_item(str(i))]
         core_names = [self.item_names[i] for i in core_ids if i in self.item_names]
-        
         if len(core_names) >= 2:
             result["items"] = core_names[:3]
 
+        # Full build combinando core + opciones situacionales de pd[5]
         full_ids = list(core_ids)
         if len(pd) > 5 and isinstance(pd[5], list):
             for slot in pd[5]:
@@ -272,52 +318,51 @@ class ChampionScraperService:
         full_build_names = [self.item_names[i] for i in full_ids if i in self.item_names]
         if len(full_build_names) >= 3:
             result["full_build"] = full_build_names[:6]
+            result["most_played_build"] = full_build_names[:6]
 
-        # --- 2. RUNAS (Consolidando la lógica sin código inalcanzable) ---
+        # --- 4. RUNAS U.GG (Extrae Recomendada y Mayor Winrate) ---
         pages = []
         seen_pages: set[tuple[Any, ...]] = set()
-        
-        # Intenta primero con los candidatos múltiples
-        candidates = self._perk_candidates(pd[0]) if pd else []
+
+        candidates = []
+        for item in pd:
+            candidates.extend(self._perk_candidates(item))
+
         for candidate in candidates:
             if not isinstance(candidate, list) or len(candidate) < 5:
                 continue
+            
             primary, secondary = candidate[2], candidate[3]
             perk_ids = self._flat_perks(candidate[4])
             if not isinstance(primary, int) or not isinstance(secondary, int) or len(perk_ids) < 6:
                 continue
+
             page = self._rune_page(primary, secondary, perk_ids)
             games, wins = candidate[0], candidate[1]
-            signature = (page.get("keystone"), *page.get("slots", []), page.get("secondary_tree"), *page.get("secondary_slots", [])) if page else ()
-            if self._valid_rune_page(page) and signature not in seen_pages and isinstance(games, (int, float)) and games:
-                page["name"] = "Recommended · U.GG" if not pages else "AP · U.GG"
-                page["win_rate"] = round(float(wins) / float(games), 4) if isinstance(wins, (int, float)) else 0.0
-                page["games"] = int(games)
-                pages.append(page)
-                seen_pages.add(signature)
+            
+            if page:
+                signature = (
+                    page.get("keystone"),
+                    tuple(page.get("slots", [])),
+                    page.get("secondary_tree"),
+                    tuple(page.get("secondary_slots", []))
+                )
+                if self._valid_rune_page(page) and signature not in seen_pages and isinstance(games, (int, float)) and games:
+                    page["name"] = "Recomendada · U.GG" if not pages else "Mayor Winrate · U.GG"
+                    page["win_rate"] = round(float(wins) / float(games), 4) if isinstance(wins, (int, float)) else 0.0
+                    page["games"] = int(games)
+                    pages.append(page)
+                    seen_pages.add(signature)
 
-        if self._valid_rune_pages(pages):
-            result["runes"] = pages[:2]
-        else:
-            # Fallback a la página única con shards (pd[8][2]) si las variantes fallan
-            perks = pd[0] if pd else []
-            if isinstance(perks, list) and len(perks) >= 5:
-                primary, secondary = perks[2], perks[3]
-                perk_ids = self._flat_perks(perks[4])
-                shard_ids = self._ids(pd[8][2]) if len(pd) > 8 and isinstance(pd[8], list) and len(pd[8]) > 2 else []
-                if isinstance(primary, int) and isinstance(secondary, int):
-                    page = self._rune_page(primary, secondary, perk_ids + shard_ids)
-                    if self._valid_rune_page(page):
-                        games, wins = perks[0], perks[1]
-                        page["name"] = "Recommended · U.GG"
-                        page["win_rate"] = round(float(wins) / float(games), 4) if isinstance(games, (int, float)) and games and isinstance(wins, (int, float)) else 0.0
-                        page["games"] = int(games) if isinstance(games, (int, float)) else 0
-                        result["runes"] = [page]
+            if len(pages) == 2:
+                break
+
+        if pages:
+            result["runes"] = pages
 
         return result
 
     def _item_ids_in_order(self, value: Any) -> list[int]:
-        """Lee IDs de objetos del bloque variable de U.GG en orden."""
         result: list[int] = []
         def visit(node: Any) -> None:
             if isinstance(node, (int, str)) and str(node).isdigit() and str(node) in self.item_names:
@@ -332,7 +377,6 @@ class ChampionScraperService:
 
     @staticmethod
     def _perk_candidates(value: Any) -> list[list[Any]]:
-        """Encuentra variantes de página sin asumir una profundidad concreta."""
         found: list[list[Any]] = []
         if not isinstance(value, list):
             return found
@@ -344,35 +388,55 @@ class ChampionScraperService:
 
     def _rune_page(self, primary: int, secondary: int, perks: list[int]) -> dict[str, Any] | None:
         trees = {8000: "Precision", 8100: "Domination", 8200: "Sorcery", 8300: "Inspiration", 8400: "Resolve"}
-        names = {8005: "Press the Attack", 8008: "Lethal Tempo", 8021: "Fleet Footwork", 8010: "Conqueror", 8112: "Electrocute", 8128: "Dark Harvest", 9923: "Hail of Blades", 8214: "Summon Aery", 8229: "Arcane Comet", 8230: "Phase Rush", 8437: "Grasp of the Undying", 8439: "Aftershock", 8465: "Guardian", 8351: "Glacial Augment", 8360: "Unsealed Spellbook", 8369: "First Strike", 9111: "Triumph", 8009: "Presence of Mind", 9104: "Legend: Alacrity", 9103: "Legend: Tenacity", 9102: "Legend: Bloodline", 8014: "Coup de Grace", 8017: "Cut Down", 8299: "Last Stand", 8126: "Cheap Shot", 8139: "Taste of Blood", 8143: "Sudden Impact", 8137: "Sixth Sense", 8135: "Treasure Hunter", 8105: "Relentless Hunter", 8233: "Absolute Focus", 8210: "Transcendence", 8226: "Manaflow Band", 8236: "Gathering Storm", 8232: "Waterwalking", 8446: "Demolish", 8444: "Second Wind", 8473: "Bone Plating", 8451: "Overgrowth", 8453: "Revitalize", 8242: "Unflinching", 8304: "Magical Footwear", 8345: "Biscuit Delivery", 8347: "Cosmic Insight"}
+        names = {
+            8005: "Press the Attack", 8008: "Lethal Tempo", 8021: "Fleet Footwork", 8010: "Conqueror",
+            8112: "Electrocute", 8128: "Dark Harvest", 9923: "Hail of Blades", 8214: "Summon Aery",
+            8229: "Arcane Comet", 8230: "Phase Rush", 8437: "Grasp of the Undying", 8439: "Aftershock",
+            8465: "Guardian", 8351: "Glacial Augment", 8360: "Unsealed Spellbook", 8369: "First Strike",
+            9111: "Triumph", 8009: "Presence of Mind", 9104: "Legend: Alacrity", 9105: "Legend: Haste",
+            9103: "Legend: Tenacity", 9102: "Legend: Bloodline", 8014: "Coup de Grace", 8017: "Cut Down",
+            8299: "Last Stand", 8126: "Cheap Shot", 8139: "Taste of Blood", 8143: "Sudden Impact",
+            8137: "Sixth Sense", 8135: "Treasure Hunter", 8105: "Relentless Hunter", 8233: "Absolute Focus",
+            8210: "Transcendence", 8226: "Manaflow Band", 8236: "Gathering Storm", 8232: "Waterwalking",
+            8446: "Demolish", 8444: "Second Wind", 8473: "Bone Plating", 8451: "Overgrowth",
+            8453: "Revitalize", 8242: "Unflinching", 8304: "Magical Footwear", 8345: "Biscuit Delivery",
+            8347: "Cosmic Insight", 5001: "Health Scaling", 5002: "Armor", 5003: "Magic Resist",
+            5005: "Attack Speed", 5007: "Ability Haste", 5008: "Adaptive Force"
+        }
         if primary not in trees or secondary not in trees:
             return None
         readable = [names.get(value, str(value)) for value in perks]
         primary_runes = readable[:4]
-        return {"keystone": primary_runes[0], "primary_tree": trees[primary], "slots": primary_runes[1:4], "secondary_tree": trees[secondary], "secondary_slots": readable[4:6], "shards": readable[6:9]}
-
+        return {
+            "keystone": primary_runes[0],
+            "primary_tree": trees[primary],
+            "slots": primary_runes[1:4],
+            "secondary_tree": trees[secondary],
+            "secondary_slots": readable[4:6],
+            "shards": readable[6:9]
+        }
+    
     def _lolalytics(self, endpoint: str, slug: str, role: str) -> Any | None:
-        """Fuente estructurada de respaldo para los datos que U.GG no publica.
-
-        U.GG aporta su build principal; este endpoint aporta las dos variantes
-        de runas y la tabla de enfrentamientos con muestras, que U.GG sólo
-        renderiza en HTML protegido.
-        """
         local = json.loads((self.champions_path.parent / "champion_catalog.json").read_text(encoding="utf-8")).get("version", "16.17")
         local_patch = str(local).rsplit(".", 1)[0]
-        patches = [*self._patches(), local_patch]
+        patches = [*self._patches(), local_patch, ""]
         lane = {"mid": "middle", "adc": "bottom"}.get(role, role)
+        headers = {
+            "Referer": "https://lolalytics.com/",
+            "Origin": "https://lolalytics.com",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        }
         for patch in dict.fromkeys(patches):
             url = "https://a1.lolalytics.com/mega/"
             params = {"ep": endpoint, "v": "1", "patch": patch, "c": slug, "tier": "e_plus", "queue": "ranked", "region": "all", "lane": lane}
             try:
-                response = self.session.get(url, params=params, timeout=20)
-                if response.status_code == 200:
+                response = self.session.get(url, params=params, headers=headers, timeout=12)
+                if response.status_code == 200 and response.content:
                     return response.json()
             except (requests.RequestException, ValueError):
                 continue
         return None
-
+    
     @staticmethod
     def _ids(value: Any) -> list[int]:
         return [int(x) for x in value if isinstance(x, (int, float, str)) and str(x).isdigit()] if isinstance(value, list) else []
@@ -397,68 +461,110 @@ class ChampionScraperService:
         return self._rune_page(self._tree_for_perks(primary, int(page.get("pri", 0)) if isinstance(page, dict) else 0), self._tree_for_perks(secondary, int(page.get("sec", 1)) if isinstance(page, dict) else 1), primary + secondary + shards)
 
     def _parse_lolalytics(self, rune_data: Any, build_data: Any, counter_data: Any, role: str) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        summary = rune_data.get("summary", {}) if isinstance(rune_data, dict) else {}
+        """Procesa las respuestas de la API JSON de Lolalytics."""
+        output: dict[str, Any] = {}
+        
+        # Runas
+        if isinstance(rune_data, dict) and "perk" in rune_data:
+            page = self._rune_page_from_set(rune_data.get("perk"))
+            if page and self._valid_rune_page(page):
+                page["name"] = "Más jugada · Lolalytics"
+                output["runes"] = [page]
+
+        # Builds / Ítems
+        if isinstance(build_data, dict):
+            core_ids = [str(x) for x in self._ids(build_data.get("core")) if self._is_finished_item(str(x))]
+            names = [self.item_names[i] for i in core_ids if i in self.item_names]
+            if len(names) >= 3:
+                output["items"] = names[:3]
+
+        return output
+
+    def _parse_lolalytics_html(self, soup: BeautifulSoup, champion: str, role: str) -> dict[str, Any]:
+        """
+        Extrae la información completa de Lolalytics desde el HTML/Qwik cuando la API falla o da 403.
+        Mantiene el parseo completo de Runas (Árboles, Keystone, Slots y Shards), métricas y Objetos.
+        """
+        output: dict[str, Any] = {}
+        raw_html = str(soup)
+
+        # 1. Mapeo extendido de IDs de runas (Keystones, Slots y Shards)
+        known_perks = {
+            # Keystones
+            8005, 8008, 8021, 8010, 8112, 8128, 9923, 8214, 8229, 8230, 8351, 8360, 8369, 8437, 8439, 8465,
+            # Slots Principales y Secundarios
+            9111, 8009, 9104, 9105, 9103, 9102, 8014, 8017, 8299, 8126, 8139, 8143, 8137, 8135, 8105, 8233,
+            8210, 8226, 8236, 8232, 8446, 8444, 8473, 8451, 8453, 8242, 8304, 8345, 8347,
+            # Fragmentos / Shards de estadísticas
+            5001, 5002, 5003, 5005, 5007, 5008
+        }
+        keystones = {8005, 8008, 8021, 8010, 8112, 8128, 9923, 8214, 8229, 8230, 8351, 8360, 8369, 8437, 8439, 8465}
+
+        # 2. Extracción de IDs (Buscando en imágenes HTML y en el estado Qwik)
+        rune_ids = [int(x) for x in re.findall(r"(?:rune|runes|perk)/(\d+)(?:\.png)?", raw_html, re.IGNORECASE)]
+        
+        if not rune_ids:
+            qwik_match = re.search(r'<script type="qwik/json">(.*?)</script>', raw_html, re.DOTALL)
+            if qwik_match:
+                # Buscar números aislados dentro del estado Qwik que correspondan a IDs de runas válidos
+                found_tokens = re.findall(r"\b(500\d|8\d{3}|9\d{3})\b", qwik_match.group(1))
+                rune_ids = [int(x) for x in found_tokens if int(x) in known_perks]
+
+        # 3. Procesamiento de Páginas de Runas Completas (9 perks: 4 Rama Principal + 2 Secundaria + 3 Shards)
         pages = []
-        for label, variant in (("Más jugada", summary.get("runes", {}).get("pick")), ("Mayor winrate", summary.get("runes", {}).get("win"))):
-            if not isinstance(variant, dict):
+        seen_signatures: set[tuple[Any, ...]] = set()
+
+        for index, perk_id in enumerate(rune_ids):
+            if perk_id not in keystones:
                 continue
-            page = self._rune_page_from_set({**variant.get("set", {}), "page": variant.get("page", {})})
-            if page and page not in pages:
-                page["name"] = label
-                page["win_rate"] = float(variant.get("wr", 0) or 0) / (100 if float(variant.get("wr", 0) or 0) > 1 else 1)
-                page["games"] = int(variant.get("n", 0) or 0)
-                pages.append(page)
+
+            # Tomamos la ventana completa de 9 runas
+            perks_window = rune_ids[index:index + 9]
+            if len(perks_window) < 9:
+                # Intentar fallback si faltan shards
+                if len(perks_window) >= 6:
+                    perks_window = perks_window[:6] + [5007, 5008, 5001]
+                else:
+                    continue
+
+            primary_tree = self._tree_for_perks(perks_window[:4])
+            secondary_tree = self._tree_for_perks(perks_window[4:6], fallback_idx=1)
+
+            page = self._rune_page(primary_tree, secondary_tree, perks_window)
+            if page and self._valid_rune_page(page):
+                signature = (
+                    page.get("keystone"),
+                    tuple(page.get("slots", [])),
+                    page.get("secondary_tree"),
+                    tuple(page.get("secondary_slots", []))
+                )
+                if signature not in seen_signatures:
+                    page["name"] = "Más jugada · Lolalytics" if not pages else "Mayor winrate · Lolalytics"
+                    pages.append(page)
+                    seen_signatures.add(signature)
+
+            if len(pages) == 2:
+                break
+
         if pages:
-            result["runes"] = pages[:2]
+            output["runes"] = pages
 
-        sets = build_data.get("itemSets", {}) if isinstance(build_data, dict) else {}
-        item_ids: list[str] = []
-        ordered_sets = [sets[name] for name in ("itemSet5", "itemSet4", "itemSet3", "itemSet2", "itemSet1") if name in sets]
-        ordered_sets.extend(value for name, value in sets.items() if name not in {"itemSet5", "itemSet4", "itemSet3", "itemSet2", "itemSet1"})
-        
-        for entries in ordered_sets:
-            for entry in entries if isinstance(entries, list) else []:
-                raw = entry[0] if isinstance(entry, list) and entry else entry
-                for item_id in str(raw).split("_"):
-                    if item_id in self.item_names and item_id not in item_ids:
-                        item_ids.append(item_id)
+        # 4. Extracción de Ítems / Builds desde HTML
+        item_ids = [str(x) for x in re.findall(r"(?:item|items)/(\d+)\.png", raw_html, re.IGNORECASE)]
+        if item_ids:
+            valid_items = [self.item_names[i] for i in item_ids if i in self.item_names and self._is_finished_item(i)]
+            # Eliminar duplicados manteniendo el orden
+            unique_items = list(dict.fromkeys(valid_items))
+            if len(unique_items) >= 3:
+                output["most_played_build"] = unique_items[:6]
 
-        # 1. Todos los nombres en orden (para Full Build)
-        all_item_names = [self.item_names[item_id] for item_id in item_ids if item_id in self.item_names]
-        
-        # 2. Filtrado sin botas (para Core Items)
-        item_names = self._without_boots(all_item_names)
-        
-        if len(item_names) >= 3:
-            result["items"] = item_names[:3]
-        if len(all_item_names) >= 3:
-            result["full_build"] = all_item_names[:6]
-
-        # Matchups (Código original sin cambios)
-        counters = counter_data.get("counters", []) if isinstance(counter_data, dict) else []
-        parsed = []
-        for row in counters:
-            if not isinstance(row, dict) or int(row.get("n", 0) or 0) <= 0:
-                continue
-            champion = self.champion_names.get(int(row.get("cid", 0) or 0))
-            if not champion:
-                continue
-            rate = float(row.get("vsWr", 0) or 0)
-            rate = rate / 100 if rate > 1 else rate
-            parsed.append({"champion": champion, "win_rate": rate, "overall_win_rate": rate, "lane_games": int(row.get("n", 0)), "overall_games": int(row.get("n", 0)), "primary_role": role.title(), "tip": "Estadísticas actuales de enfrentamiento por línea."})
-        if len(parsed) >= 6:
-            parsed.sort(key=lambda x: x["win_rate"])
-            result["matchups"] = {"counters": parsed[:3], "good_against": parsed[-3:][::-1], "summary": {"primary_role": role.title(), "lane_win_rate": float(counter_data.get("stats", {}).get("wr", 0.5) or 0.5) / (100 if float(counter_data.get("stats", {}).get("wr", 0.5) or 0.5) > 1 else 1), "lane_total_games": int(counter_data.get("stats", {}).get("analysed", 0) or 0), "overall_win_rate": float(counter_data.get("stats", {}).get("wr", 0.5) or 0.5) / (100 if float(counter_data.get("stats", {}).get("wr", 0.5) or 0.5) > 1 else 1), "overall_total_games": int(counter_data.get("stats", {}).get("analysed", 0) or 0)}}
-        return result
+        return output
 
     def _lolalytics_page(self, slug: str, role: str, section: str = "build") -> BeautifulSoup | None:
         lane = {"mid": "middle", "adc": "bottom"}.get(role, role)
         return self._get(f"https://lolalytics.com/lol/{slug}/{section}/?lane={lane}")
 
     def _parse_lolalytics_html(self, soup: BeautifulSoup, champion: str, role: str) -> dict[str, Any]:
-        """Fallback SSR: Lolalytics entrega el HTML completo incluso cuando
-        su endpoint JSON interno cambia de versión."""
         output: dict[str, Any] = {}
         core = self._heading(soup, "core build")
         if core:
@@ -481,14 +587,12 @@ class ChampionScraperService:
             perks = rune_ids[index:index + 9]
             if len(perks) < 6:
                 continue
-            # Descarta los selectores de la web (muestran todos los keystones)
-            # y conserva sólo una configuración que contiene sus tres ranuras.
             if any(value in keystones for value in perks[1:4]):
                 continue
             page = self._rune_page(self._tree_for_perks(perks[:4]), self._tree_for_perks(perks[4:6], 1), perks)
             signature = tuple(perks)
             if page and signature not in seen_pages:
-                page["name"] = "Más jugada" if not pages else "Mayor winrate"
+                page["name"] = "Más jugada · Lolalytics" if not pages else "Mayor winrate · Lolalytics"
                 pages.append(page)
                 seen_pages.add(signature)
             if len(pages) == 2:
@@ -497,9 +601,6 @@ class ChampionScraperService:
             output["runes"] = pages
         text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True))
         rows = []
-        # El HTML SSR expone cada tarjeta como: "Gnar 46.08 % VS …
-        # 102 Games vs Gnar". Sólo aceptamos nombres existentes en el catálogo:
-        # así un texto explicativo nunca puede acabar como nombre de campeón.
         for enemy in self.champion_names.values():
             if enemy.casefold() == champion.casefold():
                 continue
@@ -546,8 +647,6 @@ class ChampionScraperService:
             items = [x for x in self._following_alts(core) if "item" not in x.lower()]
             if len(items) >= 3:
                 data["items"] = items[:3]
-        # U.GG identifica sus iconos como "The Rune …", "The Keystone …"
-        # y "The Rune Tree …". Es más estable que sus clases CSS ofuscadas.
         rune_labels = []
         for image in soup.select("img[alt]"):
             label = str(image.get("alt", "")).replace("Image: ", "").strip()
@@ -576,8 +675,6 @@ class ChampionScraperService:
                 if not found:
                     continue
                 slug = found.group(1)
-                # El texto de la tarjeta contiene estadísticas y explicaciones;
-                # el slug del enlace es la única fuente válida del campeón.
                 name = next((champion for champion in self.champion_names.values() if self._slug(champion) == slug), "")
                 if not name:
                     continue
@@ -593,7 +690,6 @@ class ChampionScraperService:
         return result
 
     def _clean_matchups(self, matchups: Any, role: str) -> dict[str, Any]:
-        """Impone el esquema estricto y descarta texto accidental de HTML."""
         if not isinstance(matchups, dict):
             return {}
         canonical = {self._slug(name): name for name in self.champion_names.values()}
@@ -602,8 +698,6 @@ class ChampionScraperService:
             raw = str(value or "")
             if direct := canonical.get(self._slug(raw)):
                 return direct
-            # Compatibilidad con JSON ya contaminado: el rival real aparece
-            # en el patrón final "Games vs <campeón>".
             match = re.search(r"Games\s+vs\s+(.+?)(?:\s+(?:the|wins)\b|$)", raw, re.IGNORECASE)
             return canonical.get(self._slug(match.group(1))) if match else ""
 
@@ -690,9 +784,38 @@ class ChampionScraperService:
             changed = True
             imported_build_data = True
 
-        # 3. Guardar Runas
-        if self._valid_rune_pages(parsed.get("runes")):
-            profile["common_runes"] = parsed["runes"][:2]
+        # 3. Guardar Runas (Página 1: U.GG Esmeralda+, Página 2: Lolalytics Esmeralda+)
+        ugg_runes = parsed.get("runes", []) if isinstance(parsed.get("runes"), list) else []
+
+        combined_runes: list[dict[str, Any]] = []
+
+        # Bloque 1: U.GG Principal (Página 1 U.GG)
+        if ugg_runes and self._valid_rune_page(ugg_runes[0]):
+            p_ugg = dict(ugg_runes[0])
+            p_ugg["name"] = "Página 1 U.GG"
+            p_ugg["source"] = "U.GG"
+            combined_runes.append(p_ugg)
+        elif profile.get("runes") and isinstance(profile["runes"], list) and len(profile["runes"]) > 0:
+            p_ugg = dict(profile["runes"][0])
+            p_ugg["name"] = "Página 1 U.GG"
+            p_ugg["source"] = "U.GG"
+            combined_runes.append(p_ugg)
+
+        # Bloque 2: Lolalytics Principal (Página 2 Lolalytics)
+        lola_page = self._scrape_lolalytics_runes(slug, role, str(html_build) if html_build else None)
+        if lola_page:
+            lola_page["name"] = "Página 2 Lolalytics"
+            lola_page["source"] = "Lolalytics"
+            combined_runes.append(lola_page)
+        elif len(ugg_runes) > 1 and self._valid_rune_page(ugg_runes[1]):
+            p_ugg2 = dict(ugg_runes[1])
+            p_ugg2["name"] = "Página 2 Lolalytics"
+            p_ugg2["source"] = "Lolalytics"
+            combined_runes.append(p_ugg2)
+
+        if combined_runes:
+            profile["runes"] = combined_runes[:2]
+            profile["common_runes"] = combined_runes[:2]
             changed = True
             imported_build_data = True
 
@@ -735,7 +858,6 @@ class ChampionScraperService:
         return True
 
     def _scrape_winrate_vs_game_length(self, slug: str, role: str, html_content: str | None = None) -> list[dict[str, Any]]:
-        """Scrapes win rate vs game length points (0-15, 15-20, 20-25, 25-30, 30-35, 35-40, 40+) from Lolalytics."""
         try:
             if not html_content:
                 soup = self._lolalytics_page(slug, role, "build")
@@ -793,8 +915,122 @@ class ChampionScraperService:
             pass
         return []
 
+    _PERK_NAMES = {
+        # Precision
+        8005: "Press the Attack", 8008: "Lethal Tempo", 8021: "Fleet Footwork", 8010: "Conqueror",
+        9111: "Triumph", 8009: "Presence of Mind", 9104: "Legend: Alacrity", 9103: "Legend: Bloodline",
+        9105: "Legend: Haste", 9102: "Legend: Bloodline", 8014: "Coup de Grace", 8017: "Cut Down", 8299: "Last Stand",
+        # Domination
+        8112: "Electrocute", 8128: "Dark Harvest", 9923: "Hail of Blades", 8126: "Cheap Shot",
+        8139: "Taste of Blood", 8143: "Sudden Impact", 8137: "Sixth Sense", 8135: "Treasure Hunter",
+        8105: "Relentless Hunter", 8106: "Ultimate Hunter", 8140: "Eyeball Collection", 8136: "Zombie Ward", 8120: "Ghost Poro",
+        # Sorcery
+        8214: "Summon Aery", 8229: "Arcane Comet", 8230: "Phase Rush", 8224: "Nullifying Orb", 8226: "Manaflow Band",
+        8275: "Nimbus Cloak", 8210: "Transcendence", 8234: "Celerity", 8233: "Absolute Focus", 8237: "Scorch",
+        8232: "Waterwalking", 8236: "Gathering Storm",
+        # Inspiration
+        8351: "Glacial Augment", 8360: "Unsealed Spellbook", 8369: "First Strike", 8306: "Hextech Flashtraption",
+        8304: "Magical Footwear", 8321: "Cash Back", 8313: "Triple Tonic", 8352: "Time Warp Tonic", 8345: "Biscuit Delivery",
+        8347: "Cosmic Insight", 8316: "Jack of All Trades", 8358: "Approach Velocity",
+        # Resolve
+        8437: "Grasp of the Undying", 8439: "Aftershock", 8465: "Guardian", 8446: "Demolish", 8463: "Font of Life",
+        8401: "Shield Bash", 8429: "Conditioning", 8444: "Second Wind", 8473: "Bone Plating", 8451: "Overgrowth",
+        8453: "Revitalize", 8242: "Unflinching",
+        # Stat Shards
+        5001: "Health Scaling", 5002: "Armor", 5003: "Magic Resist", 5005: "Attack Speed",
+        5007: "Ability Haste", 5008: "Adaptive Force", 5010: "Movement Speed", 5011: "Health", 5013: "Tenacity and Slow Resist"
+    }
+
+    @staticmethod
+    def _get_perk_tree(perk_id: int) -> str:
+        if perk_id in [8005, 8008, 8021, 8010, 9111, 8009, 9104, 9103, 9105, 9102, 8014, 8017, 8299]:
+            return "Precision"
+        if perk_id in [8112, 8128, 9923, 8126, 8139, 8143, 8137, 8135, 8105, 8106, 8140, 8136, 8120]:
+            return "Domination"
+        if perk_id in [8214, 8229, 8230, 8224, 8226, 8275, 8210, 8234, 8233, 8237, 8232, 8236]:
+            return "Sorcery"
+        if perk_id in [8351, 8360, 8369, 8306, 8304, 8321, 8313, 8352, 8345, 8347, 8316, 8358]:
+            return "Inspiration"
+        if perk_id in [8437, 8439, 8465, 8446, 8463, 8401, 8429, 8444, 8473, 8451, 8453, 8242]:
+            return "Resolve"
+        return "Precision"
+
+    def _scrape_lolalytics_runes(self, slug: str, role: str, html_content: str | None = None) -> dict[str, Any] | None:
+        """Extrae la página de runas #1 de Lolalytics en Esmeralda+."""
+        try:
+            if not html_content:
+                soup = self._lolalytics_page(slug, role, "build")
+                html_content = str(soup) if soup else ""
+
+            if html_content:
+                m = re.search(r'<script type="qwik/json">(.*?)</script>', html_content, re.DOTALL)
+                if m:
+                    data = json.loads(m.group(1))
+                    objs = data.get("objs", [])
+
+                    def decode_val(x):
+                        if isinstance(x, str):
+                            try:
+                                idx = int(x, 36)
+                                if 0 <= idx < len(objs):
+                                    return objs[idx]
+                            except Exception:
+                                pass
+                        return x
+
+                    for i, obj in enumerate(objs):
+                        if isinstance(obj, dict) and 'pri' in obj and 'sec' in obj:
+                            perk_list = []
+                            for offset in range(1, 20):
+                                if i + offset < len(objs):
+                                    val = decode_val(objs[i+offset])
+                                    if isinstance(val, int) and (8000 <= val <= 9999 or 5000 <= val <= 5015):
+                                        perk_list.append(val)
+
+                            if len(perk_list) >= 8:
+                                games = 0
+                                win_rate = 0.0
+                                for offset in range(-5, 15):
+                                    if 0 <= i + offset < len(objs):
+                                        item = decode_val(objs[i+offset])
+                                        if isinstance(item, dict) and 'wr' in item and 'n' in item:
+                                            games = decode_val(item['n']) or 0
+                                            win_rate = decode_val(item['wr']) or 0.0
+                                            break
+
+                                keystone_id = perk_list[0]
+                                primary_tree = self._get_perk_tree(keystone_id)
+                                primary_slots = [self._PERK_NAMES.get(p, str(p)) for p in perk_list[1:4]]
+
+                                sec_perks = perk_list[4:6]
+                                sec_tree = self._get_perk_tree(sec_perks[0]) if sec_perks else "Resolve"
+                                if sec_tree == primary_tree and len(sec_perks) > 1:
+                                    sec_tree = self._get_perk_tree(sec_perks[1])
+
+                                sec_slots = [self._PERK_NAMES.get(p, str(p)) for p in sec_perks]
+                                raw_shards = [self._PERK_NAMES.get(p, str(p)) for p in perk_list[6:]]
+                                if len(raw_shards) == 2:
+                                    stat_shards = [raw_shards[0], raw_shards[0], raw_shards[1]]
+                                else:
+                                    stat_shards = raw_shards[:3]
+
+                                return {
+                                    "name": "Página 2 Lolalytics",
+                                    "source": "Lolalytics",
+                                    "primary_tree": primary_tree,
+                                    "secondary_tree": sec_tree,
+                                    "keystone": self._PERK_NAMES.get(keystone_id, str(keystone_id)),
+                                    "slots": primary_slots,
+                                    "secondary_slots": sec_slots,
+                                    "shards": stat_shards,
+                                    "win_rate": float(win_rate) / 100.0 if win_rate > 1 else float(win_rate),
+                                    "games": int(games) if isinstance(games, (int, float)) else 0
+                                }
+        except Exception:
+            pass
+        return None
+
     def _scrape_damage_breakdown(self, slug: str, role: str, html_content: str | None = None) -> dict[str, float]:
-        """Extrae el desglose exacto de daño (% Físico/AD, % Mágico/AP, % Verdadero) desde Lolalytics."""
         try:
             if not html_content:
                 soup = self._lolalytics_page(slug, role, "build")
@@ -825,7 +1061,6 @@ class ChampionScraperService:
 
     @staticmethod
     def _valid_rune_pages(value: Any) -> bool:
-        """Evita guardar selecciones agregadas/rotas como páginas de runas."""
         if not isinstance(value, list) or not value:
             return False
         for page in value[:2]:
@@ -854,8 +1089,6 @@ class ChampionScraperService:
             if progress_callback:
                 progress_callback(index, len(selected), str(profile.get("character", "Campeón")))
             updated += int(self.update_champion(profile))
-            # Repara también descargas de versiones anteriores, incluso si la
-            # fuente actual no devuelve suficientes datos para una actualización.
             profile["matchups"] = self._clean_matchups(profile.get("matchups"), self._role(profile))
             if index < len(selected):
                 time.sleep(self.request_delay)

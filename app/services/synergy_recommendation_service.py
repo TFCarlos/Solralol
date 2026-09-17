@@ -102,16 +102,38 @@ class SynergyRecommendationService:
         threats: list[tuple[str, str]],
         limit: int = 10,
     ) -> list[ItemRecommendation]:
-        champion = self._champion_attributes(champion_profile)
+        # 1. Core items set (+10)
+        core_raw = []
+        if isinstance(champion_profile.get("items"), list):
+            core_raw.extend(champion_profile.get("items", []))
         scaling = champion_profile.get("power_curve_and_scaling", {})
-        power_spike_names = {
-            self._normalise_item_name(value)
-            for value in scaling.get("power_spike_items", [])
-        } if isinstance(scaling, dict) else set()
+        if isinstance(scaling, dict) and isinstance(scaling.get("power_spike_items"), list):
+            core_raw.extend(scaling.get("power_spike_items", []))
+        core_item_names = {self._normalise_item_name(n) for n in core_raw if n}
+
+        # 2. Build items set (+10)
+        build_raw = []
+        if isinstance(champion_profile.get("most_played_build"), list):
+            build_raw.extend(champion_profile.get("most_played_build", []))
+        if isinstance(champion_profile.get("full_build"), list):
+            build_raw.extend(champion_profile.get("full_build", []))
+        build_item_names = {self._normalise_item_name(n) for n in build_raw if n}
+
+        # 3. Situational items set (+5)
+        situational_raw = []
+        sit_dict = champion_profile.get("situational_items", {})
+        if isinstance(sit_dict, dict):
+            for cat_list in sit_dict.values():
+                if isinstance(cat_list, list):
+                    situational_raw.extend(cat_list)
+        situational_item_names = {self._normalise_item_name(n) for n in situational_raw if n}
+
         recommendations = [
-            self._add_power_spike_bonus(
+            self._apply_synergy_bonuses(
                 self.score_item(champion_profile, style_key, item_id, item, threats),
-                power_spike_names,
+                core_item_names,
+                build_item_names,
+                situational_item_names,
             )
             for item_id, item in items.items()
             if self._is_legendary(item)
@@ -119,24 +141,47 @@ class SynergyRecommendationService:
         return sorted(recommendations, key=lambda value: value.score, reverse=True)[:limit]
 
     @staticmethod
-    def _add_power_spike_bonus(
+    def _apply_synergy_bonuses(
         recommendation: ItemRecommendation,
-        power_spike_names: set[str],
+        core_item_names: set[str],
+        build_item_names: set[str],
+        situational_item_names: set[str],
     ) -> ItemRecommendation:
-        if SynergyRecommendationService._normalise_item_name(recommendation.name) not in power_spike_names:
+        norm_name = SynergyRecommendationService._normalise_item_name(recommendation.name)
+        bonus = 0.0
+        extra_reasons: list[str] = []
+
+        is_core = norm_name in core_item_names
+        is_build = norm_name in build_item_names
+        is_sit = norm_name in situational_item_names
+
+        if is_core:
+            bonus += 10.0
+            extra_reasons.append("Sinergia Core Item (+10)")
+        if is_build:
+            bonus += 10.0
+            extra_reasons.append("Sinergia en Build (+10)")
+        if is_sit:
+            bonus += 5.0
+            extra_reasons.append("Sinergia Situacional (+5)")
+
+        if bonus == 0.0:
             return recommendation
+
+        all_reasons = tuple(extra_reasons + list(recommendation.reasons))
         return ItemRecommendation(
             item_id=recommendation.item_id,
             name=recommendation.name,
-            score=round(recommendation.score + 3.0, 1),
-            reasons=("power spike del campeón", *recommendation.reasons[:2]),
+            score=round(recommendation.score + bonus, 1),
+            reasons=all_reasons[:3],
             counter_reasons=recommendation.counter_reasons,
         )
 
     @classmethod
     def _normalise_item_name(cls, name: Any) -> str:
         value = str(name).casefold().strip()
-        return cls.ITEM_NAME_ALIASES.get(value, value)
+        clean = re.sub(r"[^\w\s]", "", value)
+        return cls.ITEM_NAME_ALIASES.get(value, cls.ITEM_NAME_ALIASES.get(clean, clean))
 
     def score_item(
         self,

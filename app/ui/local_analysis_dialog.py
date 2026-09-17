@@ -895,21 +895,22 @@ class LocalAnalysisDialog(QDialog):
             if item.widget():
                 item.widget().deleteLater()
 
-        pages = profile.get("common_runes", [])
+        pages = profile.get("runes") or profile.get("common_runes") or []
         if not isinstance(pages, list):
             pages = []
 
-        # Extraer página 1 y página 2
+        # Extraer página 1 (U.GG) y página 2 (Lolalytics)
         p1 = pages[0] if len(pages) > 0 and isinstance(pages[0], dict) else None
         p2 = pages[1] if len(pages) > 1 and isinstance(pages[1], dict) else None
 
         if not p1 or not self._valid_rune_page_dict(p1):
             p1 = self._default_rune_page(profile.get("basic_info", {}))
+            p1["source"] = "U.GG"
 
-        # Tarjeta 1 (Izquierda - 50% espacio)
+        # Tarjeta 1 (Izquierda - Página 1 U.GG)
         self.rune_pages_layout.addWidget(self._rune_page_card(p1, 1), 1)
 
-        # Tarjeta 2 (Derecha - 50% espacio o Vacía)
+        # Tarjeta 2 (Derecha - Página 2 Lolalytics o Vacía)
         if p2 and self._valid_rune_page_dict(p2):
             self.rune_pages_layout.addWidget(self._rune_page_card(p2, 2), 1)
         else:
@@ -936,11 +937,15 @@ class LocalAnalysisDialog(QDialog):
         header = QHBoxLayout()
         header.setSpacing(8)
 
+        source_label = page.get("source")
+        if not source_label:
+            source_label = "U.GG" if index == 1 else "Lolalytics"
+
         primary_tree = str(page.get("primary_tree", "Precision"))
         secondary_tree = str(page.get("secondary_tree", "Resolve"))
         keystone = str(page.get("keystone", ""))
 
-        title_text = f"Página {index} · {primary_tree}" + (f" / {secondary_tree}" if secondary_tree else "")
+        title_text = f"Página {index} {source_label} · {primary_tree}" + (f" / {secondary_tree}" if secondary_tree else "")
         title_lbl = QLabel(title_text)
         title_lbl.setObjectName("localRunePageTitle")
         header.addWidget(title_lbl)
@@ -1044,11 +1049,12 @@ class LocalAnalysisDialog(QDialog):
         icon.setObjectName("localRuneEmptyIcon")
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        title = QLabel(f"Página {index} vacía")
+        source = "Lolalytics" if index == 2 else "U.GG"
+        title = QLabel(f"Página {index} {source} vacía")
         title.setObjectName("localRuneEmptyTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        subtext = QLabel("Sin configuración alternativa importada de U.GG")
+        subtext = QLabel(f"Sin configuración alternativa importada de {source}")
         subtext.setObjectName("localRuneEmptySubtext")
         subtext.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
