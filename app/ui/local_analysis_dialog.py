@@ -4,12 +4,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+import math
 from math import cos, sin
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygonF
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QFrame, QHBoxLayout, QHeaderView, QLabel, QProgressBar,
+    QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QProgressBar,
     QPushButton, QScrollArea, QSizePolicy, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
     QTextEdit, QVBoxLayout, QWidget,
 )
@@ -19,7 +20,7 @@ from app.services.settings_service import SettingsService
 from app.services.synergy_recommendation_service import SynergyRecommendationService
 from app.ui.champion_ai_worker import ChampionAIWorker
 from app.ui.champion_scraper_worker import ChampionScraperWorker
-from data_dragon import get_champion_icon_path, get_item_icon_path, get_rune_icon_path
+from data_dragon import get_champion_icon_path, get_item_icon_path, get_rune_icon_path, get_spell_icon_path
 
 RUNE_TREE_OPTIONS = {
     "Precision": [
@@ -57,6 +58,109 @@ RUNE_SHARD_OPTIONS = [
     ["Adaptive Force", "Movement Speed", "Health Scaling"],
     ["Health", "Tenacity and Slow Resist", "Health Scaling"],
 ]
+
+
+from PySide6.QtCore import QRectF
+
+class DamageBarWidget(QWidget):
+    def __init__(self, ad_pct: float = 85.0, ap_pct: float = 10.0, true_pct: float = 5.0, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.ad_pct = ad_pct
+        self.ap_pct = ap_pct
+        self.true_pct = true_pct
+        self.setFixedHeight(34)
+
+    def set_percentages(self, ad: float, ap: float, true_dmg: float = 5.0) -> None:
+        total = max(1.0, ad + ap + true_dmg)
+        self.ad_pct = (ad / total) * 100.0
+        self.ap_pct = (ap / total) * 100.0
+        self.true_pct = (true_dmg / total) * 100.0
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = self.rect()
+
+        # Background track
+        painter.setBrush(QColor(10, 20, 34))
+        painter.setPen(QColor(35, 60, 90, 160))
+        painter.drawRoundedRect(r.adjusted(0, 0, -1, -1), 8, 8)
+
+        track = r.adjusted(3, 3, -3, -3)
+        tw = float(track.width())
+        th = float(track.height())
+
+        total = max(1.0, self.ad_pct + self.ap_pct + self.true_pct)
+        gap = 3.0
+        active_count = sum(1 for p in (self.ad_pct, self.ap_pct, self.true_pct) if p > 0)
+        total_gaps = max(0, active_count - 1) * gap
+        avail_w = tw - total_gaps
+
+        ad_w = (self.ad_pct / total) * avail_w if self.ad_pct > 0 else 0.0
+        ap_w = (self.ap_pct / total) * avail_w if self.ap_pct > 0 else 0.0
+        true_w = (self.true_pct / total) * avail_w if self.true_pct > 0 else 0.0
+
+        curr_x = float(track.left())
+
+        # Font setup
+        font = painter.font()
+        font.setWeight(QFont.Weight.Bold)
+        font.setPointSize(9)
+        painter.setFont(font)
+
+        # 1. AD Segment (Rosy Red -> Deep Crimson Gradient)
+        if ad_w > 0:
+            grad = QLinearGradient(curr_x, 0, curr_x + ad_w, 0)
+            grad.setColorAt(0.0, QColor(244, 63, 94))
+            grad.setColorAt(1.0, QColor(190, 18, 60))
+            painter.setBrush(grad)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QRectF(curr_x, track.top(), ad_w, th), 5, 5)
+
+            if ad_w > 42:
+                painter.setPen(QColor(255, 255, 255))
+                painter.drawText(
+                    QRectF(curr_x + 8, track.top(), ad_w - 12, th),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    f"⚔ AD {int(self.ad_pct)}%"
+                )
+            curr_x += ad_w + gap
+
+        # 2. AP Segment (Vibrant Blue -> Deep Royal Gradient)
+        if ap_w > 0:
+            grad = QLinearGradient(curr_x, 0, curr_x + ap_w, 0)
+            grad.setColorAt(0.0, QColor(59, 130, 246))
+            grad.setColorAt(1.0, QColor(29, 78, 216))
+            painter.setBrush(grad)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QRectF(curr_x, track.top(), ap_w, th), 5, 5)
+
+            if ap_w > 42:
+                painter.setPen(QColor(255, 255, 255))
+                painter.drawText(
+                    QRectF(curr_x + 8, track.top(), ap_w - 12, th),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    f"🔮 AP {int(self.ap_pct)}%"
+                )
+            curr_x += ap_w + gap
+
+        # 3. True Damage Segment (Bright Amber -> Gold Gradient)
+        if true_w > 0:
+            grad = QLinearGradient(curr_x, 0, curr_x + true_w, 0)
+            grad.setColorAt(0.0, QColor(245, 158, 11))
+            grad.setColorAt(1.0, QColor(180, 83, 9))
+            painter.setBrush(grad)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(QRectF(curr_x, track.top(), true_w, th), 5, 5)
+
+            if true_w > 32:
+                painter.setPen(QColor(255, 255, 255))
+                painter.drawText(
+                    QRectF(curr_x + 6, track.top(), true_w - 8, th),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    f"✨ True {int(self.true_pct)}%"
+                )
 
 
 class RadarWidget(QWidget):
@@ -107,43 +211,110 @@ class RadarWidget(QWidget):
 
 
 class PowerCurveWidget(QWidget):
-    def __init__(self, values: list[tuple[str, float]], parent: QWidget | None = None) -> None:
+    def __init__(self, values: list[tuple[str, float]] | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.values = values
+        self.values = values or []
         self.setMinimumHeight(220)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor(9, 24, 40, 220))
-        if not self.values:
+
+        rect = self.rect()
+        painter.fillRect(rect, QColor(13, 20, 32, 230))
+
+        # Title: Win Rate vs Game Length
+        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.setPen(QColor(226, 232, 240))
+        painter.drawText(QRectF(16, 12, rect.width() - 32, 22), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Win Rate vs Game Length")
+
+        if not self.values or len(self.values) < 2:
             return
-        bounds = self.rect().adjusted(38, 28, -22, -38)
-        maximum = max(10.0, max(value for _, value in self.values))
-        painter.setPen(QColor(38, 72, 98))
-        for step in range(0, 11, 2):
-            y = bounds.bottom() - int(bounds.height() * step / maximum)
-            painter.drawLine(bounds.left(), y, bounds.right(), y)
-        points = []
-        for index, (_, value) in enumerate(self.values):
-            x = bounds.left() + int(bounds.width() * index / max(1, len(self.values) - 1))
-            y = bounds.bottom() - int(bounds.height() * value / maximum)
+
+        bounds = rect.adjusted(48, 42, -24, -32)
+
+        val_list = [v for _, v in self.values if v > 0]
+        if not val_list:
+            return
+
+        min_v = math.floor(min(val_list) - 0.8)
+        max_v = math.ceil(max(val_list) + 0.8)
+        if max_v - min_v < 4:
+            min_v = math.floor(min(val_list) - 1.5)
+            max_v = math.ceil(max(val_list) + 1.5)
+
+        v_range = max(1.0, float(max_v - min_v))
+
+        # Y-Axis grid lines & labels (% winrate)
+        painter.setFont(QFont("Segoe UI", 8))
+        step_count = 4
+        for step in range(step_count + 1):
+            val = min_v + (v_range * step / step_count)
+            y = bounds.bottom() - (bounds.height() * step / step_count)
+
+            painter.setPen(QPen(QColor(30, 41, 59, 180), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(int(bounds.left()), int(y), int(bounds.right()), int(y))
+
+            painter.setPen(QColor(148, 163, 184))
+            painter.drawText(QRectF(0, y - 8, bounds.left() - 8, 16), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"{val:.0f}%")
+
+        # Map X/Y points
+        points: list[QPointF] = []
+        n_points = len(self.values)
+        for index, (label, val) in enumerate(self.values):
+            x = bounds.left() + (bounds.width() * index / max(1, n_points - 1))
+            norm_val = max(0.0, min(1.0, (val - min_v) / v_range))
+            y = bounds.bottom() - (bounds.height() * norm_val)
             points.append(QPointF(x, y))
-        area = QPolygonF(points + [QPointF(points[-1].x(), bounds.bottom()), QPointF(points[0].x(), bounds.bottom())])
-        painter.setBrush(QColor(57, 188, 218, 45))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawPolygon(area)
-        painter.setPen(QColor(57, 188, 218))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPolyline(QPolygonF(points))
-        for index, (label, value) in enumerate(self.values):
-            point = points[index]
-            painter.setBrush(QColor(57, 188, 218))
-            painter.drawEllipse(point, 4, 4)
-            painter.setPen(QColor(217, 174, 79))
-            painter.drawText(int(point.x() - 8), int(point.y() - 10), str(int(value)))
-            painter.setPen(QColor(180, 204, 225))
-            painter.drawText(int(point.x() - 24), bounds.bottom() + 22, label)
+
+        # Smooth spline path (Cubic Bézier)
+        path = QPainterPath()
+        path.moveTo(points[0])
+        for i in range(len(points) - 1):
+            p1 = points[i]
+            p2 = points[i + 1]
+            ctrl_offset = (p2.x() - p1.x()) * 0.4
+            c1 = QPointF(p1.x() + ctrl_offset, p1.y())
+            c2 = QPointF(p2.x() - ctrl_offset, p2.y())
+            path.cubicTo(c1, c2, p2)
+
+        # Gradient Fill beneath curve
+        fill_path = QPainterPath(path)
+        fill_path.lineTo(points[-1].x(), bounds.bottom())
+        fill_path.lineTo(points[0].x(), bounds.bottom())
+        fill_path.closeSubpath()
+
+        grad = QLinearGradient(0, bounds.top(), 0, bounds.bottom())
+        grad.setColorAt(0.0, QColor(16, 185, 129, 90))
+        grad.setColorAt(1.0, QColor(16, 185, 129, 0))
+        painter.fillPath(fill_path, grad)
+
+        # Draw main emerald curve line
+        line_pen = QPen(QColor(16, 185, 129), 2.5)
+        line_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        line_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(line_pen)
+        painter.drawPath(path)
+
+        # Draw points, percentage labels, and X-axis bracket labels
+        for index, (label, val) in enumerate(self.values):
+            pt = points[index]
+
+            # Green circle marker
+            painter.setBrush(QColor(16, 185, 129))
+            painter.setPen(QPen(QColor(255, 255, 255), 1.5))
+            painter.drawEllipse(pt, 4, 4)
+
+            # Win rate % text above point
+            painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+            painter.setPen(QColor(52, 211, 153))
+            val_str = f"{val:.1f}%" if val > 0 else "-"
+            painter.drawText(QRectF(pt.x() - 25, pt.y() - 18, 50, 14), Qt.AlignmentFlag.AlignCenter, val_str)
+
+            # Time bracket label below X axis
+            painter.setFont(QFont("Segoe UI", 8))
+            painter.setPen(QColor(148, 163, 184))
+            painter.drawText(QRectF(pt.x() - 30, bounds.bottom() + 8, 60, 16), Qt.AlignmentFlag.AlignCenter, label)
 
 
 class BarWidget(QWidget):
@@ -367,12 +538,108 @@ class LocalAnalysisDialog(QDialog):
         self.rune_panel = self._create_rune_panel()
         analysis_layout.addWidget(self.rune_panel)
 
-        self.core_title = QLabel("CORE ITEMS / POWER SPIKE")
-        self.core_title.setObjectName("localSectionTitle")
-        analysis_layout.addWidget(self.core_title)
-        self.core_items_row = QHBoxLayout()
-        self.core_items_row.setSpacing(10)
-        analysis_layout.addLayout(self.core_items_row)
+        # =========================================================================
+        # ESTRUCTURA VISUAL COMPACTA (SEGÚN ESQUEMA PAINT REQUERIDO)
+        # =========================================================================
+
+        # 1. BLOQUE SUPERIOR DE TARJETAS (SUMMONERS, STARTING ITEMS, CORE BUILD)
+        top_cards_row = QHBoxLayout()
+        top_cards_row.setSpacing(10)
+
+        # SUMMONERS (Caja Naranja)
+        self.summoners_card = QFrame()
+        self.summoners_card.setObjectName("summonersCard")
+        sc_layout = QVBoxLayout(self.summoners_card)
+        sc_layout.setContentsMargins(10, 8, 10, 8)
+        sc_layout.setSpacing(4)
+        s_title = QLabel("SUMMONERS")
+        s_title.setStyleSheet("color: #fb923c; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; border: none; background: transparent;")
+        sc_layout.addWidget(s_title)
+        self.summoners_row = QHBoxLayout()
+        self.summoners_row.setSpacing(12)
+        sc_layout.addLayout(self.summoners_row)
+        top_cards_row.addWidget(self.summoners_card, 1)
+
+        # STARTING ITEMS (Caja Roja)
+        self.starters_card = QFrame()
+        self.starters_card.setObjectName("startersCard")
+        st_layout = QVBoxLayout(self.starters_card)
+        st_layout.setContentsMargins(10, 8, 10, 8)
+        st_layout.setSpacing(4)
+        st_title = QLabel("STARTING ITEMS")
+        st_title.setStyleSheet("color: #f87171; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; border: none; background: transparent;")
+        st_layout.addWidget(st_title)
+        self.starters_row = QHBoxLayout()
+        self.starters_row.setSpacing(12)
+        st_layout.addLayout(self.starters_row)
+        top_cards_row.addWidget(self.starters_card, 1)
+
+        # CORE BUILD OVERVIEW (Caja Amarilla)
+        self.core_overview_card = QFrame()
+        self.core_overview_card.setObjectName("coreOverviewCard")
+        co_layout = QVBoxLayout(self.core_overview_card)
+        co_layout.setContentsMargins(10, 8, 10, 8)
+        co_layout.setSpacing(4)
+        co_title = QLabel("CORE BUILD")
+        co_title.setStyleSheet("color: #eab308; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; border: none; background: transparent;")
+        co_layout.addWidget(co_title)
+        self.core_overview_row = QHBoxLayout()
+        self.core_overview_row.setSpacing(12)
+        co_layout.addLayout(self.core_overview_row)
+        top_cards_row.addWidget(self.core_overview_card, 2)
+
+        analysis_layout.addLayout(top_cards_row)
+
+        # 2. GRID PRINCIPAL (COLUMNA IZQUIERDA: BUILD / COLUMNA DERECHA: SITUACIONALES)
+        main_grid_row = QHBoxLayout()
+        main_grid_row.setSpacing(10)
+
+        # Columna Izquierda: Único bloque BUILD (Marrón)
+        self.build_card = QFrame()
+        self.build_card.setObjectName("buildCard")
+        b_layout = QVBoxLayout(self.build_card)
+        b_layout.setContentsMargins(12, 10, 12, 10)
+        b_layout.setSpacing(8)
+
+        b_title = QLabel("BUILD")
+        b_title.setStyleSheet("color: #fbbf24; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; border: none; background: transparent;")
+        b_layout.addWidget(b_title)
+
+        # QGridLayout para alinear estrictamente las columnas de la build (Fila 0 = Items 1-3, Fila 1 = Items 4-6)
+        self.build_grid = QGridLayout()
+        self.build_grid.setHorizontalSpacing(24)
+        self.build_grid.setVerticalSpacing(12)
+        b_layout.addLayout(self.build_grid)
+        b_layout.addStretch(1)
+
+        main_grid_row.addWidget(self.build_card, 1)
+
+        # Columna Derecha (Caja Verde Claro: SITUACIONALES)
+        self.situational_card = QFrame()
+        self.situational_card.setObjectName("situationalCard")
+        sit_layout = QVBoxLayout(self.situational_card)
+        sit_layout.setContentsMargins(10, 8, 10, 8)
+        sit_layout.setSpacing(6)
+        sit_title = QLabel("SITUACIONALES")
+        sit_title.setStyleSheet("color: #a3e635; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; border: none; background: transparent;")
+        sit_layout.addWidget(sit_title)
+        self.situational_items_row = QHBoxLayout()
+        self.situational_items_row.setSpacing(12)
+        sit_layout.addLayout(self.situational_items_row)
+        main_grid_row.addWidget(self.situational_card, 1)
+
+        analysis_layout.addLayout(main_grid_row)
+
+        # 3. BARRA INFERIOR (Caja Roja Abajo: TIPO DE DAÑO EN UNA BARRA DE PORCENTAJE)
+        damage_section = QVBoxLayout()
+        damage_section.setSpacing(4)
+        dmg_title = QLabel("TIPO DE DAÑO EN UNA BARRA DE PORCENTAJE")
+        dmg_title.setStyleSheet("color: #f87171; font-weight: 800; font-size: 11px; letter-spacing: 0.5px;")
+        damage_section.addWidget(dmg_title)
+        self.damage_bar = DamageBarWidget(ad_pct=85.0, ap_pct=10.0, true_pct=5.0)
+        damage_section.addWidget(self.damage_bar)
+
+        analysis_layout.addLayout(damage_section)
 
         secondary_charts = QHBoxLayout()
         secondary_charts.setSpacing(10)
@@ -497,6 +764,62 @@ class LocalAnalysisDialog(QDialog):
         self.status.setObjectName("localStatus")
         root.addWidget(self.status)
         self._load_item_editor(0)
+
+    def _render_full_build(self, profile: dict[str, Any], champion_style: str) -> None:
+        """Renderiza la Build Completa; usa power_spike_items como fallback si no hay datos scrapeados."""
+        while self.full_build_row.count():
+            item = self.full_build_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # 1. Busca la build completa; si no existe, recurre al core de items existente
+        wanted_names = profile.get("most_played_build")
+        if not wanted_names:
+            wanted_names = profile.get("power_curve_and_scaling", {}).get("power_spike_items", [])
+
+        # 2. Solo si ambas listas están vacías muestra el texto de fallback
+        if not wanted_names:
+            no_data = QLabel("Sin build recomendada disponible.")
+            no_data.setObjectName("localMuted")
+            self.full_build_row.addWidget(no_data)
+            return
+
+        items_by_id = self._recommendation_items_by_id()
+        catalog = self._catalog_items().get("items", {})
+
+        for position, wanted_name in enumerate(wanted_names):
+            target_id = self._catalog_id_for_name(wanted_name, catalog)
+            match = None
+
+            if target_id and target_id in items_by_id:
+                match = (target_id, items_by_id[target_id])
+            elif target_id and target_id in catalog:
+                cat_item = catalog[target_id]
+                display_name = cat_item.get("name_es") or cat_item.get("name") or str(wanted_name)
+                synth_item = {
+                    "id": target_id,
+                    "item": display_name,
+                    "name_en": cat_item.get("name_en", str(wanted_name)),
+                    "basic_info": {
+                        "id": target_id,
+                        "name": display_name,
+                        "tier": "Legendary" if "botas" not in str(wanted_name).casefold() else "Boots",
+                        "gold_cost": int(cat_item.get("gold", {}).get("total", 0)),
+                    },
+                    "stats": cat_item.get("stats", {}),
+                    "synergy_multipliers": {},
+                }
+                match = (target_id, synth_item)
+
+            if match is None:
+                self.full_build_row.addWidget(self._missing_core_item_card(str(wanted_name), position + 1), 1)
+                continue
+
+            item_id, item_data = match
+            recommendation = self.service.score_item(profile, champion_style, item_id, item_data, [])
+            self.full_build_row.addWidget(self._core_item_card(recommendation, position + 1), 1)
+
+        self.full_build_row.addStretch(1)
 
     @staticmethod
     def _valid_rune_page_dict(page: Any) -> bool:
@@ -978,8 +1301,11 @@ class LocalAnalysisDialog(QDialog):
             QLabel#matchupChampName { color: #f0f5ff; font-size: 11px; font-weight: 700; }
             QLabel#matchupWrCounter { color: #ff7675; background: #3d1b22; border: 1px solid #7a2b38; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 800; }
             QLabel#matchupWrGood { color: #55efc4; background: #0f3026; border: 1px solid #1f684e; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 800; }
-            QFrame#localCoreItem, QFrame#localCoreItemMissing { background: #122b3b; border: 1px solid #b18b3f; border-radius: 7px; }
-            QFrame#localCoreItemMissing { border-color: #315b7e; }
+            QFrame#summonersCard { background: rgba(8, 19, 34, 210); border: 1px solid rgba(249, 115, 22, 0.5); border-radius: 8px; }
+            QFrame#startersCard { background: rgba(8, 19, 34, 210); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 8px; }
+            QFrame#coreOverviewCard { background: rgba(8, 19, 34, 210); border: 1px solid rgba(234, 179, 8, 0.5); border-radius: 8px; }
+            QFrame#buildCard { background: rgba(8, 19, 34, 210); border: 1px solid rgba(180, 83, 9, 0.5); border-radius: 8px; }
+            QFrame#situationalCard { background: rgba(8, 19, 34, 210); border: 1px solid rgba(132, 204, 22, 0.5); border-radius: 8px; }
             QLabel#localCoreItemName { color: #f0f5ff; font-size: 11px; font-weight: 700; }
             QLabel#localCoreItemScore { color: #77d8b0; font-size: 10px; }
             QLabel#localInsightText { color: #dce9f8; font-size: 12px; }
@@ -1047,9 +1373,17 @@ class LocalAnalysisDialog(QDialog):
         values = self._radar_values(profile)
         self.radar.values = values
         self.radar.update()
-        curve = profile.get("power_curve_and_scaling", {})
-        curve_labels = (("Early", "early_game"), ("Mid", "mid_game"), ("Late", "late_game"))
-        self.power_curve.values = [(label, float(curve.get(key, 0))) for label, key in curve_labels]
+        wr_curve = profile.get("win_rate_vs_game_length", [])
+        if wr_curve and isinstance(wr_curve, list):
+            self.power_curve.values = [
+                (str(entry.get("label", "")), float(entry.get("winrate", 0)))
+                for entry in wr_curve
+                if isinstance(entry, dict)
+            ]
+        else:
+            curve = profile.get("power_curve_and_scaling", {})
+            curve_labels = (("0-15", "early_game"), ("20-25", "mid_game"), ("35-40", "late_game"))
+            self.power_curve.values = [(label, 45.0 + float(curve.get(key, 5)) * 0.8) for label, key in curve_labels]
         self.power_curve.update()
         matchups = profile.get("matchups", {})
         counters = matchups.get("counters", []) if isinstance(matchups, dict) else []
@@ -1077,6 +1411,10 @@ class LocalAnalysisDialog(QDialog):
             30,
         )
         self._render_core_items(profile, champion_style)
+        self._render_full_build(profile, champion_style)
+        self._render_starter_and_spells(profile)
+        self._render_situational_items(profile)
+        self._update_damage_bar(profile)
         self.bar.values = [(result.name, result.score, result.item_id) for result in ranked[:8]]
         self.bar.update()
         self._render_matchups_panel(profile)
@@ -1087,6 +1425,27 @@ class LocalAnalysisDialog(QDialog):
             self.item_table.setItem(row, 1, QTableWidgetItem(f"{result.score:.1f}"))
             self.item_table.setItem(row, 2, QTableWidgetItem("; ".join(result.reasons)))
         self.item_table.setSortingEnabled(True)
+
+    def _update_damage_bar(self, profile: dict[str, Any]) -> None:
+        breakdown = profile.get("damage_breakdown", {})
+        if isinstance(breakdown, dict) and breakdown.get("physical_damage_percent") is not None:
+            ad_pct = float(breakdown.get("physical_damage_percent", 85.0))
+            ap_pct = float(breakdown.get("magic_damage_percent", 10.0))
+            true_pct = float(breakdown.get("true_damage_percent", 5.0))
+        else:
+            basic = profile.get("basic_info", {})
+            dmg_type = str(basic.get("damage_type", "AD"))
+            if dmg_type == "AP":
+                ad_pct, ap_pct, true_pct = 10.0, 85.0, 5.0
+            elif dmg_type == "Hybrid":
+                ad_pct, ap_pct, true_pct = 47.5, 47.5, 5.0
+            elif dmg_type == "True":
+                ad_pct, ap_pct, true_pct = 35.0, 15.0, 50.0
+            else:
+                ad_pct, ap_pct, true_pct = 85.0, 10.0, 5.0
+
+        if hasattr(self, "damage_bar"):
+            self.damage_bar.set_percentages(ad_pct, ap_pct, true_pct)
 
     @staticmethod
     def _champion_data(champion: str) -> dict[str, Any]:
@@ -1226,73 +1585,229 @@ class LocalAnalysisDialog(QDialog):
 
         return ""
 
+    def _clean_item_row(self, name: str, catalog: dict[str, Any], version: str) -> QWidget:
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent; border: none;")
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        target_id = self._catalog_id_for_name(name, catalog)
+        icon = QLabel()
+        icon.setFixedSize(26, 26)
+        icon.setStyleSheet("border: none; background: #091726; border-radius: 4px;")
+        if target_id:
+            path = get_item_icon_path(target_id, catalog, version)
+            if path and path.exists():
+                pixmap = QPixmap(str(path))
+                if not pixmap.isNull():
+                    icon.setPixmap(pixmap.scaled(26, 26, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        layout.addWidget(icon)
+
+        lbl = QLabel(name)
+        lbl.setStyleSheet("color: #e2e8f0; font-weight: 500; font-size: 11px; border: none; background: transparent;")
+        lbl.setToolTip(name)
+        layout.addWidget(lbl)
+        layout.addStretch(1)
+        return widget
+
+    def _clean_spell_row(self, name: str, version: str) -> QWidget:
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent; border: none;")
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        path = get_spell_icon_path(name, version)
+        icon = QLabel()
+        icon.setFixedSize(26, 26)
+        icon.setStyleSheet("border: none; background: #091726; border-radius: 4px;")
+        if path and path.exists():
+            pixmap = QPixmap(str(path))
+            if not pixmap.isNull():
+                icon.setPixmap(pixmap.scaled(26, 26, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        layout.addWidget(icon)
+
+        lbl = QLabel(name)
+        lbl.setStyleSheet("color: #fef08a; font-weight: 600; font-size: 11px; border: none; background: transparent;")
+        layout.addWidget(lbl)
+        layout.addStretch(1)
+        return widget
+
+    def _clean_spell_card_large(self, name: str, version: str) -> QWidget:
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent; border: none;")
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(8)
+
+        path = get_spell_icon_path(name, version)
+        icon = QLabel()
+        icon.setFixedSize(32, 32)
+        icon.setStyleSheet("border: none; background: #091726; border-radius: 5px;")
+        if path and path.exists():
+            pixmap = QPixmap(str(path))
+            if not pixmap.isNull():
+                icon.setPixmap(pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        layout.addWidget(icon)
+
+        lbl = QLabel(name)
+        lbl.setStyleSheet("color: #fef08a; font-weight: 600; font-size: 12px; border: none; background: transparent;")
+        layout.addWidget(lbl)
+        return widget
+
+    def _clean_item_card_large(self, name: str, catalog: dict[str, Any], version: str) -> QWidget:
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent; border: none;")
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(8)
+
+        target_id = self._catalog_id_for_name(name, catalog)
+        icon = QLabel()
+        icon.setFixedSize(32, 32)
+        icon.setStyleSheet("border: none; background: #091726; border-radius: 5px;")
+        if target_id:
+            path = get_item_icon_path(target_id, catalog, version)
+            if path and path.exists():
+                pixmap = QPixmap(str(path))
+                if not pixmap.isNull():
+                    icon.setPixmap(pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        layout.addWidget(icon)
+
+        lbl = QLabel(name)
+        lbl.setStyleSheet("color: #f1f5f9; font-weight: 600; font-size: 12px; border: none; background: transparent;")
+        lbl.setToolTip(name)
+        layout.addWidget(lbl, 1)
+        return widget
+
     def _render_core_items(self, profile: dict[str, Any], style_key: str) -> None:
-        while self.core_items_row.count():
-            item = self.core_items_row.takeAt(0)
+        while self.core_overview_row.count():
+            item = self.core_overview_row.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+        # Limpiar la fila 0 de build_grid
+        for col in range(3):
+            g_item = self.build_grid.itemAtPosition(0, col)
+            if g_item and g_item.widget():
+                g_item.widget().deleteLater()
+
         scaling = profile.get("power_curve_and_scaling", {})
         names = scaling.get("power_spike_items", []) if isinstance(scaling, dict) else []
-        # Las botas son una compra utilitaria; no deben mostrarse como spike.
         names = [name for name in names if "botas" not in str(name).casefold() and "boots" not in str(name).casefold()]
-        items_by_id = self._recommendation_items_by_id()
+        if not names:
+            names = profile.get("most_played_build", [])[:3]
+
         catalog = self._catalog_items().get("items", {})
+        version = self._catalog_items().get("version", "16.17.1")
 
-        for position, wanted_name in enumerate(names):
-            wanted = self._normalise_item_name(wanted_name)
-            target_id = self._catalog_id_for_name(wanted_name, catalog)
+        for col, wanted_name in enumerate(names[:3]):
+            # Top card overview con icono 32x32 y texto 12px distribuido uniformemente
+            self.core_overview_row.addWidget(self._clean_item_card_large(str(wanted_name), catalog, version), 1)
+            # Fila 0 en el grid de BUILD (Alineado verticalmente con Fila 1)
+            self.build_grid.addWidget(self._clean_item_card_large(str(wanted_name), catalog, version), 0, col)
 
-            match = None
-            if target_id and target_id in items_by_id:
-                match = (target_id, items_by_id[target_id])
+        if not names:
+            no_data = QLabel("Sin core build")
+            no_data.setStyleSheet("color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;")
+            self.core_overview_row.addWidget(no_data, 1)
+            self.build_grid.addWidget(no_data, 0, 0)
+
+    def _render_full_build(self, profile: dict[str, Any], style_key: str) -> None:
+        # Limpiar la fila 1 de build_grid
+        for col in range(3):
+            g_item = self.build_grid.itemAtPosition(1, col)
+            if g_item and g_item.widget():
+                g_item.widget().deleteLater()
+
+        wanted_names = profile.get("most_played_build", [])
+        catalog = self._catalog_items().get("items", {})
+        version = self._catalog_items().get("version", "16.17.1")
+
+        # Objetos 4, 5, 6 para la Fila 1 del grid de BUILD
+        late_items = wanted_names[3:6] if len(wanted_names) >= 4 else []
+
+        if not late_items:
+            no_data = QLabel("Sin objetos secundarios")
+            no_data.setStyleSheet("color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;")
+            self.build_grid.addWidget(no_data, 1, 0)
+        else:
+            for col, wanted_name in enumerate(late_items[:3]):
+                self.build_grid.addWidget(self._clean_item_card_large(str(wanted_name), catalog, version), 1, col)
+
+    def _render_starter_and_spells(self, profile: dict[str, Any]) -> None:
+        while self.summoners_row.count():
+            item = self.summoners_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        while self.starters_row.count():
+            item = self.starters_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        starters = profile.get("starter_items", [])
+        spells = profile.get("summoner_spells", [])
+        catalog = self._catalog_items().get("items", {})
+        version = self._catalog_items().get("version", "16.17.1")
+
+        if spells:
+            for spell_name in spells:
+                self.summoners_row.addWidget(self._clean_spell_card_large(str(spell_name), version), 1)
+        else:
+            no_sp = QLabel("Sin hechizos")
+            no_sp.setStyleSheet("color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;")
+            self.summoners_row.addWidget(no_sp, 1)
+
+        if starters:
+            for s_name in starters:
+                self.starters_row.addWidget(self._clean_item_card_large(str(s_name), catalog, version), 1)
+        else:
+            no_s = QLabel("Sin objetos iniciales")
+            no_s.setStyleSheet("color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;")
+            self.starters_row.addWidget(no_s, 1)
+
+    def _render_situational_items(self, profile: dict[str, Any]) -> None:
+        while self.situational_items_row.count():
+            item = self.situational_items_row.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        situational = profile.get("situational_items", {})
+        catalog = self._catalog_items().get("items", {})
+        version = self._catalog_items().get("version", "16.17.1")
+
+        categories = [
+            ("corta_curas", "Corta curas", "#f87171"),
+            ("tanque", "Tanque / Resistencias", "#38bdf8"),
+            ("asesino", "Asesino / Daño explosivo", "#fb923c"),
+            ("utilidad_y_defensa", "Utilidad y Defensa", "#c084fc"),
+        ]
+
+        for cat_key, cat_label, color in categories:
+            col_widget = QWidget()
+            col_widget.setStyleSheet("background: transparent;")
+            c_layout = QVBoxLayout(col_widget)
+            c_layout.setContentsMargins(4, 2, 4, 2)
+            c_layout.setSpacing(4)
+
+            header = QLabel(cat_label)
+            header.setStyleSheet(f"color: {color}; font-weight: 800; font-size: 10px; letter-spacing: 0.5px;")
+            c_layout.addWidget(header)
+
+            items_list = situational.get(cat_key, []) if isinstance(situational, dict) else []
+            if items_list:
+                for item_name in items_list[:4]:
+                    chip = self._clean_item_row(str(item_name), catalog, version)
+                    c_layout.addWidget(chip)
             else:
-                match = next(
-                    ((item_id, itm) for item_id, itm in items_by_id.items()
-                     if self._normalise_item_name(self._item_display_name(itm)) == wanted
-                     or str(itm.get("name_en", "")).casefold() == str(wanted_name).casefold()
-                     or str(itm.get("basic_info", {}).get("name_en", "")).casefold() == str(wanted_name).casefold()),
-                    None,
-                )
+                none_lbl = QLabel("-")
+                none_lbl.setStyleSheet("color: #64748b; font-size: 10px;")
+                c_layout.addWidget(none_lbl)
 
-            # Si no está en items_by_id pero sí en el catálogo de Data Dragon, rescatar del catálogo
-            if match is None and target_id and target_id in catalog:
-                cat_item = catalog[target_id]
-                display_name = cat_item.get("name_es") or cat_item.get("name") or str(wanted_name)
-                synth_item = {
-                    "id": target_id,
-                    "item": display_name,
-                    "name_en": cat_item.get("name_en", str(wanted_name)),
-                    "basic_info": {
-                        "id": target_id,
-                        "name": display_name,
-                        "name_en": cat_item.get("name_en", str(wanted_name)),
-                        "tier": "Legendary",
-                        "gold_cost": int(cat_item.get("gold", {}).get("total", 0)),
-                    },
-                    "stats": cat_item.get("stats", {}),
-                    "synergy_multipliers": {},
-                }
-                match = (target_id, synth_item)
-
-            if match is None:
-                self.core_items_row.addWidget(
-                    self._missing_core_item_card(str(wanted_name), position + 1),
-                    1,
-                )
-                continue
-
-            item_id, item = match
-            recommendation = self.service.score_item(
-                profile, style_key, item_id, item, []
-            )
-            recommendation = self.service._add_power_spike_bonus(
-                recommendation,
-                {wanted, str(wanted_name).casefold()},
-            )
-            self.core_items_row.addWidget(
-                self._core_item_card(recommendation, position + 1), 1
-            )
-        self.core_items_row.addStretch(1)
+            c_layout.addStretch(1)
+            self.situational_items_row.addWidget(col_widget, 1)
 
     @staticmethod
     def _missing_core_item_card(name: str, position: int) -> QFrame:

@@ -470,3 +470,49 @@ def get_champion_data(
 
     except requests.RequestException:
         return {}
+
+
+SPELL_ICON_DIR = DATA_DIR / "spell_icons"
+
+SPELL_NAME_TO_FILE = {
+    "destello": "SummonerFlash.png",
+    "flash": "SummonerFlash.png",
+    "teleportación": "SummonerTeleport.png",
+    "teleport": "SummonerTeleport.png",
+    "aplastar": "SummonerSmite.png",
+    "smite": "SummonerSmite.png",
+    "ignición": "SummonerDot.png",
+    "ignite": "SummonerDot.png",
+    "curación": "SummonerHeal.png",
+    "heal": "SummonerHeal.png",
+    "barrera": "SummonerBarrier.png",
+    "barrier": "SummonerBarrier.png",
+    "fantasmal": "SummonerHaste.png",
+    "ghost": "SummonerHaste.png",
+    "extenuación": "SummonerExhaust.png",
+    "exhaust": "SummonerExhaust.png",
+    "purificar": "SummonerBoost.png",
+    "cleanse": "SummonerBoost.png",
+    "claridad": "SummonerMana.png",
+}
+
+
+def get_spell_icon_path(spell_name: str, version: str) -> Path | None:
+    SPELL_ICON_DIR.mkdir(parents=True, exist_ok=True)
+    raw_key = spell_name.strip().lower()
+    file_name = SPELL_NAME_TO_FILE.get(raw_key)
+    if not file_name:
+        file_name = f"Summoner{spell_name.capitalize()}.png"
+
+    local_path = SPELL_ICON_DIR / file_name
+    if local_path.exists():
+        return local_path
+
+    url = f"{DD_BASE_URL}/cdn/{version}/img/spell/{file_name}"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        local_path.write_bytes(response.content)
+        return local_path
+    except requests.RequestException:
+        return None

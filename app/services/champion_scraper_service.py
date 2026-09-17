@@ -23,16 +23,27 @@ class ChampionScraperService:
         self.champions_path = champions_path or Path(__file__).resolve().parents[2] / "data" / "champions_strict.json"
         self.request_delay = max(0.0, request_delay)
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36", "Accept-Language": "en-US,en;q=0.9"})
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+        })
         self._live_patches: list[str] | None = None
         root = self.champions_path.parent
         catalog = json.loads((root / "champion_catalog.json").read_text(encoding="utf-8"))
         self.champion_ids = {str(value.get("name", "")).casefold(): int(value["key"]) for value in catalog.get("data", {}).values() if value.get("key")}
         self.champion_names = {int(value["key"]): str(value.get("name", "")) for value in catalog.get("data", {}).values() if value.get("key")}
         items = json.loads((root / "items.json").read_text(encoding="utf-8"))
-        self.item_names = {str(item_id): str(value.get("name", item_id)) for item_id, value in items.get("items", {}).items()}
+        self.items_data = items.get("items", {})
+        self.item_names = {str(item_id): str(value.get("name", item_id)) for item_id, value in self.items_data.items()}
         self.boot_item_names = {
-            str(value.get("name", "")).casefold() for value in items.get("items", {}).values()
+            str(value.get("name", "")).casefold() for value in self.items_data.values()
             if "Boots" in value.get("tags", [])
         }
 
@@ -117,42 +128,156 @@ class ChampionScraperService:
                 result.append(candidate)
         return result
 
+    def _is_finished_item(self, item_id: str) -> bool:
+        item = self.items_data.get(str(item_id))
+        if not item:
+            return False
+        tags = item.get("tags", [])
+        if "Consumable" in tags or "Trinket" in tags or "Lane" in tags:
+            return False
+        if "Boots" in tags:
+            return item.get("gold", {}).get("total", 0) >= 900
+        into = item.get("into", [])
+        if into:
+            return False
+        return item.get("gold", {}).get("total", 0) >= 1400 or "Depth3" in tags or "Legendary" in tags
+
+    _SUMMONER_SPELLS = {
+        1: "Purificar",
+        3: "Extenuación",
+        4: "Destello",
+        6: "Fantasmal",
+        7: "Curación",
+        11: "Aplastar",
+        12: "Teleportación",
+        14: "Ignición",
+        21: "Barrera",
+    }
+    _ANTIHEAL_IDS = {"3033", "3075", "3123", "3165", "3076", "3907", "3074"}
+
+    def _categorize_situational_item(self, item_id: str) -> str:
+        item = self.items_data.get(str(item_id), {})
+        description = item.get("description", "").lower()
+        tags = item.get("tags", [])
+        stats = item.get("stats", {})
+        
+        if str(item_id) in self._ANTIHEAL_IDS or "heridas graves" in description or "grievous wounds" in description:
+            return "corta_curas"
+        if "Armor" in tags or "SpellBlock" in tags or stats.get("FlatArmorMod", 0) > 0 or stats.get("FlatSpellBlockMod", 0) > 0 or stats.get("FlatHPPoolMod", 0) >= 350:
+            return "tanque"
+        if "ArmorPenetration" in tags or "MagicPenetration" in tags or "lethality" in description or stats.get("FlatPhysicalDamageMod", 0) >= 50 or stats.get("FlatMagicDamageMod", 0) >= 70:
+            return "asesino"
+        return "utilidad_y_defensa"
+
+    def _parse_opgg(self, slug: str, role: str) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        lane = {"mid": "mid", "adc": "adc", "top": "top", "jungle": "jungle", "support": "support"}.get(role, role)
+        url = f"https://lol-api-champion.op.gg/api/global/champions/ranked/{slug}/{lane}"
+        data = self._get_json(url)
+        if not isinstance(data, dict):
+            return result
+        opdata = data.get("data", {})
+        if not isinstance(opdata, dict):
+            return result
+
+        cores = opdata.get("core_items", [])
+        boots = opdata.get("boots", [])
+        lasts = opdata.get("last_items", [])
+        starters = opdata.get("starter_items", [])
+        spells = opdata.get("summoner_spells", [])
+
+        core_ids = [str(i) for i in (cores[0].get("ids", []) if cores and isinstance(cores[0], dict) else []) if self._is_finished_item(str(i))]
+        boot_ids = [str(i) for i in (boots[0].get("ids", []) if boots and isinstance(boots[0], dict) else []) if self._is_finished_item(str(i))]
+
+        full_ids: list[str] = []
+        for i in core_ids:
+            if i not in full_ids:
+                full_ids.append(i)
+        if boot_ids and boot_ids[0] not in full_ids:
+            full_ids.append(boot_ids[0])
+        for entry in (lasts if isinstance(lasts, list) else []):
+            if isinstance(entry, dict):
+                for i in [str(x) for x in entry.get("ids", [])]:
+                    if i not in full_ids and self._is_finished_item(i):
+                        full_ids.append(i)
+                    if len(full_ids) >= 6:
+                        break
+            if len(full_ids) >= 6:
+                break
+
+        core_names = [self.item_names[i] for i in core_ids[:3] if i in self.item_names]
+        full_names = [self.item_names[i] for i in full_ids[:6] if i in self.item_names]
+
+        if core_names:
+            result["items"] = core_names[:3]
+        if full_names:
+            result["full_build"] = full_names[:6]
+
+        # Starter items
+        if starters and isinstance(starters, list) and isinstance(starters[0], dict):
+            s_ids = starters[0].get("ids", [])
+            starter_names = [self.item_names[str(i)] for i in s_ids if str(i) in self.item_names]
+            if starter_names:
+                result["starter_items"] = starter_names
+
+        # Summoner spells
+        if spells and isinstance(spells, list) and isinstance(spells[0], dict):
+            sp_ids = spells[0].get("ids", [])
+            spell_names = [self._SUMMONER_SPELLS.get(i, f"Hechizo {i}") for i in sp_ids if i in self._SUMMONER_SPELLS]
+            if spell_names:
+                result["summoner_spells"] = spell_names
+
+        # Situational items
+        situational: dict[str, list[str]] = {"corta_curas": [], "tanque": [], "asesino": [], "utilidad_y_defensa": []}
+        for entry in (lasts if isinstance(lasts, list) else []):
+            if isinstance(entry, dict):
+                for i in entry.get("ids", []):
+                    sid = str(i)
+                    if self._is_finished_item(sid) and sid in self.item_names:
+                        item_name = self.item_names[sid]
+                        cat = self._categorize_situational_item(sid)
+                        if item_name not in situational[cat] and len(situational[cat]) < 4:
+                            situational[cat].append(item_name)
+
+        if any(situational.values()):
+            result["situational_items"] = situational
+
+        return result
+
     def _parse_overview(self, data: Any, role: str) -> dict[str, Any]:
         pd = self._position_data(data, role)
         if not isinstance(pd, list):
             return {}
         result: dict[str, Any] = {}
+        
+        # --- 1. CORE ITEMS & FULL BUILD ---
         core = pd[3] if len(pd) > 3 else []
-        core_ids = core[2] if isinstance(core, list) and len(core) > 2 else []
-        # U.GG puede poner botas al inicio. Continúa recorriendo el bloque
-        # de compra hasta reunir tres objetos reales de power spike.
-        item_ids = self._ids(core_ids)
-        # El bloque siguiente de U.GG contiene los objetos de continuación
-        # (el cuarto/quinto item), necesarios cuando el core incluye botas.
-        item_names = [self.item_names[str(item_id)] for item_id in item_ids
-                      if str(item_id) in self.item_names]
-        if len(item_names) >= 3:
-            result["items"] = item_names[:3]
-        # pd[0] is U.GG's one visible Recommended rune page. Its nested
-        # arrays are rune rows, not separate presets. Stat shards are pd[8][2].
-        perks = pd[0] if pd else []
-        if isinstance(perks, list) and len(perks) >= 5:
-            primary, secondary = perks[2], perks[3]
-            perk_ids = self._flat_perks(perks[4])
-            shard_ids = self._ids(pd[8][2]) if len(pd) > 8 and isinstance(pd[8], list) and len(pd[8]) > 2 else []
-            if isinstance(primary, int) and isinstance(secondary, int):
-                page = self._rune_page(primary, secondary, perk_ids + shard_ids)
-                if self._valid_rune_page(page):
-                    games, wins = perks[0], perks[1]
-                    page["name"] = "Recommended · U.GG"
-                    page["win_rate"] = round(float(wins) / float(games), 4) if isinstance(games, (int, float)) and games and isinstance(wins, (int, float)) else 0.0
-                    page["games"] = int(games) if isinstance(games, (int, float)) else 0
-                    result["runes"] = [page]
-        return result
-        # pd[0] contiene las páginas de perks. Extraemos las dos primeras
-        # variantes completas, no una página inventada ni IDs sin traducir.
+        core_ids = [str(i) for i in (core[2] if isinstance(core, list) and len(core) > 2 else []) if self._is_finished_item(str(i))]
+        core_names = [self.item_names[i] for i in core_ids if i in self.item_names]
+        
+        if len(core_names) >= 2:
+            result["items"] = core_names[:3]
+
+        full_ids = list(core_ids)
+        if len(pd) > 5 and isinstance(pd[5], list):
+            for slot in pd[5]:
+                if isinstance(slot, list):
+                    for choice in slot:
+                        if isinstance(choice, list) and choice:
+                            raw_id = choice[0][0] if isinstance(choice[0], list) else choice[0]
+                            item_id = str(raw_id)
+                            if item_id not in full_ids and self._is_finished_item(item_id):
+                                full_ids.append(item_id)
+
+        full_build_names = [self.item_names[i] for i in full_ids if i in self.item_names]
+        if len(full_build_names) >= 3:
+            result["full_build"] = full_build_names[:6]
+
+        # --- 2. RUNAS (Consolidando la lógica sin código inalcanzable) ---
         pages = []
         seen_pages: set[tuple[Any, ...]] = set()
+        
+        # Intenta primero con los candidatos múltiples
         candidates = self._perk_candidates(pd[0]) if pd else []
         for candidate in candidates:
             if not isinstance(candidate, list) or len(candidate) < 5:
@@ -165,15 +290,30 @@ class ChampionScraperService:
             games, wins = candidate[0], candidate[1]
             signature = (page.get("keystone"), *page.get("slots", []), page.get("secondary_tree"), *page.get("secondary_slots", [])) if page else ()
             if self._valid_rune_page(page) and signature not in seen_pages and isinstance(games, (int, float)) and games:
-                # Presets are ordered as displayed by U.GG: Recommended first,
-                # followed by build variants (for example AP).
                 page["name"] = "Recommended · U.GG" if not pages else "AP · U.GG"
                 page["win_rate"] = round(float(wins) / float(games), 4) if isinstance(wins, (int, float)) else 0.0
                 page["games"] = int(games)
                 pages.append(page)
                 seen_pages.add(signature)
+
         if self._valid_rune_pages(pages):
             result["runes"] = pages[:2]
+        else:
+            # Fallback a la página única con shards (pd[8][2]) si las variantes fallan
+            perks = pd[0] if pd else []
+            if isinstance(perks, list) and len(perks) >= 5:
+                primary, secondary = perks[2], perks[3]
+                perk_ids = self._flat_perks(perks[4])
+                shard_ids = self._ids(pd[8][2]) if len(pd) > 8 and isinstance(pd[8], list) and len(pd[8]) > 2 else []
+                if isinstance(primary, int) and isinstance(secondary, int):
+                    page = self._rune_page(primary, secondary, perk_ids + shard_ids)
+                    if self._valid_rune_page(page):
+                        games, wins = perks[0], perks[1]
+                        page["name"] = "Recommended · U.GG"
+                        page["win_rate"] = round(float(wins) / float(games), 4) if isinstance(games, (int, float)) and games and isinstance(wins, (int, float)) else 0.0
+                        page["games"] = int(games) if isinstance(games, (int, float)) else 0
+                        result["runes"] = [page]
+
         return result
 
     def _item_ids_in_order(self, value: Any) -> list[int]:
@@ -271,22 +411,31 @@ class ChampionScraperService:
                 pages.append(page)
         if pages:
             result["runes"] = pages[:2]
+
         sets = build_data.get("itemSets", {}) if isinstance(build_data, dict) else {}
-        # Cada itemSet es una combinación distinta. Se conserva el orden del
-        # set principal y se continúa por los siguientes si las botas ocupan
-        # una posición, hasta reunir siempre tres objetos no-botas.
         item_ids: list[str] = []
         ordered_sets = [sets[name] for name in ("itemSet5", "itemSet4", "itemSet3", "itemSet2", "itemSet1") if name in sets]
         ordered_sets.extend(value for name, value in sets.items() if name not in {"itemSet5", "itemSet4", "itemSet3", "itemSet2", "itemSet1"})
+        
         for entries in ordered_sets:
             for entry in entries if isinstance(entries, list) else []:
                 raw = entry[0] if isinstance(entry, list) and entry else entry
                 for item_id in str(raw).split("_"):
                     if item_id in self.item_names and item_id not in item_ids:
                         item_ids.append(item_id)
-        item_names = self._without_boots([self.item_names[item_id] for item_id in item_ids])
+
+        # 1. Todos los nombres en orden (para Full Build)
+        all_item_names = [self.item_names[item_id] for item_id in item_ids if item_id in self.item_names]
+        
+        # 2. Filtrado sin botas (para Core Items)
+        item_names = self._without_boots(all_item_names)
+        
         if len(item_names) >= 3:
             result["items"] = item_names[:3]
+        if len(all_item_names) >= 3:
+            result["full_build"] = all_item_names[:6]
+
+        # Matchups (Código original sin cambios)
         counters = counter_data.get("counters", []) if isinstance(counter_data, dict) else []
         parsed = []
         for row in counters:
@@ -494,6 +643,9 @@ class ChampionScraperService:
         slug = self._slug(name)
         champion_id = self.champion_ids.get(name.casefold())
         parsed = self._parse_overview(self._overview(champion_id), role) if champion_id else {}
+        
+        opgg_data = self._parse_opgg(slug, role)
+        
         supplemental = self._parse_lolalytics(
             self._lolalytics("rune", slug, role),
             self._lolalytics("build-itemset", slug, role),
@@ -505,49 +657,171 @@ class ChampionScraperService:
         html_data = self._parse_lolalytics_html(html_build, name, role) if html_build else {}
         if html_counter:
             html_data.update({"matchups": self._parse_lolalytics_html(html_counter, name, role).get("matchups", {})})
-        # La fuente estructurada complementa los huecos de U.GG: dos páginas
-        # de runas, builds completos y counters con número de partidas.
-        # U.GG es la fuente de verdad: los respaldos sólo rellenan huecos;
-        # nunca pueden sustituir sus runas o su build.
-        for source in (supplemental, html_data):
+        
+        for source in (opgg_data, supplemental, html_data):
             for key, value in source.items():
-                # U.GG has priority, but its JSON is periodically protected
-                # by Cloudflare. In that case use a complete Lolalytics page;
-                # do not leave the previous, unrelated page in the profile.
                 if value and key not in parsed:
                     parsed[key] = value
-        # El HTML es sólo respaldo: U.GG protege esta ruta con Cloudflare en
-        # algunas redes, mientras stats2.u.gg es el feed de datos real.
-            # El bloque visible "Core Items" es la combinación recomendada
-            # de U.GG y tiene prioridad frente al agregado del endpoint.
+                elif key == "full_build" and value and len(parsed.get("full_build", [])) < len(value):
+                    parsed["full_build"] = value
+                elif key == "items" and value and len(parsed.get("items", [])) < len(value):
+                    parsed["items"] = value
+
         counter_page = self._get(f"https://u.gg/lol/champions/{slug}/counter/{role}")
         matchups = self._clean_matchups(
             html_data.get("matchups") or supplemental.get("matchups") or (self._parse_matchups(counter_page, role) if counter_page else {}), role
         )
-        # Una actualización válida debe respetar por completo el contrato del
-        # JSON: core de 3 objetos, DOS páginas de runas y ambos grupos de 3.
-        # The three Core Items shown by U.GG are authoritative, including
-        # boots when U.GG places them in that exact combination.
+
         items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
+        full_build = parsed.get("full_build") if isinstance(parsed.get("full_build"), list) else []
+        
         changed = False
         imported_build_data = False
-        if len(items) >= 3:
-            profile.setdefault("power_curve_and_scaling", {})["power_spike_items"] = items
+        
+        # 1. Guardar Power Spike Core (3 ítems)
+        if items:
+            profile.setdefault("power_curve_and_scaling", {})["power_spike_items"] = items[:3]
             changed = True
             imported_build_data = True
+            
+        # 2. Guardar Build Completa de compra (hasta 6 ítems)
+        if full_build:
+            profile["most_played_build"] = full_build[:6]
+            changed = True
+            imported_build_data = True
+
+        # 3. Guardar Runas
         if self._valid_rune_pages(parsed.get("runes")):
             profile["common_runes"] = parsed["runes"][:2]
             changed = True
             imported_build_data = True
+
+        # 4. Guardar Objetos Iniciales (Starter Items)
+        if parsed.get("starter_items"):
+            profile["starter_items"] = parsed["starter_items"]
+            changed = True
+
+        # 5. Guardar Hechizos de Invocador (Summoner Spells)
+        if parsed.get("summoner_spells"):
+            profile["summoner_spells"] = parsed["summoner_spells"]
+            changed = True
+
+        # 6. Guardar Objetos Situacionales (Corta curas, Tanque, Asesino, Utilidad)
+        if parsed.get("situational_items"):
+            profile["situational_items"] = parsed["situational_items"]
+            changed = True
+            
+        # 7. Guardar Matchups
         if len(matchups.get("counters", [])) >= 3 and len(matchups.get("good_against", [])) >= 3:
             profile["matchups"] = matchups
             changed = True
-        # Counters alone must not make the button report a successful build
-        # sync: that hid failures to fetch either rune source.
+
+        # 8. Guardar Desglose Exacto de Daño (% AD, % AP, % True) desde Lolalytics
+        dmg_breakdown = self._scrape_damage_breakdown(slug, role, str(html_build) if html_build else None)
+        if dmg_breakdown:
+            profile["damage_breakdown"] = dmg_breakdown
+            changed = True
+
+        # 9. Guardar Gráfica de Poder (Win Rate vs Game Length) desde Lolalytics
+        power_curve = self._scrape_winrate_vs_game_length(slug, role, str(html_build) if html_build else None)
+        if power_curve:
+            profile["win_rate_vs_game_length"] = power_curve
+            changed = True
+
         if not changed or not imported_build_data:
             return False
+
         profile["ugg_last_updated"] = datetime.now(timezone.utc).isoformat()
         return True
+
+    def _scrape_winrate_vs_game_length(self, slug: str, role: str, html_content: str | None = None) -> list[dict[str, Any]]:
+        """Scrapes win rate vs game length points (0-15, 15-20, 20-25, 25-30, 30-35, 35-40, 40+) from Lolalytics."""
+        try:
+            if not html_content:
+                soup = self._lolalytics_page(slug, role, "build")
+                html_content = str(soup) if soup else ""
+
+            if html_content:
+                m = re.search(r'<script type="qwik/json">(.*?)</script>', html_content, re.DOTALL)
+                if m:
+                    data = json.loads(m.group(1))
+                    objs = data.get("objs", [])
+                    
+                    def decode_val(x):
+                        if isinstance(x, str):
+                            try:
+                                idx = int(x, 36)
+                                if 0 <= idx < len(objs):
+                                    return objs[idx]
+                            except Exception:
+                                pass
+                        return x
+
+                    target_dict = None
+                    for obj in objs:
+                        if isinstance(obj, dict):
+                            keys = list(obj.keys())
+                            if 'emerald' in keys or 'diamond_plus' in keys or 'all' in keys:
+                                v_ref = obj.get('emerald') or obj.get('diamond_plus') or obj.get('all')
+                                dv = decode_val(v_ref)
+                                if isinstance(dv, list) and len(dv) >= 30:
+                                    resolved = [decode_val(x) for x in dv]
+                                    if all(isinstance(x, (int, float)) for x in resolved) and all(30 <= x <= 70 for x in resolved):
+                                        target_dict = obj
+                                        break
+                    if target_dict:
+                        arr_ref = target_dict.get('emerald') or target_dict.get('diamond_plus') or target_dict.get('all')
+                        raw_35 = [decode_val(x) for x in decode_val(arr_ref)]
+                        if len(raw_35) >= 35:
+                            b0_15  = round(sum(raw_35[0:15]) / 15, 2)
+                            b15_20 = round(sum(raw_35[15:20]) / 5, 2)
+                            b20_25 = round(sum(raw_35[20:25]) / 5, 2)
+                            b25_30 = round(sum(raw_35[25:30]) / 5, 2)
+                            b30_35 = round(sum(raw_35[30:35]) / 5, 2)
+                            b35_40 = round(raw_35[34], 2)
+                            b40_plus = round(raw_35[34], 2)
+                            return [
+                                {"label": "0-15", "winrate": b0_15},
+                                {"label": "15-20", "winrate": b15_20},
+                                {"label": "20-25", "winrate": b20_25},
+                                {"label": "25-30", "winrate": b25_30},
+                                {"label": "30-35", "winrate": b30_35},
+                                {"label": "35-40", "winrate": b35_40},
+                                {"label": "40+", "winrate": b40_plus},
+                            ]
+        except Exception:
+            pass
+        return []
+
+    def _scrape_damage_breakdown(self, slug: str, role: str, html_content: str | None = None) -> dict[str, float]:
+        """Extrae el desglose exacto de daño (% Físico/AD, % Mágico/AP, % Verdadero) desde Lolalytics."""
+        try:
+            if not html_content:
+                soup = self._lolalytics_page(slug, role, "build")
+                html_content = str(soup) if soup else ""
+
+            if html_content:
+                m_phys = re.search(r'"physicalDamage",\s*(\d+(?:\.\d+)?)', html_content)
+                m_magic = re.search(r'"magicDamage",\s*(\d+(?:\.\d+)?)', html_content)
+                m_true = re.search(r'"trueDamage",\s*(\d+(?:\.\d+)?)', html_content)
+
+                phys_val = float(m_phys.group(1)) if m_phys else 0.0
+                magic_val = float(m_magic.group(1)) if m_magic else 0.0
+                true_val = float(m_true.group(1)) if m_true else 0.0
+
+                tot = phys_val + magic_val + true_val
+                if tot > 0:
+                    phys_pct = round((phys_val / tot) * 100.0, 1)
+                    magic_pct = round((magic_val / tot) * 100.0, 1)
+                    true_pct = round(max(0.0, 100.0 - phys_pct - magic_pct), 1)
+                    return {
+                        "physical_damage_percent": phys_pct,
+                        "magic_damage_percent": magic_pct,
+                        "true_damage_percent": true_pct,
+                    }
+        except Exception:
+            pass
+        return {}
 
     @staticmethod
     def _valid_rune_pages(value: Any) -> bool:
