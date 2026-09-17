@@ -1,0 +1,177 @@
+﻿python.exe : test_armor_threshold_and_healing_evidence (scratch.test_live_recommendations.EngineTests.test_armor_threshold_and_healing_evidence) ... ok
+En línea: 1 Carácter: 110
++ ... NG='utf-8'; & '.venv\Scripts\python.exe' -m unittest scratch.test_liv ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_armor_thre...vidence) ... ok:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+test_budget (scratch.test_live_recommendations.EngineTests.test_budget) ... ok
+test_context_changes_scores (scratch.test_live_recommendations.EngineTests.test_context_changes_scores) ... ok
+test_enemy_classification_does_not_include_allies_or_unknowns (scratch.test_live_recommendations.EngineTests.test_enemy_classification_does_not_include_allies_or_unknowns) ... ok
+test_enemy_inventory_badges_value_and_duplicates (scratch.test_live_recommendations.EngineTests.test_enemy_inventory_badges_value_and_duplicates) ... ok
+test_enemy_inventory_unknown_empty_and_kit_not_badges (scratch.test_live_recommendations.EngineTests.test_enemy_inventory_unknown_empty_and_kit_not_badges) ... ok
+test_enemy_inventory_updates_purchase_sale_and_stale (scratch.test_live_recommendations.EngineTests.test_enemy_inventory_updates_purchase_sale_and_stale) ... ok
+test_exclusive_and_owned (scratch.test_live_recommendations.EngineTests.test_exclusive_and_owned) ... ok
+test_no_network_no_mutation_and_determinism (scratch.test_live_recommendations.EngineTests.test_no_network_no_mutation_and_determinism) ... ok
+test_phase_allied_synergy_health_and_objectives (scratch.test_live_recommendations.EngineTests.test_phase_allied_synergy_health_and_objectives) ... ok
+test_postgame_stale_empty_inventory (scratch.test_live_recommendations.EngineTests.test_postgame_stale_empty_inventory) ... ok
+test_real_champions_coverage_and_compatible_results (scratch.test_live_recommendations.EngineTests.test_real_champions_coverage_and_compatible_results) ... ok
+test_recipe_multiset_remaining_and_upgrade_full_inventory (scratch.test_live_recommendations.EngineTests.test_recipe_multiset_remaining_and_upgrade_full_inventory) ... ok
+test_recipe_no_gold_unknown_and_cycles (scratch.test_live_recommendations.EngineTests.test_recipe_no_gold_unknown_and_cycles) ... ok
+test_recipe_second_copy_is_buyable (scratch.test_live_recommendations.EngineTests.test_recipe_second_copy_is_buyable) ... ok
+test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) ... 
+  test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'items': None}) 
+... FAIL
+  test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'items': 
+[999999]}) ... FAIL
+  test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'level': None}) 
+... FAIL
+  test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'level': nan}) 
+... FAIL
+  test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'kills': None}) 
+... FAIL
+  test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'deaths': -1}) 
+... FAIL
+test_strength_inventory_level_and_bounded_kda (scratch.test_live_recommendations.EngineTests.test_strength_inventory_level_and_bounded_kda) ... ok
+test_strength_survives_high_levels_and_old_snapshots (scratch.test_live_recommendations.EngineTests.test_strength_survives_high_levels_and_old_snapshots) ... FAIL
+test_strength_ties_and_single_enemy (scratch.test_live_recommendations.EngineTests.test_strength_ties_and_single_enemy) ... ok
+test_unknown_missing_and_nonfinite_gold (scratch.test_live_recommendations.EngineTests.test_unknown_missing_and_nonfinite_gold) ... ok
+test_compact_panel_end_to_end (scratch.test_live_recommendations.PanelTests.test_compact_panel_end_to_end) ... QFontDatabase: Cannot find font directory 
+D:/Accesos/Desktop/Solralol/.venv/Lib/site-packages/PySide6/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+FAIL
+test_empty_postgame_champion_switch (scratch.test_live_recommendations.PanelTests.test_empty_postgame_champion_switch) ... ok
+test_enemy_card_unknown_and_partial_value (scratch.test_live_recommendations.PanelTests.test_enemy_card_unknown_and_partial_value) ... ok
+test_enemy_cards_follow_lane_order_after_refresh (scratch.test_live_recommendations.PanelTests.test_enemy_cards_follow_lane_order_after_refresh) ... ok
+test_enemy_cards_icons_badges_gold_and_live_refresh (scratch.test_live_recommendations.PanelTests.test_enemy_cards_icons_badges_gold_and_live_refresh) ... ok
+test_enemy_order_uses_player_roles_and_keeps_unknowns_last (scratch.test_live_recommendations.PanelTests.test_enemy_order_uses_player_roles_and_keeps_unknowns_last) ... ok
+test_fewer_than_three_candidates_are_not_padded (scratch.test_live_recommendations.PanelTests.test_fewer_than_three_candidates_are_not_padded) ... ok
+test_no_routes_layout_resizing_and_plain_text (scratch.test_live_recommendations.PanelTests.test_no_routes_layout_resizing_and_plain_text) ... ok
+test_refresh_preserves_scroll_and_same_data_widgets (scratch.test_live_recommendations.PanelTests.test_refresh_preserves_scroll_and_same_data_widgets) ... ok
+test_strength_and_expanded_details_survive_live_refresh (scratch.test_live_recommendations.PanelTests.test_strength_and_expanded_details_survive_live_refresh) ... FAIL
+
+======================================================================
+FAIL: test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'items': 
+None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 243, in test_strength_incomplete_data_is_unmarked_but_others_still_compare
+    self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'MÁS FUERTE · EMPATE' != 'MÁS FUERTE'
+- MÁS FUERTE · EMPATE
++ MÁS FUERTE
+
+
+======================================================================
+FAIL: test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'items': 
+[999999]})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 243, in test_strength_incomplete_data_is_unmarked_but_others_still_compare
+    self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'MÁS FUERTE · EMPATE' != 'MÁS FUERTE'
+- MÁS FUERTE · EMPATE
++ MÁS FUERTE
+
+
+======================================================================
+FAIL: test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'level': 
+None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 243, in test_strength_incomplete_data_is_unmarked_but_others_still_compare
+    self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'MÁS FUERTE · EMPATE' != 'MÁS FUERTE'
+- MÁS FUERTE · EMPATE
++ MÁS FUERTE
+
+
+======================================================================
+FAIL: test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'level': 
+nan})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 243, in test_strength_incomplete_data_is_unmarked_but_others_still_compare
+    self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'MÁS FUERTE · EMPATE' != 'MÁS FUERTE'
+- MÁS FUERTE · EMPATE
++ MÁS FUERTE
+
+
+======================================================================
+FAIL: test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'kills': 
+None})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 243, in test_strength_incomplete_data_is_unmarked_but_others_still_compare
+    self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'MÁS FUERTE · EMPATE' != 'MÁS FUERTE'
+- MÁS FUERTE · EMPATE
++ MÁS FUERTE
+
+
+======================================================================
+FAIL: test_strength_incomplete_data_is_unmarked_but_others_still_compare (scratch.test_live_recommendations.EngineTests.test_strength_incomplete_data_is_unmarked_but_others_still_compare) (changes={'deaths': 
+-1})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 243, in test_strength_incomplete_data_is_unmarked_but_others_still_compare
+    self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'MÁS FUERTE · EMPATE' != 'MÁS FUERTE'
+- MÁS FUERTE · EMPATE
++ MÁS FUERTE
+
+
+======================================================================
+FAIL: test_strength_survives_high_levels_and_old_snapshots (scratch.test_live_recommendations.EngineTests.test_strength_survives_high_levels_and_old_snapshots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 255, in test_strength_survives_high_levels_and_old_snapshots
+    self.assertEqual([r["strength_label"] for r in rows], ["MÁS FUERTE", "", "MÁS DÉBIL"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: ['MÁS FUERTE', '', '', '', 'MÁS DÉBIL'] != ['MÁS FUERTE', '', 'MÁS DÉBIL']
+
+First differing element 2:
+''
+'MÁS DÉBIL'
+
+First list contains 2 additional elements.
+First extra element 3:
+''
+
+- ['MÁS FUERTE', '', '', '', 'MÁS DÉBIL']
+?                   --------
+
++ ['MÁS FUERTE', '', 'MÁS DÉBIL']
+
+======================================================================
+FAIL: test_compact_panel_end_to_end (scratch.test_live_recommendations.PanelTests.test_compact_panel_end_to_end)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 383, in test_compact_panel_end_to_end
+    self.assertTrue(text.isVisible())
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_strength_and_expanded_details_survive_live_refresh (scratch.test_live_recommendations.PanelTests.test_strength_and_expanded_details_survive_live_refresh)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "D:\Accesos\Desktop\Solralol\scratch\test_live_recommendations.py", line 411, in test_strength_and_expanded_details_survive_live_refresh
+    self.assertFalse(self.panel.right.findChildren(QLabel, "enemyStrengthBadge"))
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: [<PySide6.QtWidgets.QLabel(0x1b037221fc0, name="enemyStrengthBadge") at 0x000001B039CC3340>, <PySide6.QtWidgets.QLabel(0x1b0372235b0, name="enemyStrengthBadge") at 0x000001B039CC0480>] is not 
+false
+
+----------------------------------------------------------------------
+Ran 30 tests in 1.242s
+
+FAILED (failures=9)
+
+LIVE recommendation engine mean: 4.5 ms

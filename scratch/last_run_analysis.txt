@@ -1,0 +1,33 @@
+﻿python.exe : test_background_calculation_and_stale_results (scratch.test_live_analysis.LiveAnalysisTests.test_background_calculation_and_stale_results) ... QFontDatabase: Cannot find font directory 
+D:/Accesos/Desktop/Solralol/.venv/Lib/site-packages/PySide6/lib/fonts.
+En línea: 1 Carácter: 110
++ ... NG='utf-8'; & .\.venv\Scripts\python.exe -m unittest scratch.test_liv ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (test_background...ide6/lib/fonts.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+ok
+test_chart_preserves_extrema_and_original_tooltip_values (scratch.test_live_analysis.LiveAnalysisTests.test_chart_preserves_extrema_and_original_tooltip_values) ... ok
+test_close_disposes_dialog (scratch.test_live_analysis.LiveAnalysisTests.test_close_disposes_dialog) ... ok
+test_compact_calculation_matches_full_history (scratch.test_live_analysis.LiveAnalysisTests.test_compact_calculation_matches_full_history) ... ok
+test_cs_sync_refreshes_both_sides_and_preserves_live_history (scratch.test_live_analysis.LiveAnalysisTests.test_cs_sync_refreshes_both_sides_and_preserves_live_history) ... ok
+test_filters_do_not_rebuild_sides_and_keep_global_timestamp (scratch.test_live_analysis.LiveAnalysisTests.test_filters_do_not_rebuild_sides_and_keep_global_timestamp) ... ok
+test_navigation_reuses_pages_and_keeps_scroll (scratch.test_live_analysis.LiveAnalysisTests.test_navigation_reuses_pages_and_keeps_scroll) ... ok
+test_open_and_warm_navigation_budget (scratch.test_live_analysis.LiveAnalysisTests.test_open_and_warm_navigation_budget) ... ok
+test_recommendations_are_reused (scratch.test_live_analysis.LiveAnalysisTests.test_recommendations_are_reused) ... ok
+test_saved_synced_cs_zero_fallback_and_missing_data (scratch.test_live_analysis.LiveAnalysisTests.test_saved_synced_cs_zero_fallback_and_missing_data) ... ok
+test_sync_in_place_and_empty_matchup (scratch.test_live_analysis.LiveAnalysisTests.test_sync_in_place_and_empty_matchup) ... ok
+test_synced_cs_without_live_snapshots (scratch.test_live_analysis.LiveAnalysisTests.test_synced_cs_without_live_snapshots) ... ok
+test_timeline_model_preserves_actions_time_and_text (scratch.test_live_analysis.LiveAnalysisTests.test_timeline_model_preserves_actions_time_and_text) ... ok
+test_update_keeps_ai_tab_and_coalesces_latest_session (scratch.test_live_analysis.LiveAnalysisTests.test_update_keeps_ai_tab_and_coalesces_latest_session) ... ok
+test_virtualization_10000_events (scratch.test_live_analysis.LiveAnalysisTests.test_virtualization_10000_events) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 2.121s
+
+OK
+
+Diálogo 10000 eventos/1500 snapshots: apertura=183.6 ms; navegación caliente máx=71.7 ms
+
+Timeline: 10003 eventos, 23.2 ms, 5 widgets

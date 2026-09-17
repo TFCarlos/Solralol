@@ -248,16 +248,6 @@ class RecommendationPanel(QFrame):
         layout.addLayout(row)
         return card
 
-    @staticmethod
-    def _affinity_tooltip(entry):
-        """Explica de dónde sale el porcentaje de afinidad de una compra sugerida."""
-        percent = entry.get("affinity_percent")
-        score = entry.get("score")
-        detail = f" ({score:g} pts)" if score is not None else ""
-        return (f"Afinidad estimada de este análisis: {percent:.1f} %{detail} respecto al mejor "
-                "candidato verificado de la partida. Es una heurística relativa, no una "
-                "probabilidad de victoria.")
-
     def _brief(self, rec):
         """First reason as a single compact line for the item card."""
         points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
@@ -282,24 +272,12 @@ class RecommendationPanel(QFrame):
             row.addWidget(self.icon(rec["id"], 28))
             text = QVBoxLayout()
             text.setSpacing(2)
-            title_row = QHBoxLayout()
-            title_row.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"), 1)
-            title_row.addWidget(self.label(f"{rec['cost']:,} oro", "muted"))
-            text.addLayout(title_row)
+            text.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"))
+            text.addWidget(self.label(f"{rec['cost']:,} oro pendiente", "muted"))
             reason = self.label(self._brief(rec), "muted")
             reason.setObjectName("synergyReason")
-            reason.setWordWrap(False)
-            reason.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-            reason.setToolTip(self._brief(rec))
+            reason.setToolTip("Motivo principal; el tooltip de la tarjeta incluye la justificación completa.")
             text.addWidget(reason)
-            next_buy = rec.get("next_buy")
-            if next_buy:
-                hint = self.label(f"Próxima compra: {next_buy}", "muted")
-                hint.setObjectName("synergyNextBuy")
-                hint.setWordWrap(False)
-                hint.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-                hint.setToolTip(f"Próxima compra: {next_buy}")
-                text.addWidget(hint)
             row.addLayout(text, 1)
             score = self.label(f"{rec['score']:g} pts", "score")
             score.setWordWrap(False)
@@ -314,36 +292,6 @@ class RecommendationPanel(QFrame):
             layout.addWidget(card)
         if not report["recommendations"]:
             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
-        purchases = report.get("purchases") or []
-        if purchases:
-            layout.addSpacing(4)
-            layout.addWidget(self.label("Según tus compras", "section"))
-            for entry in purchases:
-                card, body = self.card(f"purchaseItem_{entry['id']}")
-                card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-                body.setContentsMargins(8, 6, 8, 6)
-                body.setSpacing(0)
-                row = QHBoxLayout()
-                row.setSpacing(8)
-                row.addWidget(self.icon(entry["id"], 28))
-                text = QVBoxLayout()
-                text.setSpacing(2)
-                text.addWidget(self.label(entry["name"], "itemName"))
-                detail = f"Falta: {', '.join(entry['missing'])}" if entry.get("missing") else "Complétalo en tienda"
-                text.addWidget(self.label(f"{detail} · {entry['cost']:,} oro pendiente", "muted"))
-                row.addLayout(text, 1)
-                percent = entry.get("affinity_percent")
-                if percent is not None:
-                    badge = self.label(f"Afinidad {percent:.1f} %", "score")
-                    badge.setObjectName("purchaseAffinity")
-                    badge.setWordWrap(False)
-                    badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    badge.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-                    badge.setToolTip(self._affinity_tooltip(entry))
-                    row.addWidget(badge)
-                body.addLayout(row)
-                card.setToolTip(entry.get("reason", ""))
-                layout.addWidget(card)
         layout.addStretch(1)
         return section
 

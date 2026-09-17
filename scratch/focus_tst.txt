@@ -1,0 +1,159 @@
+"""Offline engine/UI regression: python -m unittest scratch.test_live_recommendations -v."""
+import json
+import os
+import time
+import unittest
+from copy import deepcopy
+from pathlib import Path
+from unittest.mock import patch
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+from app.services.live_recommendation_service import LiveRecommendationService, canonical
+from app.ui.recommendation_panel import RecommendationPanel
+from app.ui.styles import CONTROL_WINDOW_STYLE
+
+
+def fixture(champion="Briar", enemies=("Soraka", "Lux", "Darius", "Jinx", "Malphite")):
+    players = {"me": {"champion_name": champion, "team": "ORDER", "role": "JUNGLE"},
+               "ally": {"champion_name": "Leona", "team": "ORDER", "side": "ally"}}
+    for index, name in enumerate(enemies):
+        players[f"e{index}"] = {"champion_name": name, "team": "CHAOS", "side": "enemy"}
+    points = {key: {"items": [], "level": 12, "kills": 2, "deaths": 1, "assists": 4}
+              for key in players}
+    points["me"].update(items=[1036, 1001], current_gold=2810)
+    return {"local_player_key": "me", "local_team": "ORDER", "champion_name": champion,
+            "players": players, "duration": 1200, "game_mode": "CLASSIC",
+            "snapshots": [{"time": 1200, "players": points}],
+            "lane_matchups": {"JUNGLE": {"ally_key": "me", "enemy_key": "e0"}},
+            "events": []}
+
+
+class EngineTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.catalog = json.loads(Path("data/items.json").read_text(encoding="utf-8"))
+        cls.engine = LiveRecommendationService(cls.catalog)
+
+    def test_real_champions_coverage_and_compatible_results(self):
+        for name in ("Briar", "Lux", "Lulu", "Aatrox", "Ornn", "Ahri", "Jinx", "Cassiopeia", "Dr. Mundo"):
+            with self.subTest(champion=name):
+                s = fixture(name)
+                result = self.engine.analyze(s)
+                self.assertTrue(result["profile"], name)
+                self.assertTrue(result["recommendations"], name)
+                for rec in result["recommendations"]:
+                    self.assertTrue(self.engine.available(rec["id"]))
+                    self.assertTrue(self.engine.compatible(rec["id"], result["owned"]))
+                    self.assertTrue(rec["reasons"])
+                    if name == "Briar":
+                        self.assertEqual(self.engine.stat(rec["id"], "ability_power"), 0)
+                        self.assertEqual(self.engine.stat(rec["id"], "mana"), 0)
+                    if name == "Cassiopeia":
+                        self.assertNotIn("Boots", self.engine.catalog[rec["id"]].get("tags", []))
+
+    def test_no_network_no_mutation_and_determinism(self):
+        s = fixture()
+        before = deepcopy(s)
+        with patch("requests.get", side_effect=AssertionError("Network forbidden")):
+            a, b = self.engine.analyze(s), self.engine.analyze(s)
+        self.assertEqual(a, b)
+        self.assertEqual(s, before)
+
+    def test_enemy_classification_does_not_include_allies_or_unknowns(self):
+        s = fixture(enemies=())
+        s.pop("local_team")
+        s["players"]["me"].pop("team")
+        s["players"]["unknown"] = {"champion_name": "Soraka"}
+        r = self.engine.analyze(s)
+        self.assertEqual(r["threats"], [])
+
+    def test_armor_threshold_and_healing_evidence(self):
+        s = fixture(enemies=("Garen",))
+        p = s["snapshots"][0]["players"]["e0"]
+        p["items"] = [1029]  # cloth armor should not imply heavy armor
+        self.assertNotIn("armor", [x["kind"] for x in self.engine.analyze(s)["threats"][0]["signals"]])
+        p["items"] = [3075, 3143]
+        signals = self.engine.analyze(s)["threats"][0]["signals"]
+        self.assertIn("armor", [x["kind"] for x in signals])
+        self.assertNotIn("healing", [x["kind"] for x in signals])  # antiheal is not healing
+        p["items"] = [3153]
+        signals = self.engine.analyze(s)["threats"][0]["signals"]
+        self.assertIn("healing", [x["kind"] for x in signals])
+
+    def test_context_changes_scores(self):
+        base = self.engine.analyze(fixture(enemies=("Garen",)))
+        healing = self.engine.analyze(fixture(enemies=("Soraka", "Vladimir", "Warwick")))
+        scores = lambda r: {x["id"]: x["score"] for x in r["recommendations"]}
+        self.assertIn("3033", scores(healing))
+        self.assertGreater(scores(healing)["3033"], scores(base).get("3033", 0))
+        magic = self.engine.analyze(fixture(enemies=("Lux", "Syndra", "Veigar")))
+        physical = self.engine.analyze(fixture(enemies=("Darius", "Jinx", "Draven")))
+        self.assertLess(magic["physical_share"], .4)
+        self.assertGreater(physical["physical_share"], .6)
+        self.assertNotEqual(magic["recommendations"], physical["recommendations"])
+
+    def test_unknown_missing_and_nonfinite_gold(self):
+        self.assertFalse(self.engine.analyze({})["recommendations"])
+        self.assertFalse(self.engine.analyze(fixture("UnknownChampion"))["recommendations"])
+        for gold in (None, "invalid", float("nan"), float("inf")):
+            s = fixture()
+            s["snapshots"][0]["players"]["me"]["current_gold"] = gold
+            s["snapshots"][0]["players"]["me"]["estimated_gold"] = 99999
+            result = self.engine.analyze(s)
+            self.assertIsNone(result["gold"])
+            self.assertNotEqual(result["purchase"]["status"], "buy")
+
+    def test_postgame_stale_empty_inventory(self):
+        s = fixture()
+        s["ended_at"] = "2026-09-17"
+        self.assertEqual(self.engine.analyze(s)["purchase"]["status"], "postgame")
+        s.pop("ended_at")
+        s["duration"] = 1300
+        self.assertEqual(self.engine.analyze(s)["purchase"]["status"], "stale")
+        s["snapshots"].append({"time": 1300, "players": {"me": {"items": [], "current_gold": 0}}})
+        r = self.engine.analyze(s)
+        self.assertEqual(r["owned"], [])
+        self.assertNotEqual(r["purchase"]["status"], "buy")
+
+    def test_phase_allied_synergy_health_and_objectives(self):
+        s = fixture()
+        s["events"] = [{"type": "objective", "time": 1190, "label": "Dragón aliado"}]
+        s["snapshots"][0]["players"]["me"]["live_stats"] = {"currentHealth": 100, "maxHealth": 1000}
+        result = self.engine.analyze(s)
+        text = str(result["actions"])
+        for word in ("Leona", "Dragón aliado", "Vida baja", "E para cortar"):
+            self.assertIn(word, text)
+        for seconds, expected in ((800, "Inicio"), (1500, "Medio juego"), (2100, "Juego tardío")):
+            s["duration"] = seconds
+            s["snapshots"][0]["time"] = seconds
+            self.assertEqual(self.engine.analyze(s)["phase"], expected)
+
+    def test_exclusive_and_owned(self):
+        for owned, rejected in ((["3053"], "3156"), (["3071"], "3036"), (["3748"], "3074"), (["3111"], "3047")):
+            self.assertFalse(self.engine.compatible(rejected, owned))
+        s = fixture()
+        s["snapshots"][0]["players"]["me"]["items"] = [3053, 3071, 3748, 3111]
+        r = self.engine.analyze(s)
+        self.assertFalse({"3156", "3036", "3033", "3074", "3047"}.intersection(x["id"] for x in r["recommendations"]))
+
+    def recipe_engine(self):
+        def item(cost, children=(), tags=()):
+            return {"name": str(cost), "gold": {"purchasable": True, "total": cost}, "from": list(children), "tags": list(tags)}
+        return LiveRecommendationService({"1": item(350), "2": item(1000, ("1", "1")),
+                                          "3": item(2500, ("2", "1")), "4": item(200),
+                                          "5": item(0, tags=("Trinket",))})
+
+    def test_recipe_multiset_remaining_and_upgrade_full_inventory(self):
+        engine = self.recipe_engine()
+        self.assertEqual(engine._recipe("3", ["1", "1"])[0], 1800)
+        self.assertEqual(engine._recipe("3", ["2", "1"])[0], 1150)
+        result = engine.purchase("3", ["2", "1", "4", "4", "4", "4", "5"], 1150)
+        self.assertEqual((result["status"], result["id"], result["cost"]), ("buy", "3", 1150))
+        self.assertEqual(engine.purchase("3", ["4"] * 6, 9999)["status"], "full")
+
+    def test_recipe_second_copy_is_buyable(self):
+        result = self.recipe_engine().purchase("2", ["1"], 350)
+        self.assertEqual((result["status"], result.get("id"), result.get("cost")), ("buy", "1", 350))

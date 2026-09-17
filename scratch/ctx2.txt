@@ -1,0 +1,2345 @@
+#################### SERVICE MAP (499 lines)
+16: def number(value, default=0.0):
+24: def canonical(value):
+28: def item_ids(values):
+43: def load_knowledge():
+45:     def read(name):
+56: class LiveRecommendationService:
+84:     def __init__(self, catalog=None, champions=None, strict_items=None):
+93:     def profile(self, name):
+96:     def stat(self, ident, key):
+110:     def name(self, ident):
+113:     def cost(self, ident):
+116:     def available(self, ident, map_id="11"):
+123:     def compatible(self, ident, owned):
+128:     def _recipe(self, target, owned):
+132:         def visit(ident, ancestors):
+145:     def purchase(self, target, owned, gold, map_id="11"):
+151:         def walk(ident, ancestors):
+186:     def latest(session):
+199:     def inventory_summary(self, player):
+228:     def _mark_strength(rows):
+248:     def _threats(self, enemies, now, times):
+300:     def analyze(self, session: dict[str, Any]):
+356:     def _rank(self, profile, champ, owned, threats, physical_share, map_id):
+437:     def _actions(self, champ, profile, local, allies, threats, kinds, phase, session, now, owned):
+#################### PANEL MAP (424 lines)
+50: class RecommendationPanel(QFrame):
+53:     def __init__(self, parent: QWidget | None = None) -> None:
+72:     def label(text="", role="body"):
+83:     def card(name=""):
+93:     def configure(self, assets: Any, item_catalog: dict[str, Any]) -> None:
+99:     def _build_ui(self):
+132:     def icon(self, ident, size=40):
+142:     def update_recommendations(self, session):
+190:     def _restore_scroll(self):
+195:     def _details(self, name, title, lines):
+204:         def expand(checked):
+215:     def _priority(self, report):
+240:     def _inventory(self, report):
+251:     def _brief(self, rec):
+259:     def _recommendations(self, report):
+298:     def _context(self, report):
+388:     def _ordered_threats(self, threats):
+397:         def position(threat):
+404:     def _reflow(self):
+422:     def resizeEvent(self, event):
+#################### TEST MAP (522 lines)
+19: def fixture(champion="Briar", enemies=("Soraka", "Lux", "Darius", "Jinx", "Malphite")):
+34: class EngineTests(unittest.TestCase):
+36:     def setUpClass(cls):
+40:     def test_real_champions_coverage_and_compatible_results(self):
+57:     def test_no_network_no_mutation_and_determinism(self):
+65:     def test_enemy_classification_does_not_include_allies_or_unknowns(self):
+73:     def test_armor_threshold_and_healing_evidence(self):
+86:     def test_context_changes_scores(self):
+98:     def test_unknown_missing_and_nonfinite_gold(self):
+109:     def test_postgame_stale_empty_inventory(self):
+121:     def test_phase_allied_synergy_health_and_objectives(self):
+134:     def test_exclusive_and_owned(self):
+142:     def recipe_engine(self):
+143:         def item(cost, children=(), tags=()):
+149:     def test_recipe_multiset_remaining_and_upgrade_full_inventory(self):
+157:     def test_recipe_second_copy_is_buyable(self):
+161:     def test_recipe_no_gold_unknown_and_cycles(self):
+168:     def test_enemy_inventory_badges_value_and_duplicates(self):
+183:     def test_enemy_inventory_unknown_empty_and_kit_not_badges(self):
+193:     def test_enemy_inventory_updates_purchase_sale_and_stale(self):
+206:     def test_strength_inventory_level_and_bounded_kda(self):
+219:     def test_strength_ties_and_single_enemy(self):
+230:     def test_strength_incomplete_data_is_unmarked_but_others_still_compare(self):
+246:     def test_strength_survives_high_levels_and_old_snapshots(self):
+258:     def test_budget(self):
+267: class PanelTests(unittest.TestCase):
+269:     def setUpClass(cls):
+273:     def setUp(self):
+280:     def tearDown(self):
+285:     def render(self, width, height=800):
+292:     def test_enemy_cards_follow_lane_order_after_refresh(self):
+314:     def test_enemy_order_uses_player_roles_and_keeps_unknowns_last(self):
+327:     def test_compact_panel_end_to_end(self):
+388:     def test_strength_and_expanded_details_survive_live_refresh(self):
+419:     def test_fewer_than_three_candidates_are_not_padded(self):
+429:     def test_no_routes_layout_resizing_and_plain_text(self):
+440:     def test_refresh_preserves_scroll_and_same_data_widgets(self):
+457:     def test_enemy_cards_icons_badges_gold_and_live_refresh(self):
+462:         def paint(label, url, key, size):
+500:     def test_enemy_card_unknown_and_partial_value(self):
+514:     def test_empty_postgame_champion_switch(self):
+#################### SERVICE HEAD (first 60)
+1: """Deterministic, offline LIVE advice. Never assumes vision, cooldowns or shop access."""
+2: from __future__ import annotations
+3: 
+4: import json
+5: import math
+6: import re
+7: import unicodedata
+8: from collections import Counter
+9: from functools import lru_cache
+10: from pathlib import Path
+11: from typing import Any
+12: 
+13: from app.services.synergy_recommendation_service import SynergyRecommendationService
+14: 
+15: 
+16: def number(value, default=0.0):
+17:     try:
+18:         result = float(value)
+19:         return result if math.isfinite(result) else default
+20:     except (TypeError, ValueError):
+21:         return default
+22: 
+23: 
+24: def canonical(value):
+25:     return re.sub(r"[^a-z0-9]", "", unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode().lower())
+26: 
+27: 
+28: def item_ids(values):
+29:     result = []
+30:     for value in values if isinstance(values, list) else []:
+31:         if isinstance(value, dict):
+32:             count = max(1, min(6, int(number(value.get("count", 1), 1))))
+33:             value = value.get("itemID", value.get("id"))
+34:         else:
+35:             count = 1
+36:         ident = int(number(value))
+37:         if ident > 0:
+38:             result.extend([str(ident)] * count)
+39:     return result
+40: 
+41: 
+42: @lru_cache(maxsize=1)
+43: def load_knowledge():
+44:     root = Path(__file__).resolve().parents[2] / "data"
+45:     def read(name):
+46:         try:
+47:             value = json.loads((root / name).read_text(encoding="utf-8"))
+48:             return value if isinstance(value, list) else []
+49:         except (OSError, ValueError):
+50:             return []
+51:     champions = {canonical(p.get("character")): p for p in read("champions_strict.json") if isinstance(p, dict)}
+52:     items = {str(p.get("id")): p for p in read("legendary_items_strict.json") if isinstance(p, dict)}
+53:     return champions, items
+54: 
+55: 
+56: class LiveRecommendationService:
+57:     """Scores independent alternatives, not an automatically executable six-item build."""
+58: 
+59:     HEALERS = {"aatrox", "briar", "drmundo", "fiddlesticks", "irelia", "kayn", "maokai",
+60:                "nami", "nilah", "samira", "senna", "sona", "soraka", "swain", "sylas",
+#################### PANEL HEAD (first 70)
+1: from __future__ import annotations
+2: 
+3: from typing import Any
+4: 
+5: from PySide6.QtCore import Qt, QTimer
+6: from PySide6.QtWidgets import (
+7:     QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy,
+8:     QVBoxLayout, QWidget, QToolButton,
+9: )
+10: 
+11: from app.services.live_recommendation_service import LiveRecommendationService
+12: 
+13: 
+14: PANEL_STYLE = """
+15: QFrame#recommendationPanel { background: #0b1220; border: 1px solid #26364c; border-radius: 12px; }
+16: QFrame#recommendationPanel QWidget { font-family: 'Segoe UI'; }
+17: QFrame#recommendationPanel QLabel { color: #c1cede; background: transparent; border: none;
+18:     font-size: 13px; padding: 0px; }
+19: QFrame#recommendationPanel QLabel[role="title"] { color: #f1f5fb; font-size: 23px; font-weight: 700; }
+20: QFrame#recommendationPanel QLabel[role="section"] { color: #eef4ff; font-size: 15px; font-weight: 700; }
+21: QFrame#recommendationPanel QLabel[role="eyebrow"] { color: #65d7c4; font-size: 11px; font-weight: 700; }
+22: QFrame#recommendationPanel QLabel[role="muted"] { color: #91a4bd; font-size: 12px; }
+23: QFrame#recommendationPanel QLabel[role="accent"] { color: #f2cc78; font-size: 16px; font-weight: 700; }
+24: QFrame#recommendationPanel QLabel[role="badge"] { color: #78dfcc; background: #16332f;
+25:     border-radius: 5px; padding: 5px 9px; font-size: 11px; font-weight: 700; }
+26: QFrame#recommendationPanel QLabel[role="enemyBadge"] { background: #27374d; color: #dce8fa;
+27:     border-radius: 5px; padding: 4px 7px; font-size: 11px; font-weight: 700; }
+28: QFrame#recommendationPanel QLabel[kind="antiheal"] { background: #422b39; color: #ffb4c4; }
+29: QFrame#recommendationPanel QLabel[kind="armor"] { background: #3c3524; color: #efce88; }
+30: QFrame#recommendationPanel QLabel[kind="mr"] { background: #24364b; color: #9ccfff; }
+31: QFrame#recommendationPanel QLabel[kind="crit"] { background: #422c25; color: #ffbc95; }
+32: QFrame#recommendationPanel QFrame[card="true"] { background: #111e30; border: 1px solid #293c55;
+33:     border-radius: 9px; }
+34: QFrame#recommendationPanel QLabel[role="score"] { color: #78dfcc; background: #16332f;
+35:     border-radius: 6px; padding: 4px 6px; font-size: 16px; font-weight: 700; }
+36: QFrame#recommendationPanel QLabel[role="itemName"] { color: #eef4ff; font-size: 13px; font-weight: 700; }
+37: QFrame#recommendationPanel QLabel[role="strong"] { color: #ffb4b4; font-weight: 700; }
+38: QFrame#recommendationPanel QLabel[role="weak"] { color: #78dfcc; font-weight: 700; }
+39: QFrame#recommendationPanel QToolButton { color: #91a4bd; background: transparent;
+40:     border: none; text-align: left; padding: 4px; }
+41: QFrame#recommendationPanel QFrame#priorityCard { background: #142b32; border: 1px solid #357e77; }
+42: QFrame#recommendationPanel QFrame#inventoryCard { background: #0e1929; border: 1px solid #26364c; }
+43: QFrame#recommendationPanel QScrollArea { background: transparent; border: none; }
+44: QFrame#recommendationPanel QWidget#recommendationBody { background: transparent; }
+45: QFrame#recommendationPanel QLabel[role="icon"] { background: #1e3148; border: 1px solid #35506c;
+46:     border-radius: 6px; color: #9bb2cd; font-size: 11px; }
+47: """
+48: 
+49: 
+50: class RecommendationPanel(QFrame):
+51:     """One contextual dashboard: priority, champion affinity, opponents and action plan."""
+52: 
+53:     def __init__(self, parent: QWidget | None = None) -> None:
+54:         super().__init__(parent)
+55:         self.assets = None
+56:         self.item_catalog: dict[str, Any] = {}
+57:         self.engine = LiveRecommendationService()
+58:         self.report = None
+59:         self._last_report = None
+60:         self._last_session = {}
+61:         self._columns = 0
+62:         self._scroll_position = 0
+63:         self._expanded = {}
+64:         self._restore_timer = QTimer(self)
+65:         self._restore_timer.setSingleShot(True)
+66:         self._restore_timer.timeout.connect(self._restore_scroll)
+67:         self.setObjectName("recommendationPanel")
+68:         self.setStyleSheet(PANEL_STYLE)
+69:         self._build_ui()
+70: 
+#################### TEST HEAD (first 150)
+1: """Offline engine/UI regression: python -m unittest scratch.test_live_recommendations -v."""
+2: import json
+3: import os
+4: import time
+5: import unittest
+6: from copy import deepcopy
+7: from pathlib import Path
+8: from unittest.mock import patch
+9: 
+10: os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+11: 
+12: from PySide6.QtCore import QCoreApplication, QEvent, Qt
+13: from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
+14: from app.services.live_recommendation_service import LiveRecommendationService, canonical
+15: from app.ui.recommendation_panel import RecommendationPanel
+16: from app.ui.styles import CONTROL_WINDOW_STYLE
+17: 
+18: 
+19: def fixture(champion="Briar", enemies=("Soraka", "Lux", "Darius", "Jinx", "Malphite")):
+20:     players = {"me": {"champion_name": champion, "team": "ORDER", "role": "JUNGLE"},
+21:                "ally": {"champion_name": "Leona", "team": "ORDER", "side": "ally"}}
+22:     for index, name in enumerate(enemies):
+23:         players[f"e{index}"] = {"champion_name": name, "team": "CHAOS", "side": "enemy"}
+24:     points = {key: {"items": [], "level": 12, "kills": 2, "deaths": 1, "assists": 4}
+25:               for key in players}
+26:     points["me"].update(items=[1036, 1001], current_gold=2810)
+27:     return {"local_player_key": "me", "local_team": "ORDER", "champion_name": champion,
+28:             "players": players, "duration": 1200, "game_mode": "CLASSIC",
+29:             "snapshots": [{"time": 1200, "players": points}],
+30:             "lane_matchups": {"JUNGLE": {"ally_key": "me", "enemy_key": "e0"}},
+31:             "events": []}
+32: 
+33: 
+34: class EngineTests(unittest.TestCase):
+35:     @classmethod
+36:     def setUpClass(cls):
+37:         cls.catalog = json.loads(Path("data/items.json").read_text(encoding="utf-8"))
+38:         cls.engine = LiveRecommendationService(cls.catalog)
+39: 
+40:     def test_real_champions_coverage_and_compatible_results(self):
+41:         for name in ("Briar", "Lux", "Lulu", "Aatrox", "Ornn", "Ahri", "Jinx", "Cassiopeia", "Dr. Mundo"):
+42:             with self.subTest(champion=name):
+43:                 s = fixture(name)
+44:                 result = self.engine.analyze(s)
+45:                 self.assertTrue(result["profile"], name)
+46:                 self.assertTrue(result["recommendations"], name)
+47:                 for rec in result["recommendations"]:
+48:                     self.assertTrue(self.engine.available(rec["id"]))
+49:                     self.assertTrue(self.engine.compatible(rec["id"], result["owned"]))
+50:                     self.assertTrue(rec["reasons"])
+51:                     if name == "Briar":
+52:                         self.assertEqual(self.engine.stat(rec["id"], "ability_power"), 0)
+53:                         self.assertEqual(self.engine.stat(rec["id"], "mana"), 0)
+54:                     if name == "Cassiopeia":
+55:                         self.assertNotIn("Boots", self.engine.catalog[rec["id"]].get("tags", []))
+56: 
+57:     def test_no_network_no_mutation_and_determinism(self):
+58:         s = fixture()
+59:         before = deepcopy(s)
+60:         with patch("requests.get", side_effect=AssertionError("Network forbidden")):
+61:             a, b = self.engine.analyze(s), self.engine.analyze(s)
+62:         self.assertEqual(a, b)
+63:         self.assertEqual(s, before)
+64: 
+65:     def test_enemy_classification_does_not_include_allies_or_unknowns(self):
+66:         s = fixture(enemies=())
+67:         s.pop("local_team")
+68:         s["players"]["me"].pop("team")
+69:         s["players"]["unknown"] = {"champion_name": "Soraka"}
+70:         r = self.engine.analyze(s)
+71:         self.assertEqual(r["threats"], [])
+72: 
+73:     def test_armor_threshold_and_healing_evidence(self):
+74:         s = fixture(enemies=("Garen",))
+75:         p = s["snapshots"][0]["players"]["e0"]
+76:         p["items"] = [1029]  # cloth armor should not imply heavy armor
+77:         self.assertNotIn("armor", [x["kind"] for x in self.engine.analyze(s)["threats"][0]["signals"]])
+78:         p["items"] = [3075, 3143]
+79:         signals = self.engine.analyze(s)["threats"][0]["signals"]
+80:         self.assertIn("armor", [x["kind"] for x in signals])
+81:         self.assertNotIn("healing", [x["kind"] for x in signals])  # antiheal is not healing
+82:         p["items"] = [3153]
+83:         signals = self.engine.analyze(s)["threats"][0]["signals"]
+84:         self.assertIn("healing", [x["kind"] for x in signals])
+85: 
+86:     def test_context_changes_scores(self):
+87:         base = self.engine.analyze(fixture(enemies=("Garen",)))
+88:         healing = self.engine.analyze(fixture(enemies=("Soraka", "Vladimir", "Warwick")))
+89:         scores = lambda r: {x["id"]: x["score"] for x in r["recommendations"]}
+90:         self.assertIn("3033", scores(healing))
+91:         self.assertGreater(scores(healing)["3033"], scores(base).get("3033", 0))
+92:         magic = self.engine.analyze(fixture(enemies=("Lux", "Syndra", "Veigar")))
+93:         physical = self.engine.analyze(fixture(enemies=("Darius", "Jinx", "Draven")))
+94:         self.assertLess(magic["physical_share"], .4)
+95:         self.assertGreater(physical["physical_share"], .6)
+96:         self.assertNotEqual(magic["recommendations"], physical["recommendations"])
+97: 
+98:     def test_unknown_missing_and_nonfinite_gold(self):
+99:         self.assertFalse(self.engine.analyze({})["recommendations"])
+100:         self.assertFalse(self.engine.analyze(fixture("UnknownChampion"))["recommendations"])
+101:         for gold in (None, "invalid", float("nan"), float("inf")):
+102:             s = fixture()
+103:             s["snapshots"][0]["players"]["me"]["current_gold"] = gold
+104:             s["snapshots"][0]["players"]["me"]["estimated_gold"] = 99999
+105:             result = self.engine.analyze(s)
+106:             self.assertIsNone(result["gold"])
+107:             self.assertNotEqual(result["purchase"]["status"], "buy")
+108: 
+109:     def test_postgame_stale_empty_inventory(self):
+110:         s = fixture()
+111:         s["ended_at"] = "2026-09-17"
+112:         self.assertEqual(self.engine.analyze(s)["purchase"]["status"], "postgame")
+113:         s.pop("ended_at")
+114:         s["duration"] = 1300
+115:         self.assertEqual(self.engine.analyze(s)["purchase"]["status"], "stale")
+116:         s["snapshots"].append({"time": 1300, "players": {"me": {"items": [], "current_gold": 0}}})
+117:         r = self.engine.analyze(s)
+118:         self.assertEqual(r["owned"], [])
+119:         self.assertNotEqual(r["purchase"]["status"], "buy")
+120: 
+121:     def test_phase_allied_synergy_health_and_objectives(self):
+122:         s = fixture()
+123:         s["events"] = [{"type": "objective", "time": 1190, "label": "Dragón aliado"}]
+124:         s["snapshots"][0]["players"]["me"]["live_stats"] = {"currentHealth": 100, "maxHealth": 1000}
+125:         result = self.engine.analyze(s)
+126:         text = str(result["actions"])
+127:         for word in ("Leona", "Dragón aliado", "Vida baja", "E para cortar"):
+128:             self.assertIn(word, text)
+129:         for seconds, expected in ((800, "Inicio"), (1500, "Medio juego"), (2100, "Juego tardío")):
+130:             s["duration"] = seconds
+131:             s["snapshots"][0]["time"] = seconds
+132:             self.assertEqual(self.engine.analyze(s)["phase"], expected)
+133: 
+134:     def test_exclusive_and_owned(self):
+135:         for owned, rejected in ((["3053"], "3156"), (["3071"], "3036"), (["3748"], "3074"), (["3111"], "3047")):
+136:             self.assertFalse(self.engine.compatible(rejected, owned))
+137:         s = fixture()
+138:         s["snapshots"][0]["players"]["me"]["items"] = [3053, 3071, 3748, 3111]
+139:         r = self.engine.analyze(s)
+140:         self.assertFalse({"3156", "3036", "3033", "3074", "3047"}.intersection(x["id"] for x in r["recommendations"]))
+141: 
+142:     def recipe_engine(self):
+143:         def item(cost, children=(), tags=()):
+144:             return {"name": str(cost), "gold": {"purchasable": True, "total": cost}, "from": list(children), "tags": list(tags)}
+145:         return LiveRecommendationService({"1": item(350), "2": item(1000, ("1", "1")),
+146:                                           "3": item(2500, ("2", "1")), "4": item(200),
+147:                                           "5": item(0, tags=("Trinket",))})
+148: 
+149:     def test_recipe_multiset_remaining_and_upgrade_full_inventory(self):
+150:         engine = self.recipe_engine()
+#################### SERVICE CONTEXT
+--- match 'def analyze' near 300 (lines 220-379)
+220:         if antiheal:
+221:             badges.insert(0, {"kind": "antiheal", "label": "Cortacura",
+222:                              "detail": "Heridas graves: " + ", ".join(self.name(i) for i in antiheal) +
+223:                              ". Su aplicación depende del objeto; no indica que el efecto esté activo."})
+224:         return {"known": known, "value": value if known else None,
+225:                 "partial": bool(missing), "badges": badges}
+226: 
+227:     @staticmethod
+228:     def _mark_strength(rows):
+229:         """Compare rivals with complete observations; ties remain explicit."""
+230:         for row in rows:
+231:             row["strength_label"] = ""
+232:         measurable = [r for r in rows if r["strength"] is not None]
+233:         if len(measurable) < 2:
+234:             return
+235:         highest = max(r["strength"] for r in measurable)
+236:         lowest = min(r["strength"] for r in measurable)
+237:         if highest == lowest:
+238:             for row in measurable:
+239:                 row["strength_label"] = "FUERZA SIMILAR"
+240:             return
+241:         for score, label in ((highest, "MÁS FUERTE"), (lowest, "MÁS DÉBIL")):
+242:             tied = sum(r["strength"] == score for r in measurable) > 1
+243:             for row in measurable:
+244:                 if row["strength"] == score:
+245:                     row["strength_label"] = label + (" · EMPATE" if tied else "")
+246: 
+247: 
+248:     def _threats(self, enemies, now, times):
+249:         rows = []
+250:         for key, player in enemies.items():
+251:             champ = str(player.get("champion_name", "?"))
+252:             profile = self.profile(champ)
+253:             ids = item_ids(player.get("items", []))
+254:             signals = []
+255:             # Inventory stats are observable; kit information is explicitly a profile estimate.
+256:             for kind, stat, threshold in (("armor", "armor", 90), ("mr", "magic_resistance", 70),
+257:                                            ("health", "health", 1000), ("crit", "critical_strike_chance_percent", 40)):
+258:                 amount = sum(self.stat(i, stat) for i in ids)
+259:                 if amount >= threshold:
+260:                     signals.append({"kind": kind, "evidence": f"{amount:g} de {self.LABELS[kind].lower()} en objetos", "observed": True})
+261:             healing_items = [i for i in ids if self.stat(i, "life_steal_percent") >= 7]
+262:             if canonical(champ) in self.HEALERS or healing_items:
+263:                 signals.append({"kind": "healing", "evidence": "Robo de vida en inventario" if healing_items else "Sustain del kit (perfil, no curación medida)", "observed": bool(healing_items)})
+264:             cc = number(profile.get("map_and_control", {}).get("crowd_control"))
+265:             if cc >= 7:
+266:                 signals.append({"kind": "cc", "evidence": f"Control del perfil: {cc:g}/10; no indica habilidades disponibles", "observed": False})
+267:             damage = profile.get("damage_breakdown", {})
+268:             physical = number(damage.get("physical_damage_percent"))
+269:             magic = number(damage.get("magic_damage_percent"))
+270:             if not physical and not magic:
+271:                 damage_type = profile.get("basic_info", {}).get("damage_type", "")
+272:                 physical, magic = (80, 20) if damage_type == "AD" else (20, 80) if damage_type == "AP" else (50, 50)
+273:             # AP/AD investments can alter a profile's expected damage orientation.
+274:             ad = sum(self.stat(i, "attack_damage") for i in ids)
+275:             ap = sum(self.stat(i, "ability_power") for i in ids)
+276:             if ap >= 200 and ad < 60:
+277:                 physical, magic = 20, 80
+278:             elif ad >= 160 and ap < 60:
+279:                 physical, magic = 80, 20
+280:             weight = 1 + min(1.5, max(0, number(player.get("kills")) - number(player.get("deaths"))) * .15)
+281:             inventory = self.inventory_summary(player)
+282:             stale = key not in times or now - times[key] > 30
+283:             level = number(player.get("level"), None)
+284:             kda = [number(player.get(k), None) for k in ("kills", "deaths", "assists")]
+285:             reliable = (inventory["known"] and not inventory["partial"]
+286:                         and level is not None and level >= 1
+287:                         and all(v is not None and v >= 0 for v in kda))
+288:             # Item investment and levels dominate; KDA is only a bounded adjustment.
+289:             strength = (round(inventory["value"] / 1000 + level * .6
+290:                               + max(-2, min(2, (kda[0] + kda[2] * .3 - kda[1]) * .15)), 2)
+291:                         if reliable else None)
+292:             rows.append({"key": key, "champion": champ, "items": ids, "signals": signals,
+293:                          "inventory": inventory, "level": int(level or 0), "strength": strength,
+294:                          "physical": physical, "magic": magic, "weight": weight,
+295:                          "kda": f"{int(number(player.get('kills')))}/{int(number(player.get('deaths')))}/{int(number(player.get('assists')))}",
+296:                          "stale": stale})
+297:         self._mark_strength(rows)
+298:         return sorted(rows, key=lambda r: (r["strength"] is None, -(r["strength"] or 0), r["champion"], r["key"]))
+299: 
+300:     def analyze(self, session: dict[str, Any]):
+301:         session = session or {}
+302:         players, times = self.latest(session)
+303:         local_key = session.get("local_player_key")
+304:         local = players.get(local_key, {})
+305:         champ = str(local.get("champion_name") or session.get("champion_name") or "Campeón")
+306:         profile = self.profile(champ)
+307:         team = local.get("team") or session.get("local_team")
+308:         enemies, allies = {}, {}
+309:         for key, p in players.items():
+310:             if key == local_key:
+311:                 continue
+312:             side = p.get("side")
+313:             if side == "enemy" or (side != "ally" and team and p.get("team") and p["team"] != team):
+314:                 enemies[key] = p
+315:             elif side == "ally" or (team and p.get("team") == team):
+316:                 allies[key] = p
+317:         now = max(number(session.get("duration")), max(times.values(), default=0))
+318:         ended = bool(session.get("ended_at") or session.get("final_sync", {}).get("status") == "synced")
+319:         gold = next((number(local[k], None) for k in ("current_gold", "currentGold", "goldCurrent")
+320:                      if local.get(k) is not None and number(local[k], None) is not None), None)
+321:         gold = max(0, int(gold)) if gold is not None else None
+322:         owned = item_ids(local.get("items", []))
+323:         threats = self._threats(enemies, now, times)
+324:         phase = "Inicio" if now < 900 else "Medio juego" if now < 1800 else "Juego tardío"
+325:         warnings = ["Orientación heurística, no probabilidad de victoria. Sin visión, posiciones ni enfriamientos fiables."]
+326:         if not profile:
+327:             warnings.append("Campeón sin perfil específico: no se inventa una build genérica.")
+328:         if not local:
+329:             warnings.append("Jugador local no identificado: compras desactivadas.")
+330:         if gold is None:
+331:             warnings.append("Oro disponible desconocido; el oro estimado acumulado no se usa para comprar.")
+332:         if not enemies:
+333:             warnings.append("Sin rivales identificados: faltan datos para contramedidas.")
+334:         if any(t["stale"] for t in threats):
+335:             warnings.append("Hay inventarios sin snapshot reciente (>30 s); confirma las amenazas antes de adaptar.")
+336:         if session.get("game_version") and isinstance(session.get("game_version"), str):
+337:             warnings.append(f"Partida: {session['game_version']}. El catálogo configurado puede pertenecer a otro parche.")
+338:         map_id = "12" if session.get("game_mode") == "ARAM" else "11"
+339:         threat_kinds = {s["kind"] for t in threats for s in t["signals"]}
+340:         physical = sum(t["physical"] * t["weight"] for t in threats)
+341:         magic = sum(t["magic"] * t["weight"] for t in threats)
+342:         total = max(physical + magic, 1)
+343:         physical_share = physical / total
+344:         recommendations = self._rank(profile, champ, owned, threats, physical_share, map_id) if profile and local else []
+345:         purchase = self.purchase(recommendations[0]["id"], owned, gold, map_id) if recommendations else {"status": "none", "text": "Sin compras compatibles verificables con el catálogo y el perfil disponibles."}
+346:         if ended:
+347:             purchase = {"status": "postgame", "text": "Partida finalizada: revisión del último estado, no una orden de compra en directo."}
+348:         elif local_key not in times or now - times.get(local_key, 0) > 30:
+349:             purchase = {"status": "stale", "text": "Esperando un snapshot reciente del jugador local para confirmar compras."}
+350:         actions = self._actions(champ, profile, local, allies, threats, threat_kinds, phase, session, now, owned)
+351:         return {"champion": champ, "profile": profile, "time": now, "phase": phase, "ended": ended,
+352:                 "gold": gold, "owned": owned, "threats": threats, "recommendations": recommendations,
+353:                 "purchase": purchase, "actions": actions, "warnings": warnings, "physical_share": physical_share,
+354:                 "level": int(number(local.get("level"))), "role": local.get("role", "UNKNOWN")}
+355: 
+356:     def _rank(self, profile, champ, owned, threats, physical_share, map_id):
+357:         basic = profile.get("basic_info", {})
+358:         damage = basic.get("damage_type", "")
+359:         style = basic.get("play_style", "")
+360:         preferred = set()
+361:         for key in ("most_played_build", "full_build", "items"):
+362:             preferred.update(self.synergy._normalise_item_name(n) for n in profile.get(key, []))
+363:         preferred.update(self.synergy._normalise_item_name(n) for n in profile.get("power_curve_and_scaling", {}).get("power_spike_items", []))
+364:         for names in profile.get("situational_items", {}).values():
+365:             if isinstance(names, list):
+366:                 preferred.update(self.synergy._normalise_item_name(n) for n in names)
+367:         pool = {}
+368:         for ident, item in self.catalog.items():
+369:             if not self.available(ident, map_id) or not self.compatible(ident, owned):
+370:                 continue
+371:             strict = self.strict.get(ident, {})
+372:             boots = "Boots" in item.get("tags", []) and ident != "1001"
+373:             if not strict and not boots:
+374:                 continue
+375:             if boots and (canonical(champ) == "cassiopeia" or any("Boots" in self.catalog.get(i, {}).get("tags", []) and i != "1001" for i in owned)):
+376:                 continue
+377:             known = self.synergy._normalise_item_name(item.get("name", "")) in preferred
+378:             ap, ad = self.stat(ident, "ability_power"), self.stat(ident, "attack_damage")
+379:             if not known and ((damage == "AD" and ap > 0) or (damage == "AP" and ad > 0)):
+--- match 'def _rank\\b' near 356 (lines 246-465)
+246: 
+247: 
+248:     def _threats(self, enemies, now, times):
+249:         rows = []
+250:         for key, player in enemies.items():
+251:             champ = str(player.get("champion_name", "?"))
+252:             profile = self.profile(champ)
+253:             ids = item_ids(player.get("items", []))
+254:             signals = []
+255:             # Inventory stats are observable; kit information is explicitly a profile estimate.
+256:             for kind, stat, threshold in (("armor", "armor", 90), ("mr", "magic_resistance", 70),
+257:                                            ("health", "health", 1000), ("crit", "critical_strike_chance_percent", 40)):
+258:                 amount = sum(self.stat(i, stat) for i in ids)
+259:                 if amount >= threshold:
+260:                     signals.append({"kind": kind, "evidence": f"{amount:g} de {self.LABELS[kind].lower()} en objetos", "observed": True})
+261:             healing_items = [i for i in ids if self.stat(i, "life_steal_percent") >= 7]
+262:             if canonical(champ) in self.HEALERS or healing_items:
+263:                 signals.append({"kind": "healing", "evidence": "Robo de vida en inventario" if healing_items else "Sustain del kit (perfil, no curación medida)", "observed": bool(healing_items)})
+264:             cc = number(profile.get("map_and_control", {}).get("crowd_control"))
+265:             if cc >= 7:
+266:                 signals.append({"kind": "cc", "evidence": f"Control del perfil: {cc:g}/10; no indica habilidades disponibles", "observed": False})
+267:             damage = profile.get("damage_breakdown", {})
+268:             physical = number(damage.get("physical_damage_percent"))
+269:             magic = number(damage.get("magic_damage_percent"))
+270:             if not physical and not magic:
+271:                 damage_type = profile.get("basic_info", {}).get("damage_type", "")
+272:                 physical, magic = (80, 20) if damage_type == "AD" else (20, 80) if damage_type == "AP" else (50, 50)
+273:             # AP/AD investments can alter a profile's expected damage orientation.
+274:             ad = sum(self.stat(i, "attack_damage") for i in ids)
+275:             ap = sum(self.stat(i, "ability_power") for i in ids)
+276:             if ap >= 200 and ad < 60:
+277:                 physical, magic = 20, 80
+278:             elif ad >= 160 and ap < 60:
+279:                 physical, magic = 80, 20
+280:             weight = 1 + min(1.5, max(0, number(player.get("kills")) - number(player.get("deaths"))) * .15)
+281:             inventory = self.inventory_summary(player)
+282:             stale = key not in times or now - times[key] > 30
+283:             level = number(player.get("level"), None)
+284:             kda = [number(player.get(k), None) for k in ("kills", "deaths", "assists")]
+285:             reliable = (inventory["known"] and not inventory["partial"]
+286:                         and level is not None and level >= 1
+287:                         and all(v is not None and v >= 0 for v in kda))
+288:             # Item investment and levels dominate; KDA is only a bounded adjustment.
+289:             strength = (round(inventory["value"] / 1000 + level * .6
+290:                               + max(-2, min(2, (kda[0] + kda[2] * .3 - kda[1]) * .15)), 2)
+291:                         if reliable else None)
+292:             rows.append({"key": key, "champion": champ, "items": ids, "signals": signals,
+293:                          "inventory": inventory, "level": int(level or 0), "strength": strength,
+294:                          "physical": physical, "magic": magic, "weight": weight,
+295:                          "kda": f"{int(number(player.get('kills')))}/{int(number(player.get('deaths')))}/{int(number(player.get('assists')))}",
+296:                          "stale": stale})
+297:         self._mark_strength(rows)
+298:         return sorted(rows, key=lambda r: (r["strength"] is None, -(r["strength"] or 0), r["champion"], r["key"]))
+299: 
+300:     def analyze(self, session: dict[str, Any]):
+301:         session = session or {}
+302:         players, times = self.latest(session)
+303:         local_key = session.get("local_player_key")
+304:         local = players.get(local_key, {})
+305:         champ = str(local.get("champion_name") or session.get("champion_name") or "Campeón")
+306:         profile = self.profile(champ)
+307:         team = local.get("team") or session.get("local_team")
+308:         enemies, allies = {}, {}
+309:         for key, p in players.items():
+310:             if key == local_key:
+311:                 continue
+312:             side = p.get("side")
+313:             if side == "enemy" or (side != "ally" and team and p.get("team") and p["team"] != team):
+314:                 enemies[key] = p
+315:             elif side == "ally" or (team and p.get("team") == team):
+316:                 allies[key] = p
+317:         now = max(number(session.get("duration")), max(times.values(), default=0))
+318:         ended = bool(session.get("ended_at") or session.get("final_sync", {}).get("status") == "synced")
+319:         gold = next((number(local[k], None) for k in ("current_gold", "currentGold", "goldCurrent")
+320:                      if local.get(k) is not None and number(local[k], None) is not None), None)
+321:         gold = max(0, int(gold)) if gold is not None else None
+322:         owned = item_ids(local.get("items", []))
+323:         threats = self._threats(enemies, now, times)
+324:         phase = "Inicio" if now < 900 else "Medio juego" if now < 1800 else "Juego tardío"
+325:         warnings = ["Orientación heurística, no probabilidad de victoria. Sin visión, posiciones ni enfriamientos fiables."]
+326:         if not profile:
+327:             warnings.append("Campeón sin perfil específico: no se inventa una build genérica.")
+328:         if not local:
+329:             warnings.append("Jugador local no identificado: compras desactivadas.")
+330:         if gold is None:
+331:             warnings.append("Oro disponible desconocido; el oro estimado acumulado no se usa para comprar.")
+332:         if not enemies:
+333:             warnings.append("Sin rivales identificados: faltan datos para contramedidas.")
+334:         if any(t["stale"] for t in threats):
+335:             warnings.append("Hay inventarios sin snapshot reciente (>30 s); confirma las amenazas antes de adaptar.")
+336:         if session.get("game_version") and isinstance(session.get("game_version"), str):
+337:             warnings.append(f"Partida: {session['game_version']}. El catálogo configurado puede pertenecer a otro parche.")
+338:         map_id = "12" if session.get("game_mode") == "ARAM" else "11"
+339:         threat_kinds = {s["kind"] for t in threats for s in t["signals"]}
+340:         physical = sum(t["physical"] * t["weight"] for t in threats)
+341:         magic = sum(t["magic"] * t["weight"] for t in threats)
+342:         total = max(physical + magic, 1)
+343:         physical_share = physical / total
+344:         recommendations = self._rank(profile, champ, owned, threats, physical_share, map_id) if profile and local else []
+345:         purchase = self.purchase(recommendations[0]["id"], owned, gold, map_id) if recommendations else {"status": "none", "text": "Sin compras compatibles verificables con el catálogo y el perfil disponibles."}
+346:         if ended:
+347:             purchase = {"status": "postgame", "text": "Partida finalizada: revisión del último estado, no una orden de compra en directo."}
+348:         elif local_key not in times or now - times.get(local_key, 0) > 30:
+349:             purchase = {"status": "stale", "text": "Esperando un snapshot reciente del jugador local para confirmar compras."}
+350:         actions = self._actions(champ, profile, local, allies, threats, threat_kinds, phase, session, now, owned)
+351:         return {"champion": champ, "profile": profile, "time": now, "phase": phase, "ended": ended,
+352:                 "gold": gold, "owned": owned, "threats": threats, "recommendations": recommendations,
+353:                 "purchase": purchase, "actions": actions, "warnings": warnings, "physical_share": physical_share,
+354:                 "level": int(number(local.get("level"))), "role": local.get("role", "UNKNOWN")}
+355: 
+356:     def _rank(self, profile, champ, owned, threats, physical_share, map_id):
+357:         basic = profile.get("basic_info", {})
+358:         damage = basic.get("damage_type", "")
+359:         style = basic.get("play_style", "")
+360:         preferred = set()
+361:         for key in ("most_played_build", "full_build", "items"):
+362:             preferred.update(self.synergy._normalise_item_name(n) for n in profile.get(key, []))
+363:         preferred.update(self.synergy._normalise_item_name(n) for n in profile.get("power_curve_and_scaling", {}).get("power_spike_items", []))
+364:         for names in profile.get("situational_items", {}).values():
+365:             if isinstance(names, list):
+366:                 preferred.update(self.synergy._normalise_item_name(n) for n in names)
+367:         pool = {}
+368:         for ident, item in self.catalog.items():
+369:             if not self.available(ident, map_id) or not self.compatible(ident, owned):
+370:                 continue
+371:             strict = self.strict.get(ident, {})
+372:             boots = "Boots" in item.get("tags", []) and ident != "1001"
+373:             if not strict and not boots:
+374:                 continue
+375:             if boots and (canonical(champ) == "cassiopeia" or any("Boots" in self.catalog.get(i, {}).get("tags", []) and i != "1001" for i in owned)):
+376:                 continue
+377:             known = self.synergy._normalise_item_name(item.get("name", "")) in preferred
+378:             ap, ad = self.stat(ident, "ability_power"), self.stat(ident, "attack_damage")
+379:             if not known and ((damage == "AD" and ap > 0) or (damage == "AP" and ad > 0)):
+380:                 continue
+381:             if basic.get("resource_type") not in ("Mana", "mana") and self.stat(ident, "mana") > 0:
+382:                 continue
+383:             classes = set(strict.get("classifications", {}).get("intended_classes", []))
+384:             matching = classes & ({style} | self.synergy.STYLE_CLASSES.get(style, set()))
+385:             defensive = self.stat(ident, "armor") + self.stat(ident, "magic_resistance") > 0
+386:             if not (known or matching or boots or defensive):
+387:                 continue
+388:             # Pure utility requires an appropriate support identity or recorded champion usage.
+389:             if not known and classes <= {"Enchanter", "Support"} and style not in {"Enchanter", "Warden"} and not boots:
+390:                 continue
+391:             pool[ident] = {**item, **strict, "name": item.get("name", ident), "tier": "Legendary"}
+392:         base = self.synergy.rank_items(profile, style, pool, [], limit=len(pool))
+393:         rows = []
+394:         for rec in base:
+395:             ident = rec.item_id
+396:             score = rec.score
+397:             reasons = list(rec.reasons)
+398:             responses = []
+399:             for threat in threats:
+400:                 for signal in threat["signals"]:
+401:                     kind = signal["kind"]
+402:                     if ident in self.RESPONSES.get(kind, set()):
+403:                         if kind == "healing" and self.ANTIHEAL.intersection(owned):
+404:                             continue
+405:                         # Don't buy physical penetration for AP or magic penetration for AD.
+406:                         if kind == "armor" and damage == "AP" or kind == "mr" and damage == "AD":
+407:                             continue
+408:                         score += 7 * threat["weight"]
+409:                         responses.append(f"{self.LABELS[kind]} de {threat['champion']}")
+410:             armor, mr = self.stat(ident, "armor"), self.stat(ident, "magic_resistance")
+411:             if threats and armor > 0 and physical_share >= .6:
+412:                 score += 12
+413:                 responses.append("Predominio físico estimado")
+414:             if threats and mr > 0 and physical_share <= .4:
+415:                 score += 12
+416:                 responses.append("Predominio mágico estimado")
+417:             if ident == "3065" and canonical(champ) in self.HEALERS:
+418:                 score += 8
+419:                 reasons.insert(0, f"Refuerza el sustain propio de {champ}")
+420:             if ident == "3071" and damage == "AD":
+421:                 reasons.insert(0, "La reducción de armadura también beneficia al daño físico aliado")
+422:             if ident == "3075" and responses:
+423:                 reasons.append("Heridas graves requiere que te ataquen; no garantiza aplicación al sanador")
+424:             if ident == "3111":
+425:                 reasons.append("La tenacidad no reduce derribos ni supresiones")
+426:             remaining, used = self._recipe(ident, owned)
+427:             if used:
+428:                 score += 10
+429:                 reasons.insert(0, "Aprovecha componentes de tu inventario; evita desviar el oro invertido")
+430:             if "Boots" in self.catalog[ident].get("tags", []):
+431:                 score += 5
+432:             rows.append({"id": ident, "name": rec.name, "score": round(score, 1),
+433:                          "reasons": reasons, "responses": list(dict.fromkeys(responses)),
+434:                          "cost": remaining, "invested": self.cost(ident) - remaining})
+435:         return sorted(rows, key=lambda r: (-r["score"], -r["invested"], r["id"]))[:8]
+436: 
+437:     def _actions(self, champ, profile, local, allies, threats, kinds, phase, session, now, owned):
+438:         actions = []
+439:         if canonical(champ) == "briar":
+440:             actions.append(("Tu condición de pelea", "Entra después del control aliado; conserva E para cortar el frenesí y salir. No uses R a ciegas hacia una zona sin visión."))
+441:         else:
+442:             style = profile.get("basic_info", {}).get("play_style", "")
+443:             plan = {
+444:                 "Marksman": "Golpea al objetivo seguro más cercano detrás de tu frontline; conserva movilidad para el engage enemigo.",
+445:                 "Enchanter": "Mantén alcance de protección sobre tu carry; reserva escudo o curación para la respuesta rival.",
+446:                 "Assassin": "Busca un flanco con visión y espera a que se gasten las herramientas de protección antes de entrar.",
+447:                 "Mage": "Controla accesos con habilidades y juega alrededor de tus ventanas de alcance; evita entrar primero.",
+448:                 "Vanguard": "Inicia solo cuando tu equipo pueda seguirte; no consumas todo el control lejos de tus carries.",
+449:                 "Warden": "Prioriza interceptar el dive y proteger al aliado que aporta el daño.",
+450:             }.get(style, "Coordina el foco con tus aliados y no comprometas tu salida antes de confirmar que pueden seguirte.")
+451:             actions.append((f"Plan de {champ}", plan))
+452:         if threats:
+453:             top = threats[0]
+454:             actions.append(("Rival a vigilar", f"{top['champion']} ({top['kda']}): prioridad estimada por bajas y muertes, no daño medido. Respeta su rango y confirma sus objetos."))
+455:         controls = [p.get("champion_name", "?") for p in allies.values()
+456:                     if number(self.profile(p.get("champion_name")).get("map_and_control", {}).get("crowd_control")) >= 7]
+457:         if controls:
+458:             actions.append(("Sinergia aliada · control", f"Coordina el foco con {', '.join(controls)}: encadena tu entrada tras su control, sin solaparlo innecesariamente."))
+459:         protectors = [p.get("champion_name", "?") for p in allies.values()
+460:                       if self.profile(p.get("champion_name")).get("basic_info", {}).get("play_style") in {"Enchanter", "Warden"}]
+461:         if protectors:
+462:             actions.append(("Sinergia aliada · protección", f"Juega al alcance de {', '.join(protectors)}; no rompas la distancia de sus herramientas de protección."))
+463:         if "healing" in kinds:
+464:             covered = bool(self.ANTIHEAL.intersection(owned))
+465:             actions.append(("Curación rival", "Ya llevas heridas graves: aplica el efecto al objetivo correcto, no dupliques la compra." if covered else
+--- match 'def purchase' near 145 (lines 85-204)
+85:         known_champions, known_items = load_knowledge()
+86:         self.champions = champions if champions is not None else known_champions
+87:         self.strict = strict_items if strict_items is not None else known_items
+88:         raw = catalog or {}
+89:         raw = raw.get("items", raw.get("data", raw))
+90:         self.catalog = {str(k): v for k, v in raw.items() if isinstance(v, dict)}
+91:         self.synergy = SynergyRecommendationService()
+92: 
+93:     def profile(self, name):
+94:         return self.champions.get(canonical(name), {})
+95: 
+96:     def stat(self, ident, key):
+97:         aliases = {
+98:             "armor": "FlatArmorMod", "magic_resistance": "FlatSpellBlockMod",
+99:             "health": "FlatHPPoolMod", "attack_damage": "FlatPhysicalDamageMod",
+100:             "ability_power": "FlatMagicDamageMod", "mana": "FlatMPPoolMod",
+101:             "critical_strike_chance_percent": "FlatCritChanceMod",
+102:             "life_steal_percent": "PercentLifeStealMod",
+103:         }
+104:         stats = self.catalog.get(ident, {}).get("stats", {})
+105:         value = number(stats.get(aliases.get(key, key)))
+106:         if key in {"critical_strike_chance_percent", "life_steal_percent"} and 0 < value <= 1:
+107:             value *= 100
+108:         return value or number(self.strict.get(ident, {}).get("stats", {}).get(key))
+109: 
+110:     def name(self, ident):
+111:         return str(self.catalog.get(ident, {}).get("name", f"Objeto {ident}"))
+112: 
+113:     def cost(self, ident):
+114:         return max(0, int(number(self.catalog.get(ident, {}).get("gold", {}).get("total"))))
+115: 
+116:     def available(self, ident, map_id="11"):
+117:         item = self.catalog.get(ident, {})
+118:         return (bool(item) and item.get("gold", {}).get("purchasable") is True
+119:                 and self.cost(ident) > 0 and item.get("maps", {}).get(str(map_id), True)
+120:                 and not item.get("requiredAlly") and not item.get("requiredChampion")
+121:                 and not item.get("inStore") is False)
+122: 
+123:     def compatible(self, ident, owned):
+124:         if ident in owned:
+125:             return False
+126:         return not any(ident in group and any(i in group for i in owned) for group in self.GROUPS)
+127: 
+128:     def _recipe(self, target, owned):
+129:         """Remaining gold and consumed components, with multiset accounting and cycle guard."""
+130:         pool = Counter(owned)
+131:         consumed = Counter()
+132:         def visit(ident, ancestors):
+133:             if ident in ancestors:
+134:                 return 0
+135:             if pool[ident]:
+136:                 pool[ident] -= 1
+137:                 consumed[ident] += 1
+138:                 return self.cost(ident)
+139:             children = item_ids(self.catalog.get(ident, {}).get("from", []))
+140:             credit = sum(visit(c, ancestors | {ident}) for c in children)
+141:             return min(self.cost(ident), credit)
+142:         credit = visit(target, set())
+143:         return max(0, self.cost(target) - credit), consumed
+144: 
+145:     def purchase(self, target, owned, gold, map_id="11"):
+146:         """A single feasible buy; never claims an unaffordable component is buyable."""
+147:         slots = sum(1 for i in owned if "Trinket" not in self.catalog.get(i, {}).get("tags", []))
+148:         candidates = []
+149:         pool = Counter(owned)
+150: 
+151:         def walk(ident, ancestors):
+152:             if ident in ancestors:
+153:                 return 0, 0
+154:             if pool[ident]:
+155:                 pool[ident] -= 1
+156:                 return self.cost(ident), 1
+157:             credit, consumed = 0, 0
+158:             for child in item_ids(self.catalog.get(ident, {}).get("from", [])):
+159:                 value, count = walk(child, ancestors | {ident})
+160:                 credit += value
+161:                 consumed += count
+162:             remaining = max(0, self.cost(ident) - credit)
+163:             if self.available(ident, map_id) and remaining > 0:
+164:                 candidates.append((ident, remaining, slots - consumed + 1 <= 6))
+165:             return min(self.cost(ident), credit), consumed
+166: 
+167:         walk(target, set())
+168:         remaining, _ = self._recipe(target, owned)
+169:         possible = [c for c in candidates if c[2] and gold is not None and c[1] <= gold]
+170:         if possible:
+171:             chosen = next((c for c in possible if c[0] == target), max(possible, key=lambda c: (c[1], c[0])))
+172:             return {"status": "buy", "id": chosen[0], "cost": chosen[1], "target": target,
+173:                     "remaining": remaining, "text": "Asequible al volver a la tienda; no implica que estés en base."}
+174:         fits = [c for c in candidates if c[2]]
+175:         if not fits:
+176:             return {"status": "full", "target": target, "remaining": remaining,
+177:                     "text": "Inventario lleno: no compres ni vendas automáticamente. Revisa un hueco o completa un objeto."}
+178:         cheapest = min(fits, key=lambda c: (c[1], c[0]))
+179:         return {"status": "unknown" if gold is None else "save", "target": target,
+180:                 "id": cheapest[0], "cost": cheapest[1], "remaining": remaining,
+181:                 "missing": None if gold is None else max(0, cheapest[1] - gold),
+182:                 "text": "Oro actual no disponible: no se puede confirmar la compra." if gold is None
+183:                 else f"Ahorra {max(0, cheapest[1] - gold):,} de oro para {self.name(cheapest[0])}."}
+184: 
+185:     @staticmethod
+186:     def latest(session):
+187:         players = {k: dict(p) for k, p in session.get("players", {}).items() if isinstance(p, dict)}
+188:         times = {}
+189:         for snap in session.get("snapshots", []):
+190:             if not isinstance(snap, dict):
+191:                 continue
+192:             t = number(snap.get("time"))
+193:             for key, point in snap.get("players", {}).items():
+194:                 if isinstance(point, dict) and t >= times.get(key, -1):
+195:                     players.setdefault(key, {}).update(point)
+196:                     times[key] = t
+197:         return players, times
+198: 
+199:     def inventory_summary(self, player):
+200:         """Compact observed-item facts, independent of estimated kit threats."""
+201:         known = isinstance(player.get("items"), list)
+202:         ids = item_ids(player.get("items"))
+203:         missing = [i for i in ids if i not in self.catalog or
+204:                    number(self.catalog[i].get("gold", {}).get("total"), None) is None]
+--- match 'def compatible' near 123 (lines 83-162)
+83: 
+84:     def __init__(self, catalog=None, champions=None, strict_items=None):
+85:         known_champions, known_items = load_knowledge()
+86:         self.champions = champions if champions is not None else known_champions
+87:         self.strict = strict_items if strict_items is not None else known_items
+88:         raw = catalog or {}
+89:         raw = raw.get("items", raw.get("data", raw))
+90:         self.catalog = {str(k): v for k, v in raw.items() if isinstance(v, dict)}
+91:         self.synergy = SynergyRecommendationService()
+92: 
+93:     def profile(self, name):
+94:         return self.champions.get(canonical(name), {})
+95: 
+96:     def stat(self, ident, key):
+97:         aliases = {
+98:             "armor": "FlatArmorMod", "magic_resistance": "FlatSpellBlockMod",
+99:             "health": "FlatHPPoolMod", "attack_damage": "FlatPhysicalDamageMod",
+100:             "ability_power": "FlatMagicDamageMod", "mana": "FlatMPPoolMod",
+101:             "critical_strike_chance_percent": "FlatCritChanceMod",
+102:             "life_steal_percent": "PercentLifeStealMod",
+103:         }
+104:         stats = self.catalog.get(ident, {}).get("stats", {})
+105:         value = number(stats.get(aliases.get(key, key)))
+106:         if key in {"critical_strike_chance_percent", "life_steal_percent"} and 0 < value <= 1:
+107:             value *= 100
+108:         return value or number(self.strict.get(ident, {}).get("stats", {}).get(key))
+109: 
+110:     def name(self, ident):
+111:         return str(self.catalog.get(ident, {}).get("name", f"Objeto {ident}"))
+112: 
+113:     def cost(self, ident):
+114:         return max(0, int(number(self.catalog.get(ident, {}).get("gold", {}).get("total"))))
+115: 
+116:     def available(self, ident, map_id="11"):
+117:         item = self.catalog.get(ident, {})
+118:         return (bool(item) and item.get("gold", {}).get("purchasable") is True
+119:                 and self.cost(ident) > 0 and item.get("maps", {}).get(str(map_id), True)
+120:                 and not item.get("requiredAlly") and not item.get("requiredChampion")
+121:                 and not item.get("inStore") is False)
+122: 
+123:     def compatible(self, ident, owned):
+124:         if ident in owned:
+125:             return False
+126:         return not any(ident in group and any(i in group for i in owned) for group in self.GROUPS)
+127: 
+128:     def _recipe(self, target, owned):
+129:         """Remaining gold and consumed components, with multiset accounting and cycle guard."""
+130:         pool = Counter(owned)
+131:         consumed = Counter()
+132:         def visit(ident, ancestors):
+133:             if ident in ancestors:
+134:                 return 0
+135:             if pool[ident]:
+136:                 pool[ident] -= 1
+137:                 consumed[ident] += 1
+138:                 return self.cost(ident)
+139:             children = item_ids(self.catalog.get(ident, {}).get("from", []))
+140:             credit = sum(visit(c, ancestors | {ident}) for c in children)
+141:             return min(self.cost(ident), credit)
+142:         credit = visit(target, set())
+143:         return max(0, self.cost(target) - credit), consumed
+144: 
+145:     def purchase(self, target, owned, gold, map_id="11"):
+146:         """A single feasible buy; never claims an unaffordable component is buyable."""
+147:         slots = sum(1 for i in owned if "Trinket" not in self.catalog.get(i, {}).get("tags", []))
+148:         candidates = []
+149:         pool = Counter(owned)
+150: 
+151:         def walk(ident, ancestors):
+152:             if ident in ancestors:
+153:                 return 0, 0
+154:             if pool[ident]:
+155:                 pool[ident] -= 1
+156:                 return self.cost(ident), 1
+157:             credit, consumed = 0, 0
+158:             for child in item_ids(self.catalog.get(ident, {}).get("from", [])):
+159:                 value, count = walk(child, ancestors | {ident})
+160:                 credit += value
+161:                 consumed += count
+162:             remaining = max(0, self.cost(ident) - credit)
+--- match 'def _threats' near 248 (lines 178-317)
+178:         cheapest = min(fits, key=lambda c: (c[1], c[0]))
+179:         return {"status": "unknown" if gold is None else "save", "target": target,
+180:                 "id": cheapest[0], "cost": cheapest[1], "remaining": remaining,
+181:                 "missing": None if gold is None else max(0, cheapest[1] - gold),
+182:                 "text": "Oro actual no disponible: no se puede confirmar la compra." if gold is None
+183:                 else f"Ahorra {max(0, cheapest[1] - gold):,} de oro para {self.name(cheapest[0])}."}
+184: 
+185:     @staticmethod
+186:     def latest(session):
+187:         players = {k: dict(p) for k, p in session.get("players", {}).items() if isinstance(p, dict)}
+188:         times = {}
+189:         for snap in session.get("snapshots", []):
+190:             if not isinstance(snap, dict):
+191:                 continue
+192:             t = number(snap.get("time"))
+193:             for key, point in snap.get("players", {}).items():
+194:                 if isinstance(point, dict) and t >= times.get(key, -1):
+195:                     players.setdefault(key, {}).update(point)
+196:                     times[key] = t
+197:         return players, times
+198: 
+199:     def inventory_summary(self, player):
+200:         """Compact observed-item facts, independent of estimated kit threats."""
+201:         known = isinstance(player.get("items"), list)
+202:         ids = item_ids(player.get("items"))
+203:         missing = [i for i in ids if i not in self.catalog or
+204:                    number(self.catalog[i].get("gold", {}).get("total"), None) is None]
+205:         value = sum(self.cost(i) for i in ids)
+206:         badges = []
+207:         for kind, label, stat, threshold in (
+208:             ("armor", "Armadura", "armor", 1),
+209:             ("mr", "Res. mágica", "magic_resistance", 1),
+210:             ("crit", "Crítico", "critical_strike_chance_percent", 1),
+211:             ("lifesteal", "Robo de vida", "life_steal_percent", 1),
+212:             ("health", "Vida alta", "health", 1000),
+213:         ):
+214:             amount = sum(self.stat(i, stat) for i in ids)
+215:             if amount >= threshold:
+216:                 unit = "%" if kind in {"crit", "lifesteal"} else ""
+217:                 badges.append({"kind": kind, "label": label,
+218:                                "detail": f"{amount:g}{unit} en objetos observados; no incluye estadísticas base ni runas."})
+219:         antiheal = sorted(set(ids) & self.ANTIHEAL)
+220:         if antiheal:
+221:             badges.insert(0, {"kind": "antiheal", "label": "Cortacura",
+222:                              "detail": "Heridas graves: " + ", ".join(self.name(i) for i in antiheal) +
+223:                              ". Su aplicación depende del objeto; no indica que el efecto esté activo."})
+224:         return {"known": known, "value": value if known else None,
+225:                 "partial": bool(missing), "badges": badges}
+226: 
+227:     @staticmethod
+228:     def _mark_strength(rows):
+229:         """Compare rivals with complete observations; ties remain explicit."""
+230:         for row in rows:
+231:             row["strength_label"] = ""
+232:         measurable = [r for r in rows if r["strength"] is not None]
+233:         if len(measurable) < 2:
+234:             return
+235:         highest = max(r["strength"] for r in measurable)
+236:         lowest = min(r["strength"] for r in measurable)
+237:         if highest == lowest:
+238:             for row in measurable:
+239:                 row["strength_label"] = "FUERZA SIMILAR"
+240:             return
+241:         for score, label in ((highest, "MÁS FUERTE"), (lowest, "MÁS DÉBIL")):
+242:             tied = sum(r["strength"] == score for r in measurable) > 1
+243:             for row in measurable:
+244:                 if row["strength"] == score:
+245:                     row["strength_label"] = label + (" · EMPATE" if tied else "")
+246: 
+247: 
+248:     def _threats(self, enemies, now, times):
+249:         rows = []
+250:         for key, player in enemies.items():
+251:             champ = str(player.get("champion_name", "?"))
+252:             profile = self.profile(champ)
+253:             ids = item_ids(player.get("items", []))
+254:             signals = []
+255:             # Inventory stats are observable; kit information is explicitly a profile estimate.
+256:             for kind, stat, threshold in (("armor", "armor", 90), ("mr", "magic_resistance", 70),
+257:                                            ("health", "health", 1000), ("crit", "critical_strike_chance_percent", 40)):
+258:                 amount = sum(self.stat(i, stat) for i in ids)
+259:                 if amount >= threshold:
+260:                     signals.append({"kind": kind, "evidence": f"{amount:g} de {self.LABELS[kind].lower()} en objetos", "observed": True})
+261:             healing_items = [i for i in ids if self.stat(i, "life_steal_percent") >= 7]
+262:             if canonical(champ) in self.HEALERS or healing_items:
+263:                 signals.append({"kind": "healing", "evidence": "Robo de vida en inventario" if healing_items else "Sustain del kit (perfil, no curación medida)", "observed": bool(healing_items)})
+264:             cc = number(profile.get("map_and_control", {}).get("crowd_control"))
+265:             if cc >= 7:
+266:                 signals.append({"kind": "cc", "evidence": f"Control del perfil: {cc:g}/10; no indica habilidades disponibles", "observed": False})
+267:             damage = profile.get("damage_breakdown", {})
+268:             physical = number(damage.get("physical_damage_percent"))
+269:             magic = number(damage.get("magic_damage_percent"))
+270:             if not physical and not magic:
+271:                 damage_type = profile.get("basic_info", {}).get("damage_type", "")
+272:                 physical, magic = (80, 20) if damage_type == "AD" else (20, 80) if damage_type == "AP" else (50, 50)
+273:             # AP/AD investments can alter a profile's expected damage orientation.
+274:             ad = sum(self.stat(i, "attack_damage") for i in ids)
+275:             ap = sum(self.stat(i, "ability_power") for i in ids)
+276:             if ap >= 200 and ad < 60:
+277:                 physical, magic = 20, 80
+278:             elif ad >= 160 and ap < 60:
+279:                 physical, magic = 80, 20
+280:             weight = 1 + min(1.5, max(0, number(player.get("kills")) - number(player.get("deaths"))) * .15)
+281:             inventory = self.inventory_summary(player)
+282:             stale = key not in times or now - times[key] > 30
+283:             level = number(player.get("level"), None)
+284:             kda = [number(player.get(k), None) for k in ("kills", "deaths", "assists")]
+285:             reliable = (inventory["known"] and not inventory["partial"]
+286:                         and level is not None and level >= 1
+287:                         and all(v is not None and v >= 0 for v in kda))
+288:             # Item investment and levels dominate; KDA is only a bounded adjustment.
+289:             strength = (round(inventory["value"] / 1000 + level * .6
+290:                               + max(-2, min(2, (kda[0] + kda[2] * .3 - kda[1]) * .15)), 2)
+291:                         if reliable else None)
+292:             rows.append({"key": key, "champion": champ, "items": ids, "signals": signals,
+293:                          "inventory": inventory, "level": int(level or 0), "strength": strength,
+294:                          "physical": physical, "magic": magic, "weight": weight,
+295:                          "kda": f"{int(number(player.get('kills')))}/{int(number(player.get('deaths')))}/{int(number(player.get('assists')))}",
+296:                          "stale": stale})
+297:         self._mark_strength(rows)
+298:         return sorted(rows, key=lambda r: (r["strength"] is None, -(r["strength"] or 0), r["champion"], r["key"]))
+299: 
+300:     def analyze(self, session: dict[str, Any]):
+301:         session = session or {}
+302:         players, times = self.latest(session)
+303:         local_key = session.get("local_player_key")
+304:         local = players.get(local_key, {})
+305:         champ = str(local.get("champion_name") or session.get("champion_name") or "Campeón")
+306:         profile = self.profile(champ)
+307:         team = local.get("team") or session.get("local_team")
+308:         enemies, allies = {}, {}
+309:         for key, p in players.items():
+310:             if key == local_key:
+311:                 continue
+312:             side = p.get("side")
+313:             if side == "enemy" or (side != "ally" and team and p.get("team") and p["team"] != team):
+314:                 enemies[key] = p
+315:             elif side == "ally" or (team and p.get("team") == team):
+316:                 allies[key] = p
+317:         now = max(number(session.get("duration")), max(times.values(), default=0))
+--- match 'inventario|inventory' near 199 (lines 169-228)
+169:         possible = [c for c in candidates if c[2] and gold is not None and c[1] <= gold]
+170:         if possible:
+171:             chosen = next((c for c in possible if c[0] == target), max(possible, key=lambda c: (c[1], c[0])))
+172:             return {"status": "buy", "id": chosen[0], "cost": chosen[1], "target": target,
+173:                     "remaining": remaining, "text": "Asequible al volver a la tienda; no implica que estés en base."}
+174:         fits = [c for c in candidates if c[2]]
+175:         if not fits:
+176:             return {"status": "full", "target": target, "remaining": remaining,
+177:                     "text": "Inventario lleno: no compres ni vendas automáticamente. Revisa un hueco o completa un objeto."}
+178:         cheapest = min(fits, key=lambda c: (c[1], c[0]))
+179:         return {"status": "unknown" if gold is None else "save", "target": target,
+180:                 "id": cheapest[0], "cost": cheapest[1], "remaining": remaining,
+181:                 "missing": None if gold is None else max(0, cheapest[1] - gold),
+182:                 "text": "Oro actual no disponible: no se puede confirmar la compra." if gold is None
+183:                 else f"Ahorra {max(0, cheapest[1] - gold):,} de oro para {self.name(cheapest[0])}."}
+184: 
+185:     @staticmethod
+186:     def latest(session):
+187:         players = {k: dict(p) for k, p in session.get("players", {}).items() if isinstance(p, dict)}
+188:         times = {}
+189:         for snap in session.get("snapshots", []):
+190:             if not isinstance(snap, dict):
+191:                 continue
+192:             t = number(snap.get("time"))
+193:             for key, point in snap.get("players", {}).items():
+194:                 if isinstance(point, dict) and t >= times.get(key, -1):
+195:                     players.setdefault(key, {}).update(point)
+196:                     times[key] = t
+197:         return players, times
+198: 
+199:     def inventory_summary(self, player):
+200:         """Compact observed-item facts, independent of estimated kit threats."""
+201:         known = isinstance(player.get("items"), list)
+202:         ids = item_ids(player.get("items"))
+203:         missing = [i for i in ids if i not in self.catalog or
+204:                    number(self.catalog[i].get("gold", {}).get("total"), None) is None]
+205:         value = sum(self.cost(i) for i in ids)
+206:         badges = []
+207:         for kind, label, stat, threshold in (
+208:             ("armor", "Armadura", "armor", 1),
+209:             ("mr", "Res. mágica", "magic_resistance", 1),
+210:             ("crit", "Crítico", "critical_strike_chance_percent", 1),
+211:             ("lifesteal", "Robo de vida", "life_steal_percent", 1),
+212:             ("health", "Vida alta", "health", 1000),
+213:         ):
+214:             amount = sum(self.stat(i, stat) for i in ids)
+215:             if amount >= threshold:
+216:                 unit = "%" if kind in {"crit", "lifesteal"} else ""
+217:                 badges.append({"kind": kind, "label": label,
+218:                                "detail": f"{amount:g}{unit} en objetos observados; no incluye estadísticas base ni runas."})
+219:         antiheal = sorted(set(ids) & self.ANTIHEAL)
+220:         if antiheal:
+221:             badges.insert(0, {"kind": "antiheal", "label": "Cortacura",
+222:                              "detail": "Heridas graves: " + ", ".join(self.name(i) for i in antiheal) +
+223:                              ". Su aplicación depende del objeto; no indica que el efecto esté activo."})
+224:         return {"known": known, "value": value if known else None,
+225:                 "partial": bool(missing), "badges": badges}
+226: 
+227:     @staticmethod
+228:     def _mark_strength(rows):
+--- match 'inventario|inventory' near 263 (lines 233-292)
+233:         if len(measurable) < 2:
+234:             return
+235:         highest = max(r["strength"] for r in measurable)
+236:         lowest = min(r["strength"] for r in measurable)
+237:         if highest == lowest:
+238:             for row in measurable:
+239:                 row["strength_label"] = "FUERZA SIMILAR"
+240:             return
+241:         for score, label in ((highest, "MÁS FUERTE"), (lowest, "MÁS DÉBIL")):
+242:             tied = sum(r["strength"] == score for r in measurable) > 1
+243:             for row in measurable:
+244:                 if row["strength"] == score:
+245:                     row["strength_label"] = label + (" · EMPATE" if tied else "")
+246: 
+247: 
+248:     def _threats(self, enemies, now, times):
+249:         rows = []
+250:         for key, player in enemies.items():
+251:             champ = str(player.get("champion_name", "?"))
+252:             profile = self.profile(champ)
+253:             ids = item_ids(player.get("items", []))
+254:             signals = []
+255:             # Inventory stats are observable; kit information is explicitly a profile estimate.
+256:             for kind, stat, threshold in (("armor", "armor", 90), ("mr", "magic_resistance", 70),
+257:                                            ("health", "health", 1000), ("crit", "critical_strike_chance_percent", 40)):
+258:                 amount = sum(self.stat(i, stat) for i in ids)
+259:                 if amount >= threshold:
+260:                     signals.append({"kind": kind, "evidence": f"{amount:g} de {self.LABELS[kind].lower()} en objetos", "observed": True})
+261:             healing_items = [i for i in ids if self.stat(i, "life_steal_percent") >= 7]
+262:             if canonical(champ) in self.HEALERS or healing_items:
+263:                 signals.append({"kind": "healing", "evidence": "Robo de vida en inventario" if healing_items else "Sustain del kit (perfil, no curación medida)", "observed": bool(healing_items)})
+264:             cc = number(profile.get("map_and_control", {}).get("crowd_control"))
+265:             if cc >= 7:
+266:                 signals.append({"kind": "cc", "evidence": f"Control del perfil: {cc:g}/10; no indica habilidades disponibles", "observed": False})
+267:             damage = profile.get("damage_breakdown", {})
+268:             physical = number(damage.get("physical_damage_percent"))
+269:             magic = number(damage.get("magic_damage_percent"))
+270:             if not physical and not magic:
+271:                 damage_type = profile.get("basic_info", {}).get("damage_type", "")
+272:                 physical, magic = (80, 20) if damage_type == "AD" else (20, 80) if damage_type == "AP" else (50, 50)
+273:             # AP/AD investments can alter a profile's expected damage orientation.
+274:             ad = sum(self.stat(i, "attack_damage") for i in ids)
+275:             ap = sum(self.stat(i, "ability_power") for i in ids)
+276:             if ap >= 200 and ad < 60:
+277:                 physical, magic = 20, 80
+278:             elif ad >= 160 and ap < 60:
+279:                 physical, magic = 80, 20
+280:             weight = 1 + min(1.5, max(0, number(player.get("kills")) - number(player.get("deaths"))) * .15)
+281:             inventory = self.inventory_summary(player)
+282:             stale = key not in times or now - times[key] > 30
+283:             level = number(player.get("level"), None)
+284:             kda = [number(player.get(k), None) for k in ("kills", "deaths", "assists")]
+285:             reliable = (inventory["known"] and not inventory["partial"]
+286:                         and level is not None and level >= 1
+287:                         and all(v is not None and v >= 0 for v in kda))
+288:             # Item investment and levels dominate; KDA is only a bounded adjustment.
+289:             strength = (round(inventory["value"] / 1000 + level * .6
+290:                               + max(-2, min(2, (kda[0] + kda[2] * .3 - kda[1]) * .15)), 2)
+291:                         if reliable else None)
+292:             rows.append({"key": key, "champion": champ, "items": ids, "signals": signals,
+--- match 'inventario|inventory' near 335 (lines 305-364)
+305:         champ = str(local.get("champion_name") or session.get("champion_name") or "Campeón")
+306:         profile = self.profile(champ)
+307:         team = local.get("team") or session.get("local_team")
+308:         enemies, allies = {}, {}
+309:         for key, p in players.items():
+310:             if key == local_key:
+311:                 continue
+312:             side = p.get("side")
+313:             if side == "enemy" or (side != "ally" and team and p.get("team") and p["team"] != team):
+314:                 enemies[key] = p
+315:             elif side == "ally" or (team and p.get("team") == team):
+316:                 allies[key] = p
+317:         now = max(number(session.get("duration")), max(times.values(), default=0))
+318:         ended = bool(session.get("ended_at") or session.get("final_sync", {}).get("status") == "synced")
+319:         gold = next((number(local[k], None) for k in ("current_gold", "currentGold", "goldCurrent")
+320:                      if local.get(k) is not None and number(local[k], None) is not None), None)
+321:         gold = max(0, int(gold)) if gold is not None else None
+322:         owned = item_ids(local.get("items", []))
+323:         threats = self._threats(enemies, now, times)
+324:         phase = "Inicio" if now < 900 else "Medio juego" if now < 1800 else "Juego tardío"
+325:         warnings = ["Orientación heurística, no probabilidad de victoria. Sin visión, posiciones ni enfriamientos fiables."]
+326:         if not profile:
+327:             warnings.append("Campeón sin perfil específico: no se inventa una build genérica.")
+328:         if not local:
+329:             warnings.append("Jugador local no identificado: compras desactivadas.")
+330:         if gold is None:
+331:             warnings.append("Oro disponible desconocido; el oro estimado acumulado no se usa para comprar.")
+332:         if not enemies:
+333:             warnings.append("Sin rivales identificados: faltan datos para contramedidas.")
+334:         if any(t["stale"] for t in threats):
+335:             warnings.append("Hay inventarios sin snapshot reciente (>30 s); confirma las amenazas antes de adaptar.")
+336:         if session.get("game_version") and isinstance(session.get("game_version"), str):
+337:             warnings.append(f"Partida: {session['game_version']}. El catálogo configurado puede pertenecer a otro parche.")
+338:         map_id = "12" if session.get("game_mode") == "ARAM" else "11"
+339:         threat_kinds = {s["kind"] for t in threats for s in t["signals"]}
+340:         physical = sum(t["physical"] * t["weight"] for t in threats)
+341:         magic = sum(t["magic"] * t["weight"] for t in threats)
+342:         total = max(physical + magic, 1)
+343:         physical_share = physical / total
+344:         recommendations = self._rank(profile, champ, owned, threats, physical_share, map_id) if profile and local else []
+345:         purchase = self.purchase(recommendations[0]["id"], owned, gold, map_id) if recommendations else {"status": "none", "text": "Sin compras compatibles verificables con el catálogo y el perfil disponibles."}
+346:         if ended:
+347:             purchase = {"status": "postgame", "text": "Partida finalizada: revisión del último estado, no una orden de compra en directo."}
+348:         elif local_key not in times or now - times.get(local_key, 0) > 30:
+349:             purchase = {"status": "stale", "text": "Esperando un snapshot reciente del jugador local para confirmar compras."}
+350:         actions = self._actions(champ, profile, local, allies, threats, threat_kinds, phase, session, now, owned)
+351:         return {"champion": champ, "profile": profile, "time": now, "phase": phase, "ended": ended,
+352:                 "gold": gold, "owned": owned, "threats": threats, "recommendations": recommendations,
+353:                 "purchase": purchase, "actions": actions, "warnings": warnings, "physical_share": physical_share,
+354:                 "level": int(number(local.get("level"))), "role": local.get("role", "UNKNOWN")}
+355: 
+356:     def _rank(self, profile, champ, owned, threats, physical_share, map_id):
+357:         basic = profile.get("basic_info", {})
+358:         damage = basic.get("damage_type", "")
+359:         style = basic.get("play_style", "")
+360:         preferred = set()
+361:         for key in ("most_played_build", "full_build", "items"):
+362:             preferred.update(self.synergy._normalise_item_name(n) for n in profile.get(key, []))
+363:         preferred.update(self.synergy._normalise_item_name(n) for n in profile.get("power_curve_and_scaling", {}).get("power_spike_items", []))
+364:         for names in profile.get("situational_items", {}).values():
+--- match 'inventario|inventory' near 429 (lines 399-458)
+399:             for threat in threats:
+400:                 for signal in threat["signals"]:
+401:                     kind = signal["kind"]
+402:                     if ident in self.RESPONSES.get(kind, set()):
+403:                         if kind == "healing" and self.ANTIHEAL.intersection(owned):
+404:                             continue
+405:                         # Don't buy physical penetration for AP or magic penetration for AD.
+406:                         if kind == "armor" and damage == "AP" or kind == "mr" and damage == "AD":
+407:                             continue
+408:                         score += 7 * threat["weight"]
+409:                         responses.append(f"{self.LABELS[kind]} de {threat['champion']}")
+410:             armor, mr = self.stat(ident, "armor"), self.stat(ident, "magic_resistance")
+411:             if threats and armor > 0 and physical_share >= .6:
+412:                 score += 12
+413:                 responses.append("Predominio físico estimado")
+414:             if threats and mr > 0 and physical_share <= .4:
+415:                 score += 12
+416:                 responses.append("Predominio mágico estimado")
+417:             if ident == "3065" and canonical(champ) in self.HEALERS:
+418:                 score += 8
+419:                 reasons.insert(0, f"Refuerza el sustain propio de {champ}")
+420:             if ident == "3071" and damage == "AD":
+421:                 reasons.insert(0, "La reducción de armadura también beneficia al daño físico aliado")
+422:             if ident == "3075" and responses:
+423:                 reasons.append("Heridas graves requiere que te ataquen; no garantiza aplicación al sanador")
+424:             if ident == "3111":
+425:                 reasons.append("La tenacidad no reduce derribos ni supresiones")
+426:             remaining, used = self._recipe(ident, owned)
+427:             if used:
+428:                 score += 10
+429:                 reasons.insert(0, "Aprovecha componentes de tu inventario; evita desviar el oro invertido")
+430:             if "Boots" in self.catalog[ident].get("tags", []):
+431:                 score += 5
+432:             rows.append({"id": ident, "name": rec.name, "score": round(score, 1),
+433:                          "reasons": reasons, "responses": list(dict.fromkeys(responses)),
+434:                          "cost": remaining, "invested": self.cost(ident) - remaining})
+435:         return sorted(rows, key=lambda r: (-r["score"], -r["invested"], r["id"]))[:8]
+436: 
+437:     def _actions(self, champ, profile, local, allies, threats, kinds, phase, session, now, owned):
+438:         actions = []
+439:         if canonical(champ) == "briar":
+440:             actions.append(("Tu condición de pelea", "Entra después del control aliado; conserva E para cortar el frenesí y salir. No uses R a ciegas hacia una zona sin visión."))
+441:         else:
+442:             style = profile.get("basic_info", {}).get("play_style", "")
+443:             plan = {
+444:                 "Marksman": "Golpea al objetivo seguro más cercano detrás de tu frontline; conserva movilidad para el engage enemigo.",
+445:                 "Enchanter": "Mantén alcance de protección sobre tu carry; reserva escudo o curación para la respuesta rival.",
+446:                 "Assassin": "Busca un flanco con visión y espera a que se gasten las herramientas de protección antes de entrar.",
+447:                 "Mage": "Controla accesos con habilidades y juega alrededor de tus ventanas de alcance; evita entrar primero.",
+448:                 "Vanguard": "Inicia solo cuando tu equipo pueda seguirte; no consumas todo el control lejos de tus carries.",
+449:                 "Warden": "Prioriza interceptar el dive y proteger al aliado que aporta el daño.",
+450:             }.get(style, "Coordina el foco con tus aliados y no comprometas tu salida antes de confirmar que pueden seguirte.")
+451:             actions.append((f"Plan de {champ}", plan))
+452:         if threats:
+453:             top = threats[0]
+454:             actions.append(("Rival a vigilar", f"{top['champion']} ({top['kda']}): prioridad estimada por bajas y muertes, no daño medido. Respeta su rango y confirma sus objetos."))
+455:         controls = [p.get("champion_name", "?") for p in allies.values()
+456:                     if number(self.profile(p.get("champion_name")).get("map_and_control", {}).get("crowd_control")) >= 7]
+457:         if controls:
+458:             actions.append(("Sinergia aliada · control", f"Coordina el foco con {', '.join(controls)}: encadena tu entrada tras su control, sin solaparlo innecesariamente."))
+--- match 'reasons|responses' near 397 (lines 372-421)
+372:             boots = "Boots" in item.get("tags", []) and ident != "1001"
+373:             if not strict and not boots:
+374:                 continue
+375:             if boots and (canonical(champ) == "cassiopeia" or any("Boots" in self.catalog.get(i, {}).get("tags", []) and i != "1001" for i in owned)):
+376:                 continue
+377:             known = self.synergy._normalise_item_name(item.get("name", "")) in preferred
+378:             ap, ad = self.stat(ident, "ability_power"), self.stat(ident, "attack_damage")
+379:             if not known and ((damage == "AD" and ap > 0) or (damage == "AP" and ad > 0)):
+380:                 continue
+381:             if basic.get("resource_type") not in ("Mana", "mana") and self.stat(ident, "mana") > 0:
+382:                 continue
+383:             classes = set(strict.get("classifications", {}).get("intended_classes", []))
+384:             matching = classes & ({style} | self.synergy.STYLE_CLASSES.get(style, set()))
+385:             defensive = self.stat(ident, "armor") + self.stat(ident, "magic_resistance") > 0
+386:             if not (known or matching or boots or defensive):
+387:                 continue
+388:             # Pure utility requires an appropriate support identity or recorded champion usage.
+389:             if not known and classes <= {"Enchanter", "Support"} and style not in {"Enchanter", "Warden"} and not boots:
+390:                 continue
+391:             pool[ident] = {**item, **strict, "name": item.get("name", ident), "tier": "Legendary"}
+392:         base = self.synergy.rank_items(profile, style, pool, [], limit=len(pool))
+393:         rows = []
+394:         for rec in base:
+395:             ident = rec.item_id
+396:             score = rec.score
+397:             reasons = list(rec.reasons)
+398:             responses = []
+399:             for threat in threats:
+400:                 for signal in threat["signals"]:
+401:                     kind = signal["kind"]
+402:                     if ident in self.RESPONSES.get(kind, set()):
+403:                         if kind == "healing" and self.ANTIHEAL.intersection(owned):
+404:                             continue
+405:                         # Don't buy physical penetration for AP or magic penetration for AD.
+406:                         if kind == "armor" and damage == "AP" or kind == "mr" and damage == "AD":
+407:                             continue
+408:                         score += 7 * threat["weight"]
+409:                         responses.append(f"{self.LABELS[kind]} de {threat['champion']}")
+410:             armor, mr = self.stat(ident, "armor"), self.stat(ident, "magic_resistance")
+411:             if threats and armor > 0 and physical_share >= .6:
+412:                 score += 12
+413:                 responses.append("Predominio físico estimado")
+414:             if threats and mr > 0 and physical_share <= .4:
+415:                 score += 12
+416:                 responses.append("Predominio mágico estimado")
+417:             if ident == "3065" and canonical(champ) in self.HEALERS:
+418:                 score += 8
+419:                 reasons.insert(0, f"Refuerza el sustain propio de {champ}")
+420:             if ident == "3071" and damage == "AD":
+421:                 reasons.insert(0, "La reducción de armadura también beneficia al daño físico aliado")
+--- match 'recommendations' near 344 (lines 304-383)
+304:         local = players.get(local_key, {})
+305:         champ = str(local.get("champion_name") or session.get("champion_name") or "Campeón")
+306:         profile = self.profile(champ)
+307:         team = local.get("team") or session.get("local_team")
+308:         enemies, allies = {}, {}
+309:         for key, p in players.items():
+310:             if key == local_key:
+311:                 continue
+312:             side = p.get("side")
+313:             if side == "enemy" or (side != "ally" and team and p.get("team") and p["team"] != team):
+314:                 enemies[key] = p
+315:             elif side == "ally" or (team and p.get("team") == team):
+316:                 allies[key] = p
+317:         now = max(number(session.get("duration")), max(times.values(), default=0))
+318:         ended = bool(session.get("ended_at") or session.get("final_sync", {}).get("status") == "synced")
+319:         gold = next((number(local[k], None) for k in ("current_gold", "currentGold", "goldCurrent")
+320:                      if local.get(k) is not None and number(local[k], None) is not None), None)
+321:         gold = max(0, int(gold)) if gold is not None else None
+322:         owned = item_ids(local.get("items", []))
+323:         threats = self._threats(enemies, now, times)
+324:         phase = "Inicio" if now < 900 else "Medio juego" if now < 1800 else "Juego tardío"
+325:         warnings = ["Orientación heurística, no probabilidad de victoria. Sin visión, posiciones ni enfriamientos fiables."]
+326:         if not profile:
+327:             warnings.append("Campeón sin perfil específico: no se inventa una build genérica.")
+328:         if not local:
+329:             warnings.append("Jugador local no identificado: compras desactivadas.")
+330:         if gold is None:
+331:             warnings.append("Oro disponible desconocido; el oro estimado acumulado no se usa para comprar.")
+332:         if not enemies:
+333:             warnings.append("Sin rivales identificados: faltan datos para contramedidas.")
+334:         if any(t["stale"] for t in threats):
+335:             warnings.append("Hay inventarios sin snapshot reciente (>30 s); confirma las amenazas antes de adaptar.")
+336:         if session.get("game_version") and isinstance(session.get("game_version"), str):
+337:             warnings.append(f"Partida: {session['game_version']}. El catálogo configurado puede pertenecer a otro parche.")
+338:         map_id = "12" if session.get("game_mode") == "ARAM" else "11"
+339:         threat_kinds = {s["kind"] for t in threats for s in t["signals"]}
+340:         physical = sum(t["physical"] * t["weight"] for t in threats)
+341:         magic = sum(t["magic"] * t["weight"] for t in threats)
+342:         total = max(physical + magic, 1)
+343:         physical_share = physical / total
+344:         recommendations = self._rank(profile, champ, owned, threats, physical_share, map_id) if profile and local else []
+345:         purchase = self.purchase(recommendations[0]["id"], owned, gold, map_id) if recommendations else {"status": "none", "text": "Sin compras compatibles verificables con el catálogo y el perfil disponibles."}
+346:         if ended:
+347:             purchase = {"status": "postgame", "text": "Partida finalizada: revisión del último estado, no una orden de compra en directo."}
+348:         elif local_key not in times or now - times.get(local_key, 0) > 30:
+349:             purchase = {"status": "stale", "text": "Esperando un snapshot reciente del jugador local para confirmar compras."}
+350:         actions = self._actions(champ, profile, local, allies, threats, threat_kinds, phase, session, now, owned)
+351:         return {"champion": champ, "profile": profile, "time": now, "phase": phase, "ended": ended,
+352:                 "gold": gold, "owned": owned, "threats": threats, "recommendations": recommendations,
+353:                 "purchase": purchase, "actions": actions, "warnings": warnings, "physical_share": physical_share,
+354:                 "level": int(number(local.get("level"))), "role": local.get("role", "UNKNOWN")}
+355: 
+356:     def _rank(self, profile, champ, owned, threats, physical_share, map_id):
+357:         basic = profile.get("basic_info", {})
+358:         damage = basic.get("damage_type", "")
+359:         style = basic.get("play_style", "")
+360:         preferred = set()
+361:         for key in ("most_played_build", "full_build", "items"):
+362:             preferred.update(self.synergy._normalise_item_name(n) for n in profile.get(key, []))
+363:         preferred.update(self.synergy._normalise_item_name(n) for n in profile.get("power_curve_and_scaling", {}).get("power_spike_items", []))
+364:         for names in profile.get("situational_items", {}).values():
+365:             if isinstance(names, list):
+366:                 preferred.update(self.synergy._normalise_item_name(n) for n in names)
+367:         pool = {}
+368:         for ident, item in self.catalog.items():
+369:             if not self.available(ident, map_id) or not self.compatible(ident, owned):
+370:                 continue
+371:             strict = self.strict.get(ident, {})
+372:             boots = "Boots" in item.get("tags", []) and ident != "1001"
+373:             if not strict and not boots:
+374:                 continue
+375:             if boots and (canonical(champ) == "cassiopeia" or any("Boots" in self.catalog.get(i, {}).get("tags", []) and i != "1001" for i in owned)):
+376:                 continue
+377:             known = self.synergy._normalise_item_name(item.get("name", "")) in preferred
+378:             ap, ad = self.stat(ident, "ability_power"), self.stat(ident, "attack_damage")
+379:             if not known and ((damage == "AD" and ap > 0) or (damage == "AP" and ad > 0)):
+380:                 continue
+381:             if basic.get("resource_type") not in ("Mana", "mana") and self.stat(ident, "mana") > 0:
+382:                 continue
+383:             classes = set(strict.get("classifications", {}).get("intended_classes", []))
+#################### PANEL CONTEXT
+--- match '3 objetos' near 264 (lines 209-318)
+209:         toggle.setChecked(self._expanded.get(name, False))
+210:         expand(toggle.isChecked())
+211:         layout.addWidget(toggle)
+212:         layout.addWidget(text)
+213:         return card
+214: 
+215:     def _priority(self, report):
+216:         card, layout = self.card("priorityCard")
+217:         purchase = report["purchase"]
+218:         status = purchase["status"]
+219:         caption = {"buy": "PRIORIDAD · PRÓXIMO RECALL", "save": "PRIORIDAD · AHORRAR",
+220:                    "full": "PRIORIDAD · REVISAR INVENTARIO", "postgame": "REVISIÓN · PARTIDA FINALIZADA",
+221:                    "unknown": "COMPRA PENDIENTE DE ORO", "stale": "ESPERANDO TELEMETRÍA"}.get(status, "SIN COMPRA VERIFICABLE")
+222:         layout.addWidget(self.label(caption, "eyebrow"))
+223:         row = QHBoxLayout()
+224:         if purchase.get("id"):
+225:             row.addWidget(self.icon(purchase["id"], 50))
+226:         info = QVBoxLayout()
+227:         if purchase.get("id"):
+228:             info.addWidget(self.label(f"{self.engine.name(purchase['id'])} · {purchase['cost']:,} oro", "accent"))
+229:         info.addWidget(self.label(purchase["text"]))
+230:         if purchase.get("target"):
+231:             info.addWidget(self.label(f"Objetivo: {self.engine.name(purchase['target'])} · Restan {purchase['remaining']:,} oro tras tus componentes", "muted"))
+232:         if report["recommendations"] and status not in {"postgame", "stale", "none"}:
+233:             rec = report["recommendations"][0]
+234:             reason = " · ".join(rec["responses"]) or " · ".join(rec["reasons"][:2])
+235:             info.addWidget(self.label(f"Por qué ahora: {reason}", "muted"))
+236:         row.addLayout(info, 1)
+237:         layout.addLayout(row)
+238:         return card
+239: 
+240:     def _inventory(self, report):
+241:         card, layout = self.card("inventoryCard")
+242:         row = QHBoxLayout()
+243:         row.addWidget(self.label("INVENTARIO OBSERVADO", "eyebrow"), 1)
+244:         for ident in report["owned"][:7]:
+245:             row.addWidget(self.icon(ident, 34))
+246:         if not report["owned"]:
+247:             row.addWidget(self.label("Sin objetos registrados", "muted"))
+248:         layout.addLayout(row)
+249:         return card
+250: 
+251:     def _brief(self, rec):
+252:         """First reason as a single compact line for the item card."""
+253:         points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+254:         if not points:
+255:             return ""
+256:         text = " ".join(points[0].split())
+257:         return text if len(text) <= 72 else text[:71].rstrip(" ,;:.") + "…"
+258: 
+259:     def _recommendations(self, report):
+260:         section = QWidget()
+261:         layout = QVBoxLayout(section)
+262:         layout.setContentsMargins(0, 0, 0, 0)
+263:         layout.setSpacing(6)
+264:         layout.addWidget(self.label("3 objetos · Sinergia", "section"))
+265:         for position, rec in enumerate(report["recommendations"][:3], 1):
+266:             card, body = self.card(f"synergyItem_{rec['id']}")
+267:             card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+268:             body.setContentsMargins(8, 6, 8, 6)
+269:             body.setSpacing(0)
+270:             row = QHBoxLayout()
+271:             row.setSpacing(8)
+272:             row.addWidget(self.icon(rec["id"], 28))
+273:             text = QVBoxLayout()
+274:             text.setSpacing(2)
+275:             text.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"))
+276:             text.addWidget(self.label(f"{rec['cost']:,} oro pendiente", "muted"))
+277:             reason = self.label(self._brief(rec), "muted")
+278:             reason.setObjectName("synergyReason")
+279:             reason.setToolTip("Motivo principal; el tooltip de la tarjeta incluye la justificación completa.")
+280:             text.addWidget(reason)
+281:             row.addLayout(text, 1)
+282:             score = self.label(f"{rec['score']:g} pts", "score")
+283:             score.setWordWrap(False)
+284:             score.setObjectName("synergyScore")
+285:             score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+286:             score.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+287:             score.setToolTip("Afinidad relativa al campeón y a esta partida; no es un porcentaje.")
+288:             row.addWidget(score)
+289:             body.addLayout(row)
+290:             points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+291:             card.setToolTip("\n".join(f"• {p}" for p in points))
+292:             layout.addWidget(card)
+293:         if not report["recommendations"]:
+294:             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
+295:         layout.addStretch(1)
+296:         return section
+297: 
+298:     def _context(self, report):
+299:         section = QWidget()
+300:         layout = QVBoxLayout(section)
+301:         layout.setContentsMargins(0, 0, 0, 0)
+302:         layout.setSpacing(6)
+303:         layout.addWidget(self.label("Rivales · Fuerza estimada", "section"))
+304:         if report["threats"]:
+305:             share = report["physical_share"]
+306:             estimate = self.label(f"{share:.0%} físico / {1-share:.0%} mágico · Estimación", "muted")
+307:             estimate.setToolTip("Perfil de daño estimado, no medido; excluye daño verdadero.\n"
+308:                                 "Fuerza = oro en objetos / 1000 + nivel × 0,6 + ajuste KDA (±2).\n"
+309:                                 "No predice duelos ni tiene en cuenta posición, vida o enfriamientos.")
+310:             layout.addWidget(estimate)
+311:             unmeasured = sum(t["strength"] is None for t in report["threats"])
+312:             if not any(t["strength_label"] for t in report["threats"]):
+313:                 layout.addWidget(self.label("Sin comparación fiable: se necesitan al menos dos rivales con datos completos.", "muted"))
+314:             elif unmeasured:
+315:                 note = self.label(f"Comparación parcial: {unmeasured} rival{'es' if unmeasured != 1 else ''} sin datos completos.", "muted")
+316:                 note.setObjectName("enemyPartialNote")
+317:                 layout.addWidget(note)
+318:         for threat in self._ordered_threats(report["threats"]):
+--- match 'oro pendiente' near 276 (lines 231-320)
+231:             info.addWidget(self.label(f"Objetivo: {self.engine.name(purchase['target'])} · Restan {purchase['remaining']:,} oro tras tus componentes", "muted"))
+232:         if report["recommendations"] and status not in {"postgame", "stale", "none"}:
+233:             rec = report["recommendations"][0]
+234:             reason = " · ".join(rec["responses"]) or " · ".join(rec["reasons"][:2])
+235:             info.addWidget(self.label(f"Por qué ahora: {reason}", "muted"))
+236:         row.addLayout(info, 1)
+237:         layout.addLayout(row)
+238:         return card
+239: 
+240:     def _inventory(self, report):
+241:         card, layout = self.card("inventoryCard")
+242:         row = QHBoxLayout()
+243:         row.addWidget(self.label("INVENTARIO OBSERVADO", "eyebrow"), 1)
+244:         for ident in report["owned"][:7]:
+245:             row.addWidget(self.icon(ident, 34))
+246:         if not report["owned"]:
+247:             row.addWidget(self.label("Sin objetos registrados", "muted"))
+248:         layout.addLayout(row)
+249:         return card
+250: 
+251:     def _brief(self, rec):
+252:         """First reason as a single compact line for the item card."""
+253:         points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+254:         if not points:
+255:             return ""
+256:         text = " ".join(points[0].split())
+257:         return text if len(text) <= 72 else text[:71].rstrip(" ,;:.") + "…"
+258: 
+259:     def _recommendations(self, report):
+260:         section = QWidget()
+261:         layout = QVBoxLayout(section)
+262:         layout.setContentsMargins(0, 0, 0, 0)
+263:         layout.setSpacing(6)
+264:         layout.addWidget(self.label("3 objetos · Sinergia", "section"))
+265:         for position, rec in enumerate(report["recommendations"][:3], 1):
+266:             card, body = self.card(f"synergyItem_{rec['id']}")
+267:             card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+268:             body.setContentsMargins(8, 6, 8, 6)
+269:             body.setSpacing(0)
+270:             row = QHBoxLayout()
+271:             row.setSpacing(8)
+272:             row.addWidget(self.icon(rec["id"], 28))
+273:             text = QVBoxLayout()
+274:             text.setSpacing(2)
+275:             text.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"))
+276:             text.addWidget(self.label(f"{rec['cost']:,} oro pendiente", "muted"))
+277:             reason = self.label(self._brief(rec), "muted")
+278:             reason.setObjectName("synergyReason")
+279:             reason.setToolTip("Motivo principal; el tooltip de la tarjeta incluye la justificación completa.")
+280:             text.addWidget(reason)
+281:             row.addLayout(text, 1)
+282:             score = self.label(f"{rec['score']:g} pts", "score")
+283:             score.setWordWrap(False)
+284:             score.setObjectName("synergyScore")
+285:             score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+286:             score.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+287:             score.setToolTip("Afinidad relativa al campeón y a esta partida; no es un porcentaje.")
+288:             row.addWidget(score)
+289:             body.addLayout(row)
+290:             points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+291:             card.setToolTip("\n".join(f"• {p}" for p in points))
+292:             layout.addWidget(card)
+293:         if not report["recommendations"]:
+294:             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
+295:         layout.addStretch(1)
+296:         return section
+297: 
+298:     def _context(self, report):
+299:         section = QWidget()
+300:         layout = QVBoxLayout(section)
+301:         layout.setContentsMargins(0, 0, 0, 0)
+302:         layout.setSpacing(6)
+303:         layout.addWidget(self.label("Rivales · Fuerza estimada", "section"))
+304:         if report["threats"]:
+305:             share = report["physical_share"]
+306:             estimate = self.label(f"{share:.0%} físico / {1-share:.0%} mágico · Estimación", "muted")
+307:             estimate.setToolTip("Perfil de daño estimado, no medido; excluye daño verdadero.\n"
+308:                                 "Fuerza = oro en objetos / 1000 + nivel × 0,6 + ajuste KDA (±2).\n"
+309:                                 "No predice duelos ni tiene en cuenta posición, vida o enfriamientos.")
+310:             layout.addWidget(estimate)
+311:             unmeasured = sum(t["strength"] is None for t in report["threats"])
+312:             if not any(t["strength_label"] for t in report["threats"]):
+313:                 layout.addWidget(self.label("Sin comparación fiable: se necesitan al menos dos rivales con datos completos.", "muted"))
+314:             elif unmeasured:
+315:                 note = self.label(f"Comparación parcial: {unmeasured} rival{'es' if unmeasured != 1 else ''} sin datos completos.", "muted")
+316:                 note.setObjectName("enemyPartialNote")
+317:                 layout.addWidget(note)
+318:         for threat in self._ordered_threats(report["threats"]):
+319:             card, body = self.card(f"enemyCard_{threat['key']}")
+320:             body.setContentsMargins(10, 8, 10, 8)
+--- match 'def _ordered_threats' near 388 (lines 358-417)
+358:                 body.addWidget(self.label("Inventario vacío" if inventory["known"]
+359:                                           else "Inventario no disponible", "muted"))
+360:             badge_container = QWidget()
+361:             badges = QGridLayout(badge_container)
+362:             badges.setContentsMargins(0, 0, 0, 0)
+363:             badges.setHorizontalSpacing(5)
+364:             badges.setVerticalSpacing(4)
+365:             for index, fact in enumerate(inventory["badges"]):
+366:                 badge = self.label(fact["label"], "enemyBadge")
+367:                 badge.setObjectName("enemyInventoryBadge")
+368:                 badge.setProperty("kind", fact["kind"])
+369:                 badge.setToolTip(fact["detail"])
+370:                 badge.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+371:                 badges.addWidget(badge, index // 3, index % 3)
+372:             if inventory["badges"]:
+373:                 body.addWidget(badge_container, 0, Qt.AlignmentFlag.AlignLeft)
+374:             else:
+375:                 badge_container.deleteLater()
+376:             texts = [s["evidence"] for s in threat["signals"]]
+377:             card.setToolTip("\n".join(texts) or "Sin amenazas adicionales identificadas en la última muestra.")
+378:             if threat["stale"]:
+379:                 body.addWidget(self.label("Muestra antigua o sin timestamp", "eyebrow"))
+380:             layout.addWidget(card)
+381:         if not report["threats"]:
+382:             layout.addWidget(self.label("Esperando rivales e inventarios identificados.", "muted"))
+383:         layout.addWidget(self._details("actionPlan", "Plan y coordinación",
+384:                                        [f"{heading}: {text}" for heading, text in report["actions"]]))
+385:         layout.addStretch(1)
+386:         return section
+387: 
+388:     def _ordered_threats(self, threats):
+389:         """Keep lane order independent of the estimated strength ranking."""
+390:         roles = {"TOP": 0, "JUNGLE": 1, "MIDDLE": 2, "BOTTOM": 3, "UTILITY": 4,
+391:                  "MID": 2, "BOT": 3, "SUPPORT": 4}
+392:         players = self._last_session.get("players", {})
+393:         matchups = self._last_session.get("lane_matchups", {})
+394:         enemy_roles = {matchup.get("enemy_key"): role for role, matchup in matchups.items()
+395:                        if isinstance(matchup, dict) and matchup.get("enemy_key")}
+396: 
+397:         def position(threat):
+398:             key = threat.get("key")
+399:             role = enemy_roles.get(key) or players.get(key, {}).get("role") or threat.get("role", "")
+400:             return roles.get(str(role).upper(), len(roles))
+401: 
+402:         return sorted(threats, key=position)
+403: 
+404:     def _reflow(self):
+405:         if not hasattr(self, "dashboard_grid"):
+406:             return
+407:         columns = 2 if self.width() >= 980 else 1
+408:         if columns == self._columns:
+409:             return
+410:         self._columns = columns
+411:         self.dashboard_grid.removeWidget(self.left)
+412:         self.dashboard_grid.removeWidget(self.right)
+413:         self.dashboard_grid.addWidget(self.left, 0, 0)
+414:         self.dashboard_grid.addWidget(self.right, 0 if columns == 2 else 1, 1 if columns == 2 else 0)
+415:         self.dashboard_grid.setColumnStretch(0, 3)
+416:         self.dashboard_grid.setColumnStretch(1, 2 if columns == 2 else 0)
+417:         self.dashboard_grid.activate()
+--- match 'Fuerte|FUERTE' near 324 (lines 294-353)
+294:             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
+295:         layout.addStretch(1)
+296:         return section
+297: 
+298:     def _context(self, report):
+299:         section = QWidget()
+300:         layout = QVBoxLayout(section)
+301:         layout.setContentsMargins(0, 0, 0, 0)
+302:         layout.setSpacing(6)
+303:         layout.addWidget(self.label("Rivales · Fuerza estimada", "section"))
+304:         if report["threats"]:
+305:             share = report["physical_share"]
+306:             estimate = self.label(f"{share:.0%} físico / {1-share:.0%} mágico · Estimación", "muted")
+307:             estimate.setToolTip("Perfil de daño estimado, no medido; excluye daño verdadero.\n"
+308:                                 "Fuerza = oro en objetos / 1000 + nivel × 0,6 + ajuste KDA (±2).\n"
+309:                                 "No predice duelos ni tiene en cuenta posición, vida o enfriamientos.")
+310:             layout.addWidget(estimate)
+311:             unmeasured = sum(t["strength"] is None for t in report["threats"])
+312:             if not any(t["strength_label"] for t in report["threats"]):
+313:                 layout.addWidget(self.label("Sin comparación fiable: se necesitan al menos dos rivales con datos completos.", "muted"))
+314:             elif unmeasured:
+315:                 note = self.label(f"Comparación parcial: {unmeasured} rival{'es' if unmeasured != 1 else ''} sin datos completos.", "muted")
+316:                 note.setObjectName("enemyPartialNote")
+317:                 layout.addWidget(note)
+318:         for threat in self._ordered_threats(report["threats"]):
+319:             card, body = self.card(f"enemyCard_{threat['key']}")
+320:             body.setContentsMargins(10, 8, 10, 8)
+321:             body.setSpacing(5)
+322:             strength_label = threat["strength_label"]
+323:             if strength_label:
+324:                 role = "strong" if strength_label.startswith("MÁS FUERTE") else (
+325:                     "weak" if strength_label.startswith("MÁS DÉBIL") else "muted")
+326:                 badge = self.label(strength_label, role)
+327:                 badge.setObjectName("enemyStrengthBadge")
+328:                 badge.setToolTip("Fuerza relativa estimada; más débil no significa una baja segura.")
+329:                 body.addWidget(badge)
+330:             heading = QHBoxLayout()
+331:             heading.setSpacing(8)
+332:             heading.addWidget(self.label(f"{threat['champion']} · Nv {threat['level'] or '—'} · {threat['kda']}", "section"), 1)
+333:             inventory = threat["inventory"]
+334:             value = inventory["value"]
+335:             gold_text = "Build: oro desconocido" if value is None else (
+336:                 f"Build: ≥ {value:,} oro · catálogo incompleto" if inventory["partial"]
+337:                 else f"Build: {value:,} oro")
+338:             gold = self.label(gold_text, "eyebrow")
+339:             gold.setObjectName("enemyBuildGold")
+340:             gold.setToolTip("Valor de catálogo de los objetos actuales, incluidos componentes. "
+341:                             "No es oro disponible, oro ganado ni gasto histórico.")
+342:             gold.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+343:             gold.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+344:             heading.addWidget(gold)
+345:             body.addLayout(heading)
+346:             icons = QGridLayout()
+347:             icons.setHorizontalSpacing(5)
+348:             icons.setVerticalSpacing(5)
+349:             for index, ident in enumerate(threat["items"]):
+350:                 icon = self.icon(ident, 30)
+351:                 icon.setObjectName("enemyItemIcon")
+352:                 icon.setProperty("itemId", ident)
+353:                 icons.addWidget(icon, index // 7, index % 7)
+--- match 'pts' near 282 (lines 257-306)
+257:         return text if len(text) <= 72 else text[:71].rstrip(" ,;:.") + "…"
+258: 
+259:     def _recommendations(self, report):
+260:         section = QWidget()
+261:         layout = QVBoxLayout(section)
+262:         layout.setContentsMargins(0, 0, 0, 0)
+263:         layout.setSpacing(6)
+264:         layout.addWidget(self.label("3 objetos · Sinergia", "section"))
+265:         for position, rec in enumerate(report["recommendations"][:3], 1):
+266:             card, body = self.card(f"synergyItem_{rec['id']}")
+267:             card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+268:             body.setContentsMargins(8, 6, 8, 6)
+269:             body.setSpacing(0)
+270:             row = QHBoxLayout()
+271:             row.setSpacing(8)
+272:             row.addWidget(self.icon(rec["id"], 28))
+273:             text = QVBoxLayout()
+274:             text.setSpacing(2)
+275:             text.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"))
+276:             text.addWidget(self.label(f"{rec['cost']:,} oro pendiente", "muted"))
+277:             reason = self.label(self._brief(rec), "muted")
+278:             reason.setObjectName("synergyReason")
+279:             reason.setToolTip("Motivo principal; el tooltip de la tarjeta incluye la justificación completa.")
+280:             text.addWidget(reason)
+281:             row.addLayout(text, 1)
+282:             score = self.label(f"{rec['score']:g} pts", "score")
+283:             score.setWordWrap(False)
+284:             score.setObjectName("synergyScore")
+285:             score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+286:             score.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+287:             score.setToolTip("Afinidad relativa al campeón y a esta partida; no es un porcentaje.")
+288:             row.addWidget(score)
+289:             body.addLayout(row)
+290:             points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+291:             card.setToolTip("\n".join(f"• {p}" for p in points))
+292:             layout.addWidget(card)
+293:         if not report["recommendations"]:
+294:             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
+295:         layout.addStretch(1)
+296:         return section
+297: 
+298:     def _context(self, report):
+299:         section = QWidget()
+300:         layout = QVBoxLayout(section)
+301:         layout.setContentsMargins(0, 0, 0, 0)
+302:         layout.setSpacing(6)
+303:         layout.addWidget(self.label("Rivales · Fuerza estimada", "section"))
+304:         if report["threats"]:
+305:             share = report["physical_share"]
+306:             estimate = self.label(f"{share:.0%} físico / {1-share:.0%} mágico · Estimación", "muted")
+--- match 'setToolTip' near 136 (lines 116-155)
+116:         self.mode = self.label("LIVE", "badge")
+117:         self.mode.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+118:         header.addWidget(self.mode)
+119:         root.addLayout(header)
+120: 
+121:         self.scroll = QScrollArea()
+122:         self.scroll.setWidgetResizable(True)
+123:         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+124:         self.content = QWidget()
+125:         self.content.setObjectName("recommendationBody")
+126:         self.content_layout = QVBoxLayout(self.content)
+127:         self.content_layout.setContentsMargins(0, 0, 4, 0)
+128:         self.content_layout.setSpacing(8)
+129:         self.scroll.setWidget(self.content)
+130:         root.addWidget(self.scroll, 1)
+131: 
+132:     def icon(self, ident, size=40):
+133:         label = self.label(str(ident), "icon")
+134:         label.setFixedSize(size, size)
+135:         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+136:         label.setToolTip(self.engine.name(str(ident)))
+137:         if self.assets is not None:
+138:             self.assets.set_label_image(label, self.assets.item_url(int(ident)),
+139:                                         f"synergy-live-item:{ident}:{size}", size)
+140:         return label
+141: 
+142:     def update_recommendations(self, session):
+143:         self._last_session = session
+144:         report = self.engine.analyze(session)
+145:         self.report = report
+146:         if report == self._last_report:
+147:             return
+148:         previous = self._last_report
+149:         self._last_report = report
+150:         scroll_position = self._scroll_position if self._restore_timer.isActive() else self.scroll.verticalScrollBar().value()
+151:         self.setUpdatesEnabled(False)
+152:         try:
+153:             self.title.setText(report["champion"])
+154:             seconds = int(report["time"])
+155:             gold = f"{report['gold']:,} oro disponible" if report["gold"] is not None else "Oro no disponible"
+--- match 'setToolTip' near 279 (lines 259-298)
+259:     def _recommendations(self, report):
+260:         section = QWidget()
+261:         layout = QVBoxLayout(section)
+262:         layout.setContentsMargins(0, 0, 0, 0)
+263:         layout.setSpacing(6)
+264:         layout.addWidget(self.label("3 objetos · Sinergia", "section"))
+265:         for position, rec in enumerate(report["recommendations"][:3], 1):
+266:             card, body = self.card(f"synergyItem_{rec['id']}")
+267:             card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+268:             body.setContentsMargins(8, 6, 8, 6)
+269:             body.setSpacing(0)
+270:             row = QHBoxLayout()
+271:             row.setSpacing(8)
+272:             row.addWidget(self.icon(rec["id"], 28))
+273:             text = QVBoxLayout()
+274:             text.setSpacing(2)
+275:             text.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"))
+276:             text.addWidget(self.label(f"{rec['cost']:,} oro pendiente", "muted"))
+277:             reason = self.label(self._brief(rec), "muted")
+278:             reason.setObjectName("synergyReason")
+279:             reason.setToolTip("Motivo principal; el tooltip de la tarjeta incluye la justificación completa.")
+280:             text.addWidget(reason)
+281:             row.addLayout(text, 1)
+282:             score = self.label(f"{rec['score']:g} pts", "score")
+283:             score.setWordWrap(False)
+284:             score.setObjectName("synergyScore")
+285:             score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+286:             score.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+287:             score.setToolTip("Afinidad relativa al campeón y a esta partida; no es un porcentaje.")
+288:             row.addWidget(score)
+289:             body.addLayout(row)
+290:             points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+291:             card.setToolTip("\n".join(f"• {p}" for p in points))
+292:             layout.addWidget(card)
+293:         if not report["recommendations"]:
+294:             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
+295:         layout.addStretch(1)
+296:         return section
+297: 
+298:     def _context(self, report):
+--- match 'setToolTip' near 328 (lines 308-347)
+308:                                 "Fuerza = oro en objetos / 1000 + nivel × 0,6 + ajuste KDA (±2).\n"
+309:                                 "No predice duelos ni tiene en cuenta posición, vida o enfriamientos.")
+310:             layout.addWidget(estimate)
+311:             unmeasured = sum(t["strength"] is None for t in report["threats"])
+312:             if not any(t["strength_label"] for t in report["threats"]):
+313:                 layout.addWidget(self.label("Sin comparación fiable: se necesitan al menos dos rivales con datos completos.", "muted"))
+314:             elif unmeasured:
+315:                 note = self.label(f"Comparación parcial: {unmeasured} rival{'es' if unmeasured != 1 else ''} sin datos completos.", "muted")
+316:                 note.setObjectName("enemyPartialNote")
+317:                 layout.addWidget(note)
+318:         for threat in self._ordered_threats(report["threats"]):
+319:             card, body = self.card(f"enemyCard_{threat['key']}")
+320:             body.setContentsMargins(10, 8, 10, 8)
+321:             body.setSpacing(5)
+322:             strength_label = threat["strength_label"]
+323:             if strength_label:
+324:                 role = "strong" if strength_label.startswith("MÁS FUERTE") else (
+325:                     "weak" if strength_label.startswith("MÁS DÉBIL") else "muted")
+326:                 badge = self.label(strength_label, role)
+327:                 badge.setObjectName("enemyStrengthBadge")
+328:                 badge.setToolTip("Fuerza relativa estimada; más débil no significa una baja segura.")
+329:                 body.addWidget(badge)
+330:             heading = QHBoxLayout()
+331:             heading.setSpacing(8)
+332:             heading.addWidget(self.label(f"{threat['champion']} · Nv {threat['level'] or '—'} · {threat['kda']}", "section"), 1)
+333:             inventory = threat["inventory"]
+334:             value = inventory["value"]
+335:             gold_text = "Build: oro desconocido" if value is None else (
+336:                 f"Build: ≥ {value:,} oro · catálogo incompleto" if inventory["partial"]
+337:                 else f"Build: {value:,} oro")
+338:             gold = self.label(gold_text, "eyebrow")
+339:             gold.setObjectName("enemyBuildGold")
+340:             gold.setToolTip("Valor de catálogo de los objetos actuales, incluidos componentes. "
+341:                             "No es oro disponible, oro ganado ni gasto histórico.")
+342:             gold.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+343:             gold.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+344:             heading.addWidget(gold)
+345:             body.addLayout(heading)
+346:             icons = QGridLayout()
+347:             icons.setHorizontalSpacing(5)
+--- match 'setToolTip' near 369 (lines 349-388)
+349:             for index, ident in enumerate(threat["items"]):
+350:                 icon = self.icon(ident, 30)
+351:                 icon.setObjectName("enemyItemIcon")
+352:                 icon.setProperty("itemId", ident)
+353:                 icons.addWidget(icon, index // 7, index % 7)
+354:             icons.setColumnStretch(7, 1)
+355:             if threat["items"]:
+356:                 body.addLayout(icons)
+357:             else:
+358:                 body.addWidget(self.label("Inventario vacío" if inventory["known"]
+359:                                           else "Inventario no disponible", "muted"))
+360:             badge_container = QWidget()
+361:             badges = QGridLayout(badge_container)
+362:             badges.setContentsMargins(0, 0, 0, 0)
+363:             badges.setHorizontalSpacing(5)
+364:             badges.setVerticalSpacing(4)
+365:             for index, fact in enumerate(inventory["badges"]):
+366:                 badge = self.label(fact["label"], "enemyBadge")
+367:                 badge.setObjectName("enemyInventoryBadge")
+368:                 badge.setProperty("kind", fact["kind"])
+369:                 badge.setToolTip(fact["detail"])
+370:                 badge.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+371:                 badges.addWidget(badge, index // 3, index % 3)
+372:             if inventory["badges"]:
+373:                 body.addWidget(badge_container, 0, Qt.AlignmentFlag.AlignLeft)
+374:             else:
+375:                 badge_container.deleteLater()
+376:             texts = [s["evidence"] for s in threat["signals"]]
+377:             card.setToolTip("\n".join(texts) or "Sin amenazas adicionales identificadas en la última muestra.")
+378:             if threat["stale"]:
+379:                 body.addWidget(self.label("Muestra antigua o sin timestamp", "eyebrow"))
+380:             layout.addWidget(card)
+381:         if not report["threats"]:
+382:             layout.addWidget(self.label("Esperando rivales e inventarios identificados.", "muted"))
+383:         layout.addWidget(self._details("actionPlan", "Plan y coordinación",
+384:                                        [f"{heading}: {text}" for heading, text in report["actions"]]))
+385:         layout.addStretch(1)
+386:         return section
+387: 
+388:     def _ordered_threats(self, threats):
+--- match 'def update|def refresh|def _sync|def set_report|def set_data' near 142 (lines 72-211)
+72:     def label(text="", role="body"):
+73:         label = QLabel(str(text))
+74:         label.setProperty("role", role)
+75:         label.setTextFormat(Qt.TextFormat.PlainText)
+76:         label.setWordWrap(True)
+77:         label.setMinimumWidth(0)
+78:         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+79:         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+80:         return label
+81: 
+82:     @staticmethod
+83:     def card(name=""):
+84:         frame = QFrame()
+85:         frame.setProperty("card", "true")
+86:         if name:
+87:             frame.setObjectName(name)
+88:         layout = QVBoxLayout(frame)
+89:         layout.setContentsMargins(10, 8, 10, 8)
+90:         layout.setSpacing(5)
+91:         return frame, layout
+92: 
+93:     def configure(self, assets: Any, item_catalog: dict[str, Any]) -> None:
+94:         self.assets = assets
+95:         self.item_catalog = item_catalog or {}
+96:         self.engine = LiveRecommendationService(self.item_catalog)
+97:         self._last_report = None
+98: 
+99:     def _build_ui(self):
+100:         root = QVBoxLayout(self)
+101:         root.setContentsMargins(10, 10, 10, 10)
+102:         root.setSpacing(8)
+103:         header = QHBoxLayout()
+104:         self.portrait = self.label("LIVE", "icon")
+105:         self.portrait.setFixedSize(54, 54)
+106:         self.portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
+107:         header.addWidget(self.portrait)
+108:         identity = QVBoxLayout()
+109:         identity.setSpacing(3)
+110:         identity.addWidget(self.label("ASISTENTE DE PARTIDA · SINERGIAS", "eyebrow"))
+111:         self.title = self.label("Esperando campeón", "title")
+112:         identity.addWidget(self.title)
+113:         self.meta = self.label("El análisis se adapta al último estado disponible.", "muted")
+114:         identity.addWidget(self.meta)
+115:         header.addLayout(identity, 1)
+116:         self.mode = self.label("LIVE", "badge")
+117:         self.mode.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+118:         header.addWidget(self.mode)
+119:         root.addLayout(header)
+120: 
+121:         self.scroll = QScrollArea()
+122:         self.scroll.setWidgetResizable(True)
+123:         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+124:         self.content = QWidget()
+125:         self.content.setObjectName("recommendationBody")
+126:         self.content_layout = QVBoxLayout(self.content)
+127:         self.content_layout.setContentsMargins(0, 0, 4, 0)
+128:         self.content_layout.setSpacing(8)
+129:         self.scroll.setWidget(self.content)
+130:         root.addWidget(self.scroll, 1)
+131: 
+132:     def icon(self, ident, size=40):
+133:         label = self.label(str(ident), "icon")
+134:         label.setFixedSize(size, size)
+135:         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+136:         label.setToolTip(self.engine.name(str(ident)))
+137:         if self.assets is not None:
+138:             self.assets.set_label_image(label, self.assets.item_url(int(ident)),
+139:                                         f"synergy-live-item:{ident}:{size}", size)
+140:         return label
+141: 
+142:     def update_recommendations(self, session):
+143:         self._last_session = session
+144:         report = self.engine.analyze(session)
+145:         self.report = report
+146:         if report == self._last_report:
+147:             return
+148:         previous = self._last_report
+149:         self._last_report = report
+150:         scroll_position = self._scroll_position if self._restore_timer.isActive() else self.scroll.verticalScrollBar().value()
+151:         self.setUpdatesEnabled(False)
+152:         try:
+153:             self.title.setText(report["champion"])
+154:             seconds = int(report["time"])
+155:             gold = f"{report['gold']:,} oro disponible" if report["gold"] is not None else "Oro no disponible"
+156:             self.meta.setText(f"{report['role']} · Nivel {report['level'] or '—'} · {seconds // 60:02d}:{seconds % 60:02d} · {report['phase']} · {gold}")
+157:             self.mode.setText("REVISIÓN POSTGAME" if report["ended"] else "LIVE · ÚLTIMA MUESTRA")
+158:             if not previous or previous["champion"] != report["champion"]:
+159:                 self.portrait.clear()
+160:                 self.portrait.setText(report["champion"][:3].upper())
+161:                 if self.assets:
+162:                     champ = report["champion"]
+163:                     self.assets.set_label_image(self.portrait, self.assets.champion_url(champ),
+164:                                                 f"synergy-live-champion:{champ}:54", 54)
+165:             while self.content_layout.count():
+166:                 item = self.content_layout.takeAt(0)
+167:                 if item.widget():
+168:                     item.widget().hide()
+169:                     item.widget().deleteLater()
+170:             self.content_layout.addWidget(self._priority(report))
+171:             self.content_layout.addWidget(self._inventory(report))
+172:             self.dashboard = QWidget()
+173:             self.dashboard_grid = QGridLayout(self.dashboard)
+174:             self.dashboard_grid.setContentsMargins(0, 0, 0, 0)
+175:             self.dashboard_grid.setSpacing(14)
+176:             self.left = self._recommendations(report)
+177:             self.right = self._context(report)
+178:             self._columns = 0
+179:             self._reflow()
+180:             self.content_layout.addWidget(self.dashboard)
+181:             self.content_layout.addWidget(self._details(
+182:                 "qualityCard", "Datos y limitaciones", report["warnings"]))
+183:             self.content_layout.addStretch(1)
+184:             self.content_layout.activate()
+185:             self._scroll_position = scroll_position
+186:             self._restore_timer.start(0)
+187:         finally:
+188:             self.setUpdatesEnabled(True)
+189: 
+190:     def _restore_scroll(self):
+191:         self.content.adjustSize()
+192:         self.content_layout.activate()
+193:         self.scroll.verticalScrollBar().setValue(self._scroll_position)
+194: 
+195:     def _details(self, name, title, lines):
+196:         card, layout = self.card(name)
+197:         toggle = QToolButton()
+198:         toggle.setObjectName(name + "Toggle")
+199:         toggle.setText(title)
+200:         toggle.setCheckable(True)
+201:         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+202:         text = self.label("\n".join(f"• {line}" for line in lines), "muted")
+203:         text.setObjectName(name + "Text")
+204:         def expand(checked):
+205:             self._expanded[name] = checked
+206:             text.setVisible(checked)
+207:             toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+208:         toggle.toggled.connect(expand)
+209:         toggle.setChecked(self._expanded.get(name, False))
+210:         expand(toggle.isChecked())
+211:         layout.addWidget(toggle)
+#################### TEST HEAD REST
+151:         self.assertEqual(engine._recipe("3", ["1", "1"])[0], 1800)
+152:         self.assertEqual(engine._recipe("3", ["2", "1"])[0], 1150)
+153:         result = engine.purchase("3", ["2", "1", "4", "4", "4", "4", "5"], 1150)
+154:         self.assertEqual((result["status"], result["id"], result["cost"]), ("buy", "3", 1150))
+155:         self.assertEqual(engine.purchase("3", ["4"] * 6, 9999)["status"], "full")
+156: 
+157:     def test_recipe_second_copy_is_buyable(self):
+158:         result = self.recipe_engine().purchase("2", ["1"], 350)
+159:         self.assertEqual((result["status"], result.get("id"), result.get("cost")), ("buy", "1", 350))
+160: 
+161:     def test_recipe_no_gold_unknown_and_cycles(self):
+162:         engine = self.recipe_engine()
+163:         self.assertEqual(engine.purchase("3", [], 0)["status"], "save")
+164:         self.assertEqual(engine.purchase("3", [], None)["status"], "unknown")
+165:         engine.catalog["1"]["from"] = ["3"]
+166:         self.assertGreaterEqual(engine._recipe("3", [])[0], 0)
+167: 
+168:     def test_enemy_inventory_badges_value_and_duplicates(self):
+169:         ids = [3075, 3031, 3111, 3153, 3083, 1036, 3340]
+170:         result = self.engine.inventory_summary({"items": ids})
+171:         self.assertEqual(result["value"], sum(self.engine.cost(str(i)) for i in ids))
+172:         self.assertFalse(result["partial"])
+173:         self.assertEqual({b["kind"] for b in result["badges"]},
+174:                          {"antiheal", "armor", "crit", "mr", "lifesteal", "health"})
+175:         duplicate = self.engine.inventory_summary({"items": [{"itemID": 1029, "count": 2}]})
+176:         self.assertEqual(duplicate["value"], self.engine.cost("1029") * 2)
+177:         self.assertEqual([b["label"] for b in duplicate["badges"]], ["Armadura"])
+178:         for ident in self.engine.ANTIHEAL:
+179:             with self.subTest(item=ident):
+180:                 badges = self.engine.inventory_summary({"items": [ident]})["badges"]
+181:                 self.assertEqual(sum(b["kind"] == "antiheal" for b in badges), 1)
+182: 
+183:     def test_enemy_inventory_unknown_empty_and_kit_not_badges(self):
+184:         self.assertIsNone(self.engine.inventory_summary({})["value"])
+185:         self.assertEqual(self.engine.inventory_summary({"items": []})["value"], 0)
+186:         summary = self.engine.inventory_summary({"items": [1036, 999999]})
+187:         self.assertTrue(summary["partial"])
+188:         self.assertEqual(summary["value"], self.engine.cost("1036"))
+189:         result = self.engine.analyze(fixture(enemies=("Soraka",)))
+190:         self.assertTrue(result["threats"][0]["signals"])
+191:         self.assertEqual(result["threats"][0]["inventory"]["badges"], [])
+192: 
+193:     def test_enemy_inventory_updates_purchase_sale_and_stale(self):
+194:         s = fixture(enemies=("Garen",))
+195:         s["snapshots"][0]["players"]["e0"]["items"] = [3075, 3031]
+196:         before = self.engine.analyze(s)["threats"][0]
+197:         self.assertIn("Cortacura", [b["label"] for b in before["inventory"]["badges"]])
+198:         s["snapshots"].append({"time": 1210, "players": {"e0": {"items": [1036]}}})
+199:         after = self.engine.analyze(s)["threats"][0]
+200:         self.assertEqual(after["items"], ["1036"])
+201:         self.assertEqual(after["inventory"]["badges"], [])
+202:         self.assertEqual(after["inventory"]["value"], self.engine.cost("1036"))
+203:         s["duration"] = 1300
+204:         self.assertTrue(self.engine.analyze(s)["threats"][0]["stale"])
+205: 
+206:     def test_strength_inventory_level_and_bounded_kda(self):
+207:         s = fixture(enemies=("Lux", "Garen", "Jinx"))
+208:         p = s["snapshots"][0]["players"]
+209:         p["e0"].update(items=[3083, 3031], level=16, kills=0, deaths=10)
+210:         p["e1"].update(items=[1036], level=10, kills=100)
+211:         p["e2"].update(items=[], level=6)
+212:         rows = self.engine.analyze(s)["threats"]
+213:         self.assertEqual([r["key"] for r in rows], ["e0", "e1", "e2"])
+214:         self.assertEqual([r["strength_label"] for r in rows], ["MÁS FUERTE", "", "MÁS DÉBIL"])
+215:         before = rows[0]["strength"]
+216:         p["e0"]["level"] += 1
+217:         self.assertAlmostEqual(self.engine.analyze(s)["threats"][0]["strength"] - before, .6)
+218: 
+219:     def test_strength_ties_and_single_enemy(self):
+220:         s = fixture(enemies=("Lux", "Garen", "Jinx"))
+221:         rows = self.engine.analyze(s)["threats"]
+222:         self.assertTrue(all(r["strength_label"] == "FUERZA SIMILAR" for r in rows))
+223:         s["snapshots"][0]["players"]["e2"]["level"] = 1
+224:         rows = self.engine.analyze(s)["threats"]
+225:         self.assertEqual(sum(r["strength_label"] == "MÁS FUERTE · EMPATE" for r in rows), 2)
+226:         self.assertEqual(rows[-1]["strength_label"], "MÁS DÉBIL")
+227:         self.assertEqual(self.engine.analyze(fixture(enemies=("Lux",)))["threats"][0]["strength_label"], "")
+228:         self.assertEqual(self.engine.analyze(fixture(enemies=()))["threats"], [])
+229: 
+230:     def test_strength_incomplete_data_is_unmarked_but_others_still_compare(self):
+231:         for changes in ({"items": None}, {"items": [999999]}, {"level": None},
+232:                         {"level": float("nan")}, {"kills": None}, {"deaths": -1}):
+233:             with self.subTest(changes=changes):
+234:                 s = fixture(enemies=("Lux", "Garen", "Jinx"))
+235:                 players = s["snapshots"][0]["players"]
+236:                 players["e0"].update(changes)
+237:                 players["e1"]["level"] = 12
+238:                 players["e2"]["level"] = 10
+239:                 rows = self.engine.analyze(s)["threats"]
+240:                 broken = next(r for r in rows if r["key"] == "e0")
+241:                 self.assertIsNone(broken["strength"])
+242:                 self.assertEqual(broken["strength_label"], "")
+243:                 self.assertEqual(next(r for r in rows if r["key"] == "e1")["strength_label"], "MÁS FUERTE")
+244:                 self.assertEqual(next(r for r in rows if r["key"] == "e2")["strength_label"], "MÁS DÉBIL")
+245: 
+246:     def test_strength_survives_high_levels_and_old_snapshots(self):
+247:         s = fixture(enemies=("Lux", "Garen", "Jinx"))
+248:         players = s["snapshots"][0]["players"]
+249:         for key, level in (("e0", 20), ("e1", 12), ("e2", 10)):
+250:             players[key]["level"] = level
+251:         s["duration"] += 31
+252:         rows = self.engine.analyze(s)["threats"]
+253:         self.assertTrue(all(r["stale"] for r in rows))
+254:         self.assertTrue(all(r["strength"] is not None for r in rows))
+255:         self.assertEqual([r["strength_label"] for r in rows], ["MÁS FUERTE", "", "MÁS DÉBIL"])
+256: 
+257: 
+258:     def test_budget(self):
+259:         start = time.perf_counter()
+260:         for _ in range(20):
+261:             self.engine.analyze(fixture())
+262:         mean = (time.perf_counter() - start) / 20
+263:         print(f"\nLIVE recommendation engine mean: {mean*1000:.1f} ms")
+264:         self.assertLess(mean, .1)
+265: 
+266: 
+267: class PanelTests(unittest.TestCase):
+268:     @classmethod
+269:     def setUpClass(cls):
+270:         cls.app = QApplication.instance() or QApplication([])
+271:         cls.catalog = json.loads(Path("data/items.json").read_text(encoding="utf-8"))
+272: 
+273:     def setUp(self):
+274:         self.panel = RecommendationPanel()
+275:         self.host = QWidget()
+276:         self.host.setStyleSheet(CONTROL_WINDOW_STYLE)
+277:         self.panel.setParent(self.host)
+278:         self.panel.configure(None, self.catalog)
+279: 
+280:     def tearDown(self):
+281:         self.panel.close()
+282:         self.host.deleteLater()
+283:         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+284: 
+285:     def render(self, width, height=800):
+286:         self.host.resize(width, height)
+287:         self.panel.resize(width, height)
+288:         self.host.show()
+289:         self.panel.show()
+290:         self.app.processEvents()
+291: 
+292:     def test_enemy_cards_follow_lane_order_after_refresh(self):
+293:         s = fixture()
+294:         # Deliberately shuffled: ADC, jungle, mid, support, top.
+295:         assignments = {"BOTTOM": "e0", "JUNGLE": "e1", "MIDDLE": "e2",
+296:                        "UTILITY": "e3", "TOP": "e4"}
+297:         s["lane_matchups"] = {role: {"enemy_key": key}
+298:                               for role, key in assignments.items()}
+299:         # Matchup assignments take precedence over outdated player roles.
+300:         for key in assignments.values():
+301:             s["players"][key]["role"] = "TOP"
+302:         expected = ["enemyCard_e4", "enemyCard_e1", "enemyCard_e2",
+303:                     "enemyCard_e0", "enemyCard_e3"]
+304:         for level in (16, 18):
+305:             s["snapshots"][0]["players"]["e0"]["level"] = level
+306:             self.panel.update_recommendations(s)
+307:             self.render(1160)
+308:             layout = self.panel.right.layout()
+309:             cards = [layout.itemAt(i).widget() for i in range(layout.count())]
+310:             cards = [w for w in cards if w and w.objectName().startswith("enemyCard_")]
+311:             self.assertEqual([w.objectName() for w in cards], expected)
+312:             self.assertEqual([w.y() for w in cards], sorted(w.y() for w in cards))
+313: 
+314:     def test_enemy_order_uses_player_roles_and_keeps_unknowns_last(self):
+315:         self.panel._last_session = {"players": {
+316:             "top": {"role": "TOP"}, "jungle": {"role": "JUNGLE"},
+317:             "mid": {"role": "MID"}, "bot": {"role": "BOT"},
+318:             "support": {"role": "SUPPORT"}}}
+319:         threats = [{"key": key} for key in
+320:                    ("unknown1", "support", "bot", "mid", "jungle", "top", "unknown2")]
+321:         original = deepcopy(threats)
+322:         self.assertEqual([t["key"] for t in self.panel._ordered_threats(threats)],
+323:                          ["top", "jungle", "mid", "bot", "support", "unknown1", "unknown2"])
+324:         self.assertEqual(threats, original)
+325:         self.assertEqual(self.panel._ordered_threats([]), [])
+326: 
+327:     def test_compact_panel_end_to_end(self):
+328:         from PySide6.QtWidgets import QToolButton
+329: 
+330:         s = fixture(enemies=("Lux", "Garen", "Jinx"))
+331:         points = s["snapshots"][0]["players"]
+332:         points["e0"].update(items=[3083, 3031], level=16)
+333:         points["e1"].update(items=[1036], level=10)
+334:         points["e2"].update(items=[], level=6)
+335:         self.panel.update_recommendations(s)
+336:         self.render(1160)
+337: 
+338:         recommendations = self.panel.report["recommendations"]
+339:         self.assertGreater(len(recommendations), 3)
+340:         cards = [w for w in self.panel.left.findChildren(QWidget)

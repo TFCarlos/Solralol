@@ -1,0 +1,424 @@
+1: from __future__ import annotations
+2: 
+3: from typing import Any
+4: 
+5: from PySide6.QtCore import Qt, QTimer
+6: from PySide6.QtWidgets import (
+7:     QFrame, QGridLayout, QHBoxLayout, QLabel, QScrollArea, QSizePolicy,
+8:     QVBoxLayout, QWidget, QToolButton,
+9: )
+10: 
+11: from app.services.live_recommendation_service import LiveRecommendationService
+12: 
+13: 
+14: PANEL_STYLE = """
+15: QFrame#recommendationPanel { background: #0b1220; border: 1px solid #26364c; border-radius: 12px; }
+16: QFrame#recommendationPanel QWidget { font-family: 'Segoe UI'; }
+17: QFrame#recommendationPanel QLabel { color: #c1cede; background: transparent; border: none;
+18:     font-size: 13px; padding: 0px; }
+19: QFrame#recommendationPanel QLabel[role="title"] { color: #f1f5fb; font-size: 23px; font-weight: 700; }
+20: QFrame#recommendationPanel QLabel[role="section"] { color: #eef4ff; font-size: 15px; font-weight: 700; }
+21: QFrame#recommendationPanel QLabel[role="eyebrow"] { color: #65d7c4; font-size: 11px; font-weight: 700; }
+22: QFrame#recommendationPanel QLabel[role="muted"] { color: #91a4bd; font-size: 12px; }
+23: QFrame#recommendationPanel QLabel[role="accent"] { color: #f2cc78; font-size: 16px; font-weight: 700; }
+24: QFrame#recommendationPanel QLabel[role="badge"] { color: #78dfcc; background: #16332f;
+25:     border-radius: 5px; padding: 5px 9px; font-size: 11px; font-weight: 700; }
+26: QFrame#recommendationPanel QLabel[role="enemyBadge"] { background: #27374d; color: #dce8fa;
+27:     border-radius: 5px; padding: 4px 7px; font-size: 11px; font-weight: 700; }
+28: QFrame#recommendationPanel QLabel[kind="antiheal"] { background: #422b39; color: #ffb4c4; }
+29: QFrame#recommendationPanel QLabel[kind="armor"] { background: #3c3524; color: #efce88; }
+30: QFrame#recommendationPanel QLabel[kind="mr"] { background: #24364b; color: #9ccfff; }
+31: QFrame#recommendationPanel QLabel[kind="crit"] { background: #422c25; color: #ffbc95; }
+32: QFrame#recommendationPanel QFrame[card="true"] { background: #111e30; border: 1px solid #293c55;
+33:     border-radius: 9px; }
+34: QFrame#recommendationPanel QLabel[role="score"] { color: #78dfcc; background: #16332f;
+35:     border-radius: 6px; padding: 4px 6px; font-size: 16px; font-weight: 700; }
+36: QFrame#recommendationPanel QLabel[role="itemName"] { color: #eef4ff; font-size: 13px; font-weight: 700; }
+37: QFrame#recommendationPanel QLabel[role="strong"] { color: #ffb4b4; font-weight: 700; }
+38: QFrame#recommendationPanel QLabel[role="weak"] { color: #78dfcc; font-weight: 700; }
+39: QFrame#recommendationPanel QToolButton { color: #91a4bd; background: transparent;
+40:     border: none; text-align: left; padding: 4px; }
+41: QFrame#recommendationPanel QFrame#priorityCard { background: #142b32; border: 1px solid #357e77; }
+42: QFrame#recommendationPanel QFrame#inventoryCard { background: #0e1929; border: 1px solid #26364c; }
+43: QFrame#recommendationPanel QScrollArea { background: transparent; border: none; }
+44: QFrame#recommendationPanel QWidget#recommendationBody { background: transparent; }
+45: QFrame#recommendationPanel QLabel[role="icon"] { background: #1e3148; border: 1px solid #35506c;
+46:     border-radius: 6px; color: #9bb2cd; font-size: 11px; }
+47: """
+48: 
+49: 
+50: class RecommendationPanel(QFrame):
+51:     """One contextual dashboard: priority, champion affinity, opponents and action plan."""
+52: 
+53:     def __init__(self, parent: QWidget | None = None) -> None:
+54:         super().__init__(parent)
+55:         self.assets = None
+56:         self.item_catalog: dict[str, Any] = {}
+57:         self.engine = LiveRecommendationService()
+58:         self.report = None
+59:         self._last_report = None
+60:         self._last_session = {}
+61:         self._columns = 0
+62:         self._scroll_position = 0
+63:         self._expanded = {}
+64:         self._restore_timer = QTimer(self)
+65:         self._restore_timer.setSingleShot(True)
+66:         self._restore_timer.timeout.connect(self._restore_scroll)
+67:         self.setObjectName("recommendationPanel")
+68:         self.setStyleSheet(PANEL_STYLE)
+69:         self._build_ui()
+70: 
+71:     @staticmethod
+72:     def label(text="", role="body"):
+73:         label = QLabel(str(text))
+74:         label.setProperty("role", role)
+75:         label.setTextFormat(Qt.TextFormat.PlainText)
+76:         label.setWordWrap(True)
+77:         label.setMinimumWidth(0)
+78:         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+79:         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+80:         return label
+81: 
+82:     @staticmethod
+83:     def card(name=""):
+84:         frame = QFrame()
+85:         frame.setProperty("card", "true")
+86:         if name:
+87:             frame.setObjectName(name)
+88:         layout = QVBoxLayout(frame)
+89:         layout.setContentsMargins(10, 8, 10, 8)
+90:         layout.setSpacing(5)
+91:         return frame, layout
+92: 
+93:     def configure(self, assets: Any, item_catalog: dict[str, Any]) -> None:
+94:         self.assets = assets
+95:         self.item_catalog = item_catalog or {}
+96:         self.engine = LiveRecommendationService(self.item_catalog)
+97:         self._last_report = None
+98: 
+99:     def _build_ui(self):
+100:         root = QVBoxLayout(self)
+101:         root.setContentsMargins(10, 10, 10, 10)
+102:         root.setSpacing(8)
+103:         header = QHBoxLayout()
+104:         self.portrait = self.label("LIVE", "icon")
+105:         self.portrait.setFixedSize(54, 54)
+106:         self.portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
+107:         header.addWidget(self.portrait)
+108:         identity = QVBoxLayout()
+109:         identity.setSpacing(3)
+110:         identity.addWidget(self.label("ASISTENTE DE PARTIDA · SINERGIAS", "eyebrow"))
+111:         self.title = self.label("Esperando campeón", "title")
+112:         identity.addWidget(self.title)
+113:         self.meta = self.label("El análisis se adapta al último estado disponible.", "muted")
+114:         identity.addWidget(self.meta)
+115:         header.addLayout(identity, 1)
+116:         self.mode = self.label("LIVE", "badge")
+117:         self.mode.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+118:         header.addWidget(self.mode)
+119:         root.addLayout(header)
+120: 
+121:         self.scroll = QScrollArea()
+122:         self.scroll.setWidgetResizable(True)
+123:         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+124:         self.content = QWidget()
+125:         self.content.setObjectName("recommendationBody")
+126:         self.content_layout = QVBoxLayout(self.content)
+127:         self.content_layout.setContentsMargins(0, 0, 4, 0)
+128:         self.content_layout.setSpacing(8)
+129:         self.scroll.setWidget(self.content)
+130:         root.addWidget(self.scroll, 1)
+131: 
+132:     def icon(self, ident, size=40):
+133:         label = self.label(str(ident), "icon")
+134:         label.setFixedSize(size, size)
+135:         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+136:         label.setToolTip(self.engine.name(str(ident)))
+137:         if self.assets is not None:
+138:             self.assets.set_label_image(label, self.assets.item_url(int(ident)),
+139:                                         f"synergy-live-item:{ident}:{size}", size)
+140:         return label
+141: 
+142:     def update_recommendations(self, session):
+143:         self._last_session = session
+144:         report = self.engine.analyze(session)
+145:         self.report = report
+146:         if report == self._last_report:
+147:             return
+148:         previous = self._last_report
+149:         self._last_report = report
+150:         scroll_position = self._scroll_position if self._restore_timer.isActive() else self.scroll.verticalScrollBar().value()
+151:         self.setUpdatesEnabled(False)
+152:         try:
+153:             self.title.setText(report["champion"])
+154:             seconds = int(report["time"])
+155:             gold = f"{report['gold']:,} oro disponible" if report["gold"] is not None else "Oro no disponible"
+156:             self.meta.setText(f"{report['role']} · Nivel {report['level'] or '—'} · {seconds // 60:02d}:{seconds % 60:02d} · {report['phase']} · {gold}")
+157:             self.mode.setText("REVISIÓN POSTGAME" if report["ended"] else "LIVE · ÚLTIMA MUESTRA")
+158:             if not previous or previous["champion"] != report["champion"]:
+159:                 self.portrait.clear()
+160:                 self.portrait.setText(report["champion"][:3].upper())
+161:                 if self.assets:
+162:                     champ = report["champion"]
+163:                     self.assets.set_label_image(self.portrait, self.assets.champion_url(champ),
+164:                                                 f"synergy-live-champion:{champ}:54", 54)
+165:             while self.content_layout.count():
+166:                 item = self.content_layout.takeAt(0)
+167:                 if item.widget():
+168:                     item.widget().hide()
+169:                     item.widget().deleteLater()
+170:             self.content_layout.addWidget(self._priority(report))
+171:             self.content_layout.addWidget(self._inventory(report))
+172:             self.dashboard = QWidget()
+173:             self.dashboard_grid = QGridLayout(self.dashboard)
+174:             self.dashboard_grid.setContentsMargins(0, 0, 0, 0)
+175:             self.dashboard_grid.setSpacing(14)
+176:             self.left = self._recommendations(report)
+177:             self.right = self._context(report)
+178:             self._columns = 0
+179:             self._reflow()
+180:             self.content_layout.addWidget(self.dashboard)
+181:             self.content_layout.addWidget(self._details(
+182:                 "qualityCard", "Datos y limitaciones", report["warnings"]))
+183:             self.content_layout.addStretch(1)
+184:             self.content_layout.activate()
+185:             self._scroll_position = scroll_position
+186:             self._restore_timer.start(0)
+187:         finally:
+188:             self.setUpdatesEnabled(True)
+189: 
+190:     def _restore_scroll(self):
+191:         self.content.adjustSize()
+192:         self.content_layout.activate()
+193:         self.scroll.verticalScrollBar().setValue(self._scroll_position)
+194: 
+195:     def _details(self, name, title, lines):
+196:         card, layout = self.card(name)
+197:         toggle = QToolButton()
+198:         toggle.setObjectName(name + "Toggle")
+199:         toggle.setText(title)
+200:         toggle.setCheckable(True)
+201:         toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+202:         text = self.label("\n".join(f"• {line}" for line in lines), "muted")
+203:         text.setObjectName(name + "Text")
+204:         def expand(checked):
+205:             self._expanded[name] = checked
+206:             text.setVisible(checked)
+207:             toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+208:         toggle.toggled.connect(expand)
+209:         toggle.setChecked(self._expanded.get(name, False))
+210:         expand(toggle.isChecked())
+211:         layout.addWidget(toggle)
+212:         layout.addWidget(text)
+213:         return card
+214: 
+215:     def _priority(self, report):
+216:         card, layout = self.card("priorityCard")
+217:         purchase = report["purchase"]
+218:         status = purchase["status"]
+219:         caption = {"buy": "PRIORIDAD · PRÓXIMO RECALL", "save": "PRIORIDAD · AHORRAR",
+220:                    "full": "PRIORIDAD · REVISAR INVENTARIO", "postgame": "REVISIÓN · PARTIDA FINALIZADA",
+221:                    "unknown": "COMPRA PENDIENTE DE ORO", "stale": "ESPERANDO TELEMETRÍA"}.get(status, "SIN COMPRA VERIFICABLE")
+222:         layout.addWidget(self.label(caption, "eyebrow"))
+223:         row = QHBoxLayout()
+224:         if purchase.get("id"):
+225:             row.addWidget(self.icon(purchase["id"], 50))
+226:         info = QVBoxLayout()
+227:         if purchase.get("id"):
+228:             info.addWidget(self.label(f"{self.engine.name(purchase['id'])} · {purchase['cost']:,} oro", "accent"))
+229:         info.addWidget(self.label(purchase["text"]))
+230:         if purchase.get("target"):
+231:             info.addWidget(self.label(f"Objetivo: {self.engine.name(purchase['target'])} · Restan {purchase['remaining']:,} oro tras tus componentes", "muted"))
+232:         if report["recommendations"] and status not in {"postgame", "stale", "none"}:
+233:             rec = report["recommendations"][0]
+234:             reason = " · ".join(rec["responses"]) or " · ".join(rec["reasons"][:2])
+235:             info.addWidget(self.label(f"Por qué ahora: {reason}", "muted"))
+236:         row.addLayout(info, 1)
+237:         layout.addLayout(row)
+238:         return card
+239: 
+240:     def _inventory(self, report):
+241:         card, layout = self.card("inventoryCard")
+242:         row = QHBoxLayout()
+243:         row.addWidget(self.label("INVENTARIO OBSERVADO", "eyebrow"), 1)
+244:         for ident in report["owned"][:7]:
+245:             row.addWidget(self.icon(ident, 34))
+246:         if not report["owned"]:
+247:             row.addWidget(self.label("Sin objetos registrados", "muted"))
+248:         layout.addLayout(row)
+249:         return card
+250: 
+251:     def _brief(self, rec):
+252:         """First reason as a single compact line for the item card."""
+253:         points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+254:         if not points:
+255:             return ""
+256:         text = " ".join(points[0].split())
+257:         return text if len(text) <= 72 else text[:71].rstrip(" ,;:.") + "…"
+258: 
+259:     def _recommendations(self, report):
+260:         section = QWidget()
+261:         layout = QVBoxLayout(section)
+262:         layout.setContentsMargins(0, 0, 0, 0)
+263:         layout.setSpacing(6)
+264:         layout.addWidget(self.label("3 objetos · Sinergia", "section"))
+265:         for position, rec in enumerate(report["recommendations"][:3], 1):
+266:             card, body = self.card(f"synergyItem_{rec['id']}")
+267:             card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+268:             body.setContentsMargins(8, 6, 8, 6)
+269:             body.setSpacing(0)
+270:             row = QHBoxLayout()
+271:             row.setSpacing(8)
+272:             row.addWidget(self.icon(rec["id"], 28))
+273:             text = QVBoxLayout()
+274:             text.setSpacing(2)
+275:             text.addWidget(self.label(f"{position:02d}  {rec['name']}", "itemName"))
+276:             text.addWidget(self.label(f"{rec['cost']:,} oro pendiente", "muted"))
+277:             reason = self.label(self._brief(rec), "muted")
+278:             reason.setObjectName("synergyReason")
+279:             reason.setToolTip("Motivo principal; el tooltip de la tarjeta incluye la justificación completa.")
+280:             text.addWidget(reason)
+281:             row.addLayout(text, 1)
+282:             score = self.label(f"{rec['score']:g} pts", "score")
+283:             score.setWordWrap(False)
+284:             score.setObjectName("synergyScore")
+285:             score.setAlignment(Qt.AlignmentFlag.AlignCenter)
+286:             score.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+287:             score.setToolTip("Afinidad relativa al campeón y a esta partida; no es un porcentaje.")
+288:             row.addWidget(score)
+289:             body.addLayout(row)
+290:             points = list(dict.fromkeys(rec["responses"] + rec["reasons"]))
+291:             card.setToolTip("\n".join(f"• {p}" for p in points))
+292:             layout.addWidget(card)
+293:         if not report["recommendations"]:
+294:             layout.addWidget(self.label("No hay candidatos compatibles verificados. Conserva tu inventario y espera datos del campeón o del catálogo.", "muted"))
+295:         layout.addStretch(1)
+296:         return section
+297: 
+298:     def _context(self, report):
+299:         section = QWidget()
+300:         layout = QVBoxLayout(section)
+301:         layout.setContentsMargins(0, 0, 0, 0)
+302:         layout.setSpacing(6)
+303:         layout.addWidget(self.label("Rivales · Fuerza estimada", "section"))
+304:         if report["threats"]:
+305:             share = report["physical_share"]
+306:             estimate = self.label(f"{share:.0%} físico / {1-share:.0%} mágico · Estimación", "muted")
+307:             estimate.setToolTip("Perfil de daño estimado, no medido; excluye daño verdadero.\n"
+308:                                 "Fuerza = oro en objetos / 1000 + nivel × 0,6 + ajuste KDA (±2).\n"
+309:                                 "No predice duelos ni tiene en cuenta posición, vida o enfriamientos.")
+310:             layout.addWidget(estimate)
+311:             unmeasured = sum(t["strength"] is None for t in report["threats"])
+312:             if not any(t["strength_label"] for t in report["threats"]):
+313:                 layout.addWidget(self.label("Sin comparación fiable: se necesitan al menos dos rivales con datos completos.", "muted"))
+314:             elif unmeasured:
+315:                 note = self.label(f"Comparación parcial: {unmeasured} rival{'es' if unmeasured != 1 else ''} sin datos completos.", "muted")
+316:                 note.setObjectName("enemyPartialNote")
+317:                 layout.addWidget(note)
+318:         for threat in self._ordered_threats(report["threats"]):
+319:             card, body = self.card(f"enemyCard_{threat['key']}")
+320:             body.setContentsMargins(10, 8, 10, 8)
+321:             body.setSpacing(5)
+322:             strength_label = threat["strength_label"]
+323:             if strength_label:
+324:                 role = "strong" if strength_label.startswith("MÁS FUERTE") else (
+325:                     "weak" if strength_label.startswith("MÁS DÉBIL") else "muted")
+326:                 badge = self.label(strength_label, role)
+327:                 badge.setObjectName("enemyStrengthBadge")
+328:                 badge.setToolTip("Fuerza relativa estimada; más débil no significa una baja segura.")
+329:                 body.addWidget(badge)
+330:             heading = QHBoxLayout()
+331:             heading.setSpacing(8)
+332:             heading.addWidget(self.label(f"{threat['champion']} · Nv {threat['level'] or '—'} · {threat['kda']}", "section"), 1)
+333:             inventory = threat["inventory"]
+334:             value = inventory["value"]
+335:             gold_text = "Build: oro desconocido" if value is None else (
+336:                 f"Build: ≥ {value:,} oro · catálogo incompleto" if inventory["partial"]
+337:                 else f"Build: {value:,} oro")
+338:             gold = self.label(gold_text, "eyebrow")
+339:             gold.setObjectName("enemyBuildGold")
+340:             gold.setToolTip("Valor de catálogo de los objetos actuales, incluidos componentes. "
+341:                             "No es oro disponible, oro ganado ni gasto histórico.")
+342:             gold.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+343:             gold.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+344:             heading.addWidget(gold)
+345:             body.addLayout(heading)
+346:             icons = QGridLayout()
+347:             icons.setHorizontalSpacing(5)
+348:             icons.setVerticalSpacing(5)
+349:             for index, ident in enumerate(threat["items"]):
+350:                 icon = self.icon(ident, 30)
+351:                 icon.setObjectName("enemyItemIcon")
+352:                 icon.setProperty("itemId", ident)
+353:                 icons.addWidget(icon, index // 7, index % 7)
+354:             icons.setColumnStretch(7, 1)
+355:             if threat["items"]:
+356:                 body.addLayout(icons)
+357:             else:
+358:                 body.addWidget(self.label("Inventario vacío" if inventory["known"]
+359:                                           else "Inventario no disponible", "muted"))
+360:             badge_container = QWidget()
+361:             badges = QGridLayout(badge_container)
+362:             badges.setContentsMargins(0, 0, 0, 0)
+363:             badges.setHorizontalSpacing(5)
+364:             badges.setVerticalSpacing(4)
+365:             for index, fact in enumerate(inventory["badges"]):
+366:                 badge = self.label(fact["label"], "enemyBadge")
+367:                 badge.setObjectName("enemyInventoryBadge")
+368:                 badge.setProperty("kind", fact["kind"])
+369:                 badge.setToolTip(fact["detail"])
+370:                 badge.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+371:                 badges.addWidget(badge, index // 3, index % 3)
+372:             if inventory["badges"]:
+373:                 body.addWidget(badge_container, 0, Qt.AlignmentFlag.AlignLeft)
+374:             else:
+375:                 badge_container.deleteLater()
+376:             texts = [s["evidence"] for s in threat["signals"]]
+377:             card.setToolTip("\n".join(texts) or "Sin amenazas adicionales identificadas en la última muestra.")
+378:             if threat["stale"]:
+379:                 body.addWidget(self.label("Muestra antigua o sin timestamp", "eyebrow"))
+380:             layout.addWidget(card)
+381:         if not report["threats"]:
+382:             layout.addWidget(self.label("Esperando rivales e inventarios identificados.", "muted"))
+383:         layout.addWidget(self._details("actionPlan", "Plan y coordinación",
+384:                                        [f"{heading}: {text}" for heading, text in report["actions"]]))
+385:         layout.addStretch(1)
+386:         return section
+387: 
+388:     def _ordered_threats(self, threats):
+389:         """Keep lane order independent of the estimated strength ranking."""
+390:         roles = {"TOP": 0, "JUNGLE": 1, "MIDDLE": 2, "BOTTOM": 3, "UTILITY": 4,
+391:                  "MID": 2, "BOT": 3, "SUPPORT": 4}
+392:         players = self._last_session.get("players", {})
+393:         matchups = self._last_session.get("lane_matchups", {})
+394:         enemy_roles = {matchup.get("enemy_key"): role for role, matchup in matchups.items()
+395:                        if isinstance(matchup, dict) and matchup.get("enemy_key")}
+396: 
+397:         def position(threat):
+398:             key = threat.get("key")
+399:             role = enemy_roles.get(key) or players.get(key, {}).get("role") or threat.get("role", "")
+400:             return roles.get(str(role).upper(), len(roles))
+401: 
+402:         return sorted(threats, key=position)
+403: 
+404:     def _reflow(self):
+405:         if not hasattr(self, "dashboard_grid"):
+406:             return
+407:         columns = 2 if self.width() >= 980 else 1
+408:         if columns == self._columns:
+409:             return
+410:         self._columns = columns
+411:         self.dashboard_grid.removeWidget(self.left)
+412:         self.dashboard_grid.removeWidget(self.right)
+413:         self.dashboard_grid.addWidget(self.left, 0, 0)
+414:         self.dashboard_grid.addWidget(self.right, 0 if columns == 2 else 1, 1 if columns == 2 else 0)
+415:         self.dashboard_grid.setColumnStretch(0, 3)
+416:         self.dashboard_grid.setColumnStretch(1, 2 if columns == 2 else 0)
+417:         self.dashboard_grid.activate()
+418:         self.content_layout.invalidate()
+419:         self.content_layout.activate()
+420:         self.content.adjustSize()
+421: 
+422:     def resizeEvent(self, event):
+423:         super().resizeEvent(event)
+424:         self._reflow()

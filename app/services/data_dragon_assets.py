@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import weakref
 import json
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -26,7 +27,15 @@ class DataDragonAssetService(QObject):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self.version = "15.16.1"
+        # Use the patch of the locally downloaded item catalog. A fixed old
+        # patch cannot serve icons for newer items (e.g. Dusk and Dawn, 2510).
+        catalog_path = Path(__file__).resolve().parents[2] / "data" / "items.json"
+        catalog = self._load_json(catalog_path)
+        version = catalog.get("version") if isinstance(catalog, dict) else None
+        self.version = (
+            version if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+", version)
+            else "15.16.1"
+        )
         self.language = "en_US"
         self.cache_dir = Path.home() / ".solralol" / "ddragon"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
