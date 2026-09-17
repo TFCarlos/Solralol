@@ -1027,31 +1027,98 @@ QLabel#savedGamesEmpty {
 }
 
 QFrame#savedGameRow {
-    border: 1px solid rgba(86, 126, 179, 100);
+    border: 1px solid #293c56;
+    border-left: 4px solid #64748b;
     border-radius: 12px;
-    background: rgba(6, 15, 29, 170);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #112139, stop:1 #0b1423);
+}
+
+QFrame#savedGameRow[result="win"] {
+    border-left-color: #4adea0;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #102d2c, stop:0.45 #102033, stop:1 #0b1423);
+}
+
+QFrame#savedGameRow[result="loss"] {
+    border-left-color: #f07d8a;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #30202e, stop:0.45 #142033, stop:1 #0b1423);
 }
 
 QFrame#savedGameRow:hover {
-    border: 1px solid rgba(217, 174, 79, 190);
-    background: rgba(15, 29, 50, 215);
+    border-top-color: #607698;
+    border-right-color: #607698;
+    border-bottom-color: #607698;
+}
+
+QLabel#savedGameResult {
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #acbdd3;
+    background: #243247;
+    border: 1px solid #3b4e68;
+}
+
+QLabel#savedGameResult[result="win"] {
+    color: #71edb1;
+    background: #163e34;
+    border-color: #2d6b54;
+}
+
+QLabel#savedGameResult[result="loss"] {
+    color: #ff9ca7;
+    background: #482631;
+    border-color: #77404c;
+}
+
+/* Overrides locales: los botones generales incluyen padding y min-height
+   que aumentaban la altura fijada por la tarjeta. */
+QFrame#savedGameRow QPushButton {
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 8px;
+    font-size: 11px;
+}
+
+QFrame#savedGameRow QPushButton#dangerButton {
+    color: #dba0aa;
+    background: transparent;
+    border: 1px solid #68414c;
+}
+
+QFrame#savedGameRow QPushButton#dangerButton:hover {
+    color: #ffe4e8;
+    background: #572733;
+    border-color: #b65d70;
+}
+
+QFrame#savedGameRow QPushButton#dangerButton:disabled {
+    color: #68778d;
+    background: transparent;
+    border-color: #334155;
 }
 
 QLabel#savedGameChampIcon {
-    border: 1px solid rgba(217, 174, 79, 140);
+    border: 2px solid #65748c;
     border-radius: 8px;
-    background: rgba(5, 12, 24, 180);
+    background: #091321;
+    color: #d9ae4f;
+    font-size: 24px;
+    font-weight: 800;
 }
 
 QLabel#savedGameTitle {
     color: #eef4ff;
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 800;
 }
 
 QLabel#savedGameDetail {
-    color: #94a3b8;
-    font-size: 11px;
+    color: #a3b4cc;
+    font-size: 12px;
 }
 
 QLabel#savedGameSync {
@@ -1075,9 +1142,9 @@ QLabel#savedGameSync[state="not_found"] {
 }
 
 QLabel#savedGameSync[state="synced"] {
-    color: #4ade80;
-    background: rgba(34, 197, 94, 40);
-    border: 1px solid rgba(34, 197, 94, 110);
+    color: #96c8f6;
+    background: rgba(59, 130, 246, 25);
+    border: 1px solid rgba(96, 165, 250, 85);
 }
 
 QLabel#savedGameSync[state="failed"] {

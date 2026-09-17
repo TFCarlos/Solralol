@@ -361,6 +361,52 @@ class LCUService:
         except requests.RequestException as exc:
             return False, f"Error de comunicación con LCU: {exc}"
 
+    def import_item_set(self, champion_id: int, champion_name: str, role: str,
+                        item_ids: list[str], boots_id: str | None = None) -> tuple[bool, str]:
+        """Guarda un conjunto propio sin eliminar los conjuntos del usuario."""
+        if champion_id <= 0 or len(item_ids) != 6 or len(set(item_ids)) != 6:
+            return False, "Se necesitan un campeón válido y seis objetos distintos."
+        ids = item_ids + ([boots_id] if boots_id else [])
+        if not all(str(i).isdigit() and int(i) > 0 for i in ids):
+            return False, "La build contiene IDs de objetos inválidos."
+        if not self.is_connected():
+            return False, "Cliente de League of Legends no está conectado."
+        try:
+            summoner = self.session.get(
+                f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner", timeout=3)
+            if summoner.status_code != 200:
+                return False, "No se pudo identificar al invocador local."
+            summoner_id = summoner.json().get("summonerId")
+            if not summoner_id:
+                return False, "El cliente no publicó el ID del invocador."
+            url = f"https://127.0.0.1:{self.port}/lol-item-sets/v1/item-sets/{summoner_id}/sets"
+            existing = self.session.get(url, timeout=3)
+            if existing.status_code != 200:
+                return False, "No se pudieron leer los conjuntos existentes; no se ha sobrescrito nada."
+            payload = existing.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("itemSets"), list):
+                return False, "Formato de conjuntos inesperado; no se ha sobrescrito nada."
+            uid = f"solralol-draft-{champion_id}-{role.casefold()}"
+            blocks = [{"type": "Objetos principales (6; última compra alternativa)",
+                       "items": [{"id": str(i), "count": 1} for i in item_ids]}]
+            if boots_id:
+                blocks.append({"type": "Botas recomendadas contra este equipo",
+                               "items": [{"id": str(boots_id), "count": 1}]})
+            item_set = {
+                "uid": uid, "title": f"Solralol - {champion_name} ({role})",
+                "type": "custom", "map": "SR", "mode": "CLASSIC",
+                "associatedMaps": [11], "associatedChampions": [champion_id],
+                "preferredItemSlots": [], "sortrank": 0, "startedFrom": "blank",
+                "blocks": blocks,
+            }
+            payload["itemSets"] = [s for s in payload["itemSets"] if s.get("uid") != uid] + [item_set]
+            response = self.session.put(url, json=payload, timeout=3)
+            if response.status_code in (200, 201, 204):
+                return True, "Build guardada en los conjuntos de objetos del cliente."
+            return False, f"El cliente rechazó la build ({response.status_code})."
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            return False, f"Error al importar la build: {exc}"
+
     def import_summoner_spells(self, spell1_name: str, spell2_name: str) -> tuple[bool, str]:
         """Aplica los hechizos de invocador en el cliente mediante LCU API."""
         if not self.is_connected():

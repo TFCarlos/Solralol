@@ -55,6 +55,11 @@ class ChampionScraperService:
         return aliases.get(clean, re.sub(r"[^a-z0-9]", "", clean))
 
     @staticmethod
+    def _loly_slug(slug: str) -> str:
+        """Lolalytics usa slugs distintos a Data Dragon para algunos campeones."""
+        return {"monkeyking": "wukong", "renataglasc": "renata"}.get(slug, slug)
+
+    @staticmethod
     def _role(profile: dict[str, Any]) -> str:
         flex = profile.get("basic_info", {}).get("flex_potential", [])
         raw = flex[0] if isinstance(flex, list) and flex else "mid"
@@ -420,6 +425,7 @@ class ChampionScraperService:
         local = json.loads((self.champions_path.parent / "champion_catalog.json").read_text(encoding="utf-8")).get("version", "16.17")
         local_patch = str(local).rsplit(".", 1)[0]
         patches = [*self._patches(), local_patch, ""]
+        slug = self._loly_slug(slug)
         lane = {"mid": "middle", "adc": "bottom"}.get(role, role)
         headers = {
             "Referer": "https://lolalytics.com/",
@@ -562,6 +568,7 @@ class ChampionScraperService:
 
     def _lolalytics_page(self, slug: str, role: str, section: str = "build") -> BeautifulSoup | None:
         lane = {"mid": "middle", "adc": "bottom"}.get(role, role)
+        slug = self._loly_slug(slug)
         return self._get(f"https://lolalytics.com/lol/{slug}/{section}/?lane={lane}")
 
     def _parse_lolalytics_html(self, soup: BeautifulSoup, champion: str, role: str) -> dict[str, Any]:
@@ -879,38 +886,33 @@ class ChampionScraperService:
                                 pass
                         return x
 
-                    target_dict = None
+                    # Las series emerald/diamond_plus pertenecen a otras
+                    # gráficas (p. ej. evolución por fecha), no a duración.
+                    # Lolalytics publica partidas y victorias por tramo en
+                    # time/timeWin, con claves 1..7 para 0-15 ... 40+.
+                    labels = ("0-15", "15-20", "20-25", "25-30", "30-35", "35-40", "40+")
                     for obj in objs:
-                        if isinstance(obj, dict):
-                            keys = list(obj.keys())
-                            if 'emerald' in keys or 'diamond_plus' in keys or 'all' in keys:
-                                v_ref = obj.get('emerald') or obj.get('diamond_plus') or obj.get('all')
-                                dv = decode_val(v_ref)
-                                if isinstance(dv, list) and len(dv) >= 30:
-                                    resolved = [decode_val(x) for x in dv]
-                                    if all(isinstance(x, (int, float)) for x in resolved) and all(30 <= x <= 70 for x in resolved):
-                                        target_dict = obj
-                                        break
-                    if target_dict:
-                        arr_ref = target_dict.get('emerald') or target_dict.get('diamond_plus') or target_dict.get('all')
-                        raw_35 = [decode_val(x) for x in decode_val(arr_ref)]
-                        if len(raw_35) >= 35:
-                            b0_15  = round(sum(raw_35[0:15]) / 15, 2)
-                            b15_20 = round(sum(raw_35[15:20]) / 5, 2)
-                            b20_25 = round(sum(raw_35[20:25]) / 5, 2)
-                            b25_30 = round(sum(raw_35[25:30]) / 5, 2)
-                            b30_35 = round(sum(raw_35[30:35]) / 5, 2)
-                            b35_40 = round(raw_35[34], 2)
-                            b40_plus = round(raw_35[34], 2)
-                            return [
-                                {"label": "0-15", "winrate": b0_15},
-                                {"label": "15-20", "winrate": b15_20},
-                                {"label": "20-25", "winrate": b20_25},
-                                {"label": "25-30", "winrate": b25_30},
-                                {"label": "30-35", "winrate": b30_35},
-                                {"label": "35-40", "winrate": b35_40},
-                                {"label": "40+", "winrate": b40_plus},
-                            ]
+                        if not isinstance(obj, dict) or "timeWin" not in obj:
+                            continue
+                        games = decode_val(obj.get("time"))
+                        wins = decode_val(obj.get("timeWin"))
+                        if not isinstance(games, dict) or not isinstance(wins, dict):
+                            continue
+                        curve = []
+                        for index, label in enumerate(labels, 1):
+                            played = decode_val(games.get(str(index)))
+                            won = decode_val(wins.get(str(index)))
+                            if (
+                                isinstance(played, (int, float))
+                                and isinstance(won, (int, float))
+                                and played > 0 and 0 <= won <= played
+                            ):
+                                curve.append({
+                                    "label": label,
+                                    "winrate": round(100.0 * won / played, 2),
+                                })
+                        if curve:
+                            return curve
         except Exception:
             pass
         return []

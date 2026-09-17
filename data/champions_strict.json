@@ -561,6 +561,36 @@
         "win_rate": 0.5394,
         "games": 64950
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.89
+      },
+      {
+        "label": "15-20",
+        "winrate": 49.57
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.39
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.91
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.28
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.19
+      },
+      {
+        "label": "40+",
+        "winrate": 52.36
+      }
     ]
   },
   {
@@ -829,6 +859,36 @@
         ],
         "win_rate": 0.513,
         "games": 65010
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 55.33
+      },
+      {
+        "label": "15-20",
+        "winrate": 54.34
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.88
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.76
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.07
+      },
+      {
+        "label": "35-40",
+        "winrate": 49.88
+      },
+      {
+        "label": "40+",
+        "winrate": 50.5
       }
     ]
   },
@@ -1099,6 +1159,36 @@
         ],
         "win_rate": 0.5114,
         "games": 23445
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.43
+      },
+      {
+        "label": "15-20",
+        "winrate": 51.82
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.49
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.19
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.64
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.66
+      },
+      {
+        "label": "40+",
+        "winrate": 49.29
       }
     ]
   },
@@ -2261,6 +2351,36 @@
         "win_rate": 0.5085999999999999,
         "games": 23262
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 45.89
+      },
+      {
+        "label": "15-20",
+        "winrate": 50.74
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.94
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.17
+      },
+      {
+        "label": "30-35",
+        "winrate": 49.68
+      },
+      {
+        "label": "35-40",
+        "winrate": 49.86
+      },
+      {
+        "label": "40+",
+        "winrate": 49.2
+      }
     ]
   },
   {
@@ -2530,6 +2650,36 @@
         ],
         "win_rate": 0.5289,
         "games": 19487
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.12
+      },
+      {
+        "label": "15-20",
+        "winrate": 43.36
+      },
+      {
+        "label": "20-25",
+        "winrate": 48.52
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.65
+      },
+      {
+        "label": "30-35",
+        "winrate": 56.24
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.21
+      },
+      {
+        "label": "40+",
+        "winrate": 55.48
       }
     ]
   },
@@ -2801,6 +2951,36 @@
         "win_rate": 0.5136,
         "games": 45476
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.77
+      },
+      {
+        "label": "15-20",
+        "winrate": 46.48
+      },
+      {
+        "label": "20-25",
+        "winrate": 47.25
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.3
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.45
+      },
+      {
+        "label": "35-40",
+        "winrate": 54.48
+      },
+      {
+        "label": "40+",
+        "winrate": 54.94
+      }
     ]
   },
   {
@@ -3070,6 +3250,36 @@
         "win_rate": 0.5253,
         "games": 68400
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.54
+      },
+      {
+        "label": "15-20",
+        "winrate": 48.18
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.44
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.59
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.29
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.09
+      },
+      {
+        "label": "40+",
+        "winrate": 54.37
+      }
     ]
   },
   {
@@ -3336,6 +3546,36 @@
         ],
         "win_rate": 0.5201,
         "games": 21666
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 43.57
+      },
+      {
+        "label": "15-20",
+        "winrate": 41.59
+      },
+      {
+        "label": "20-25",
+        "winrate": 43.55
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.81
+      },
+      {
+        "label": "30-35",
+        "winrate": 56.96
+      },
+      {
+        "label": "35-40",
+        "winrate": 58.97
+      },
+      {
+        "label": "40+",
+        "winrate": 58.47
       }
     ]
   },
@@ -3606,6 +3846,36 @@
         "win_rate": 0.5092,
         "games": 14859
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 54.95
+      },
+      {
+        "label": "15-20",
+        "winrate": 51.84
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.61
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.02
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.33
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.96
+      },
+      {
+        "label": "40+",
+        "winrate": 57.19
+      }
     ]
   },
   {
@@ -3873,6 +4143,36 @@
         ],
         "win_rate": 0.4893,
         "games": 19215
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 42.47
+      },
+      {
+        "label": "15-20",
+        "winrate": 40.4
+      },
+      {
+        "label": "20-25",
+        "winrate": 46.35
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.56
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.8
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.79
+      },
+      {
+        "label": "40+",
+        "winrate": 52.61
       }
     ]
   },
@@ -5919,6 +6219,36 @@
         "win_rate": 0.512,
         "games": 178484
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.02
+      },
+      {
+        "label": "15-20",
+        "winrate": 49.26
+      },
+      {
+        "label": "20-25",
+        "winrate": 51.06
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.48
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.08
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.01
+      },
+      {
+        "label": "40+",
+        "winrate": 54.62
+      }
     ]
   },
   {
@@ -6484,6 +6814,36 @@
         "win_rate": 0.4868,
         "games": 9581
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.92
+      },
+      {
+        "label": "15-20",
+        "winrate": 45.58
+      },
+      {
+        "label": "20-25",
+        "winrate": 48.92
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.44
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.91
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.58
+      },
+      {
+        "label": "40+",
+        "winrate": 50.7
+      }
     ]
   },
   {
@@ -7047,6 +7407,36 @@
         ],
         "win_rate": 0.4916,
         "games": 16373
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 37.84
+      },
+      {
+        "label": "15-20",
+        "winrate": 40.5
+      },
+      {
+        "label": "20-25",
+        "winrate": 44.34
+      },
+      {
+        "label": "25-30",
+        "winrate": 44.47
+      },
+      {
+        "label": "30-35",
+        "winrate": 46.54
+      },
+      {
+        "label": "35-40",
+        "winrate": 48.76
+      },
+      {
+        "label": "40+",
+        "winrate": 53.49
       }
     ]
   },
@@ -7910,6 +8300,36 @@
         ],
         "win_rate": 0.5106,
         "games": 40451
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.36
+      },
+      {
+        "label": "15-20",
+        "winrate": 51.44
+      },
+      {
+        "label": "20-25",
+        "winrate": 51.76
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.71
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.54
+      },
+      {
+        "label": "35-40",
+        "winrate": 49.85
+      },
+      {
+        "label": "40+",
+        "winrate": 51.1
       }
     ]
   },
@@ -9370,6 +9790,36 @@
         "win_rate": 0.47859999999999997,
         "games": 131163
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 52.18
+      },
+      {
+        "label": "15-20",
+        "winrate": 48.02
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.67
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.17
+      },
+      {
+        "label": "30-35",
+        "winrate": 46.19
+      },
+      {
+        "label": "35-40",
+        "winrate": 44.98
+      },
+      {
+        "label": "40+",
+        "winrate": 45.54
+      }
     ]
   },
   {
@@ -10233,6 +10683,36 @@
         "win_rate": 0.5347,
         "games": 69331
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 54.94
+      },
+      {
+        "label": "15-20",
+        "winrate": 56.78
+      },
+      {
+        "label": "20-25",
+        "winrate": 54.06
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.19
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.49
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.45
+      },
+      {
+        "label": "40+",
+        "winrate": 52.85
+      }
     ]
   },
   {
@@ -10502,6 +10982,36 @@
         ],
         "win_rate": 0.49979999999999997,
         "games": 36150
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.76
+      },
+      {
+        "label": "15-20",
+        "winrate": 46.54
+      },
+      {
+        "label": "20-25",
+        "winrate": 47.62
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.44
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.37
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.48
+      },
+      {
+        "label": "40+",
+        "winrate": 53.93
       }
     ]
   },
@@ -12849,6 +13359,36 @@
         "win_rate": 0.5336,
         "games": 5628
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.06
+      },
+      {
+        "label": "15-20",
+        "winrate": 61.23
+      },
+      {
+        "label": "20-25",
+        "winrate": 61.12
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.21
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.85
+      },
+      {
+        "label": "35-40",
+        "winrate": 55.31
+      },
+      {
+        "label": "40+",
+        "winrate": 52.8
+      }
     ]
   },
   {
@@ -13118,6 +13658,36 @@
         ],
         "win_rate": 0.5235,
         "games": 47506
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 45.89
+      },
+      {
+        "label": "15-20",
+        "winrate": 48.79
+      },
+      {
+        "label": "20-25",
+        "winrate": 54.11
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.42
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.24
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.6
+      },
+      {
+        "label": "40+",
+        "winrate": 51.91
       }
     ]
   },
@@ -15464,6 +16034,36 @@
         "win_rate": 0.5134000000000001,
         "games": 190523
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 55.61
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.75
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.69
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.42
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.23
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.56
+      },
+      {
+        "label": "40+",
+        "winrate": 53.87
+      }
     ]
   },
   {
@@ -15732,6 +16332,36 @@
         ],
         "win_rate": 0.5426,
         "games": 200660
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.44
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.01
+      },
+      {
+        "label": "20-25",
+        "winrate": 55.73
+      },
+      {
+        "label": "25-30",
+        "winrate": 54.23
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.61
+      },
+      {
+        "label": "35-40",
+        "winrate": 54.23
+      },
+      {
+        "label": "40+",
+        "winrate": 55.73
       }
     ]
   },
@@ -16003,6 +16633,36 @@
         "win_rate": 0.5162,
         "games": 202403
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.8
+      },
+      {
+        "label": "15-20",
+        "winrate": 51.24
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.12
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.51
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.26
+      },
+      {
+        "label": "35-40",
+        "winrate": 49.04
+      },
+      {
+        "label": "40+",
+        "winrate": 48.5
+      }
     ]
   },
   {
@@ -16271,6 +16931,36 @@
         ],
         "win_rate": 0.5079,
         "games": 32584
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 48.5
+      },
+      {
+        "label": "15-20",
+        "winrate": 51.5
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.33
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.8
+      },
+      {
+        "label": "30-35",
+        "winrate": 48.45
+      },
+      {
+        "label": "35-40",
+        "winrate": 47.39
+      },
+      {
+        "label": "40+",
+        "winrate": 45.04
       }
     ]
   },
@@ -17135,6 +17825,36 @@
         "win_rate": 0.5059,
         "games": 33825
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 45.49
+      },
+      {
+        "label": "15-20",
+        "winrate": 46.6
+      },
+      {
+        "label": "20-25",
+        "winrate": 42.08
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.3
+      },
+      {
+        "label": "30-35",
+        "winrate": 57.14
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.67
+      },
+      {
+        "label": "40+",
+        "winrate": 54.69
+      }
     ]
   },
   {
@@ -17400,6 +18120,36 @@
         ],
         "win_rate": 0.5252,
         "games": 87188
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 58.97
+      },
+      {
+        "label": "15-20",
+        "winrate": 59.82
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.64
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.2
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.63
+      },
+      {
+        "label": "35-40",
+        "winrate": 50.11
+      },
+      {
+        "label": "40+",
+        "winrate": 52.34
       }
     ]
   },
@@ -19449,6 +20199,36 @@
         "win_rate": 0.5447,
         "games": 17282
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 51.16
+      },
+      {
+        "label": "15-20",
+        "winrate": 57.93
+      },
+      {
+        "label": "20-25",
+        "winrate": 54.43
+      },
+      {
+        "label": "25-30",
+        "winrate": 54.55
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.01
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.13
+      },
+      {
+        "label": "40+",
+        "winrate": 52.29
+      }
     ]
   },
   {
@@ -20009,6 +20789,36 @@
         ],
         "win_rate": 0.5252,
         "games": 68627
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 58.65
+      },
+      {
+        "label": "15-20",
+        "winrate": 59.48
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.46
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.15
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.28
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.06
+      },
+      {
+        "label": "40+",
+        "winrate": 51.28
       }
     ]
   },
@@ -21164,6 +21974,36 @@
         "win_rate": 0.5162,
         "games": 53228
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 54.65
+      },
+      {
+        "label": "15-20",
+        "winrate": 54.82
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.99
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.84
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.71
+      },
+      {
+        "label": "35-40",
+        "winrate": 50.9
+      },
+      {
+        "label": "40+",
+        "winrate": 50.51
+      }
     ]
   },
   {
@@ -21431,6 +22271,36 @@
         ],
         "win_rate": 0.5143,
         "games": 86819
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 59.4
+      },
+      {
+        "label": "15-20",
+        "winrate": 62.35
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.98
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.76
+      },
+      {
+        "label": "30-35",
+        "winrate": 48.31
+      },
+      {
+        "label": "35-40",
+        "winrate": 48.96
+      },
+      {
+        "label": "40+",
+        "winrate": 50.06
       }
     ]
   },
@@ -21702,6 +22572,36 @@
         ],
         "win_rate": 0.5036999999999999,
         "games": 92439
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 55.05
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.92
+      },
+      {
+        "label": "20-25",
+        "winrate": 48.38
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.48
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.72
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.24
+      },
+      {
+        "label": "40+",
+        "winrate": 51.24
       }
     ]
   },
@@ -22267,6 +23167,36 @@
         ],
         "win_rate": 0.5228,
         "games": 40640
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.51
+      },
+      {
+        "label": "15-20",
+        "winrate": 53.05
+      },
+      {
+        "label": "20-25",
+        "winrate": 54.72
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.12
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.54
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.08
+      },
+      {
+        "label": "40+",
+        "winrate": 53.1
       }
     ]
   },
@@ -22834,6 +23764,36 @@
         ],
         "win_rate": 0.5165,
         "games": 58925
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 48.85
+      },
+      {
+        "label": "15-20",
+        "winrate": 43.69
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.08
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.9
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.09
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.46
+      },
+      {
+        "label": "40+",
+        "winrate": 52.93
       }
     ]
   },
@@ -24288,6 +25248,36 @@
         "win_rate": 0.5144,
         "games": 69484
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.82
+      },
+      {
+        "label": "15-20",
+        "winrate": 47.94
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.39
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.68
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.17
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.04
+      },
+      {
+        "label": "40+",
+        "winrate": 54.26
+      }
     ]
   },
   {
@@ -24505,6 +25495,36 @@
         ],
         "win_rate": 0.4796,
         "games": 3169
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 48.78
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.39
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.43
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.6
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.06
+      },
+      {
+        "label": "35-40",
+        "winrate": 50.67
+      },
+      {
+        "label": "40+",
+        "winrate": 48.67
       }
     ]
   },
@@ -25368,6 +26388,36 @@
         ],
         "win_rate": 0.5105,
         "games": 47537
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 52.88
+      },
+      {
+        "label": "15-20",
+        "winrate": 60.19
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.42
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.13
+      },
+      {
+        "label": "30-35",
+        "winrate": 49.96
+      },
+      {
+        "label": "35-40",
+        "winrate": 49.58
+      },
+      {
+        "label": "40+",
+        "winrate": 52.3
       }
     ]
   },
@@ -27121,6 +28171,36 @@
         "win_rate": 0.5334,
         "games": 10630
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.01
+      },
+      {
+        "label": "15-20",
+        "winrate": 50.78
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.35
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.7
+      },
+      {
+        "label": "30-35",
+        "winrate": 57.34
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.92
+      },
+      {
+        "label": "40+",
+        "winrate": 57.66
+      }
     ]
   },
   {
@@ -28282,6 +29362,36 @@
         ],
         "win_rate": 0.4763,
         "games": 42207
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 40.63
+      },
+      {
+        "label": "15-20",
+        "winrate": 41.82
+      },
+      {
+        "label": "20-25",
+        "winrate": 45.53
+      },
+      {
+        "label": "25-30",
+        "winrate": 47.48
+      },
+      {
+        "label": "30-35",
+        "winrate": 49.64
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.35
+      },
+      {
+        "label": "40+",
+        "winrate": 51.59
       }
     ]
   },
@@ -29725,6 +30835,36 @@
         ],
         "win_rate": 0.4991,
         "games": 76701
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 59.4
+      },
+      {
+        "label": "15-20",
+        "winrate": 57.25
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.69
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.16
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.73
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.8
+      },
+      {
+        "label": "40+",
+        "winrate": 50.77
       }
     ]
   },
@@ -31375,6 +32515,36 @@
         "name": "Página 1 U.GG",
         "source": "U.GG"
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.09
+      },
+      {
+        "label": "15-20",
+        "winrate": 47.32
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.21
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.92
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.71
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.76
+      },
+      {
+        "label": "40+",
+        "winrate": 50.53
+      }
     ]
   },
   {
@@ -32835,6 +34005,36 @@
         "win_rate": 0.4926,
         "games": 22294
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 51.67
+      },
+      {
+        "label": "15-20",
+        "winrate": 39.9
+      },
+      {
+        "label": "20-25",
+        "winrate": 45.28
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.35
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.13
+      },
+      {
+        "label": "35-40",
+        "winrate": 50.1
+      },
+      {
+        "label": "40+",
+        "winrate": 51.69
+      }
     ]
   },
   {
@@ -33098,6 +34298,36 @@
         ],
         "win_rate": 0.5191,
         "games": 43279
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 54.88
+      },
+      {
+        "label": "15-20",
+        "winrate": 54.37
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.4
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.76
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.87
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.95
+      },
+      {
+        "label": "40+",
+        "winrate": 52.11
       }
     ]
   },
@@ -33664,6 +34894,36 @@
         ],
         "win_rate": 0.5368999999999999,
         "games": 64820
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 38.36
+      },
+      {
+        "label": "15-20",
+        "winrate": 47.95
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.77
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.49
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.72
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.23
+      },
+      {
+        "label": "40+",
+        "winrate": 50.0
       }
     ]
   },
@@ -36010,6 +37270,36 @@
         "win_rate": 0.5223,
         "games": 49120
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.91
+      },
+      {
+        "label": "15-20",
+        "winrate": 49.47
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.21
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.85
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.18
+      },
+      {
+        "label": "35-40",
+        "winrate": 55.4
+      },
+      {
+        "label": "40+",
+        "winrate": 54.34
+      }
     ]
   },
   {
@@ -36568,6 +37858,36 @@
         ],
         "win_rate": 0.515,
         "games": 41594
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.48
+      },
+      {
+        "label": "15-20",
+        "winrate": 46.81
+      },
+      {
+        "label": "20-25",
+        "winrate": 44.22
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.85
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.94
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.0
+      },
+      {
+        "label": "40+",
+        "winrate": 58.43
       }
     ]
   },
@@ -37725,6 +39045,36 @@
         "win_rate": 0.5218,
         "games": 104352
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 53.47
+      },
+      {
+        "label": "15-20",
+        "winrate": 53.13
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.26
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.48
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.28
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.18
+      },
+      {
+        "label": "40+",
+        "winrate": 50.28
+      }
     ]
   },
   {
@@ -37993,6 +39343,36 @@
         ],
         "win_rate": 0.5121,
         "games": 85984
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.58
+      },
+      {
+        "label": "15-20",
+        "winrate": 47.19
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.84
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.76
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.18
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.62
+      },
+      {
+        "label": "40+",
+        "winrate": 51.84
       }
     ]
   },
@@ -38850,6 +40230,36 @@
         ],
         "win_rate": 0.5186999999999999,
         "games": 83490
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 51.52
+      },
+      {
+        "label": "15-20",
+        "winrate": 55.54
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.51
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.81
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.2
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.35
+      },
+      {
+        "label": "40+",
+        "winrate": 50.94
       }
     ]
   },
@@ -40007,6 +41417,36 @@
         "win_rate": 0.5318999999999999,
         "games": 118158
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 55.12
+      },
+      {
+        "label": "15-20",
+        "winrate": 54.19
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.72
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.45
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.1
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.59
+      },
+      {
+        "label": "40+",
+        "winrate": 53.96
+      }
     ]
   },
   {
@@ -40876,6 +42316,36 @@
         "win_rate": 0.5209,
         "games": 42866
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.08
+      },
+      {
+        "label": "15-20",
+        "winrate": 49.67
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.11
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.48
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.89
+      },
+      {
+        "label": "35-40",
+        "winrate": 53.34
+      },
+      {
+        "label": "40+",
+        "winrate": 52.59
+      }
     ]
   },
   {
@@ -41145,6 +42615,36 @@
         ],
         "win_rate": 0.5294,
         "games": 60856
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 53.11
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.25
+      },
+      {
+        "label": "20-25",
+        "winrate": 44.52
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.64
+      },
+      {
+        "label": "30-35",
+        "winrate": 56.51
+      },
+      {
+        "label": "35-40",
+        "winrate": 57.91
+      },
+      {
+        "label": "40+",
+        "winrate": 57.91
       }
     ]
   },
@@ -42005,6 +43505,36 @@
         "win_rate": 0.5022,
         "games": 29693
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 46.81
+      },
+      {
+        "label": "15-20",
+        "winrate": 53.79
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.8
+      },
+      {
+        "label": "25-30",
+        "winrate": 50.93
+      },
+      {
+        "label": "30-35",
+        "winrate": 47.66
+      },
+      {
+        "label": "35-40",
+        "winrate": 44.71
+      },
+      {
+        "label": "40+",
+        "winrate": 47.05
+      }
     ]
   },
   {
@@ -42276,6 +43806,36 @@
         "win_rate": 0.5045000000000001,
         "games": 34970
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 51.42
+      },
+      {
+        "label": "15-20",
+        "winrate": 46.07
+      },
+      {
+        "label": "20-25",
+        "winrate": 43.09
+      },
+      {
+        "label": "25-30",
+        "winrate": 49.42
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.17
+      },
+      {
+        "label": "35-40",
+        "winrate": 54.16
+      },
+      {
+        "label": "40+",
+        "winrate": 57.17
+      }
     ]
   },
   {
@@ -42543,6 +44103,36 @@
         ],
         "win_rate": 0.5249,
         "games": 42413
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 44.7
+      },
+      {
+        "label": "15-20",
+        "winrate": 44.74
+      },
+      {
+        "label": "20-25",
+        "winrate": 48.31
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.92
+      },
+      {
+        "label": "30-35",
+        "winrate": 54.03
+      },
+      {
+        "label": "35-40",
+        "winrate": 57.04
+      },
+      {
+        "label": "40+",
+        "winrate": 58.21
       }
     ]
   },
@@ -42814,6 +44404,36 @@
         "win_rate": 0.5243,
         "games": 26575
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 53.1
+      },
+      {
+        "label": "15-20",
+        "winrate": 55.79
+      },
+      {
+        "label": "20-25",
+        "winrate": 56.04
+      },
+      {
+        "label": "25-30",
+        "winrate": 54.51
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.3
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.07
+      },
+      {
+        "label": "40+",
+        "winrate": 50.85
+      }
     ]
   },
   {
@@ -43081,6 +44701,36 @@
         ],
         "win_rate": 0.5418999999999999,
         "games": 33011
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 57.39
+      },
+      {
+        "label": "15-20",
+        "winrate": 55.48
+      },
+      {
+        "label": "20-25",
+        "winrate": 56.26
+      },
+      {
+        "label": "25-30",
+        "winrate": 54.59
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.18
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.44
+      },
+      {
+        "label": "40+",
+        "winrate": 50.62
       }
     ]
   },
@@ -43944,6 +45594,36 @@
         "win_rate": 0.5121,
         "games": 98786
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.59
+      },
+      {
+        "label": "15-20",
+        "winrate": 47.1
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.93
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.85
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.84
+      },
+      {
+        "label": "35-40",
+        "winrate": 50.55
+      },
+      {
+        "label": "40+",
+        "winrate": 50.53
+      }
     ]
   },
   {
@@ -44212,6 +45892,36 @@
         ],
         "win_rate": 0.5273,
         "games": 42638
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.55
+      },
+      {
+        "label": "15-20",
+        "winrate": 50.04
+      },
+      {
+        "label": "20-25",
+        "winrate": 49.79
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.94
+      },
+      {
+        "label": "30-35",
+        "winrate": 54.87
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.78
+      },
+      {
+        "label": "40+",
+        "winrate": 57.87
       }
     ]
   },
@@ -45075,6 +46785,36 @@
         "win_rate": 0.5384,
         "games": 53275
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 53.26
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.63
+      },
+      {
+        "label": "20-25",
+        "winrate": 54.27
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.5
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.5
+      },
+      {
+        "label": "35-40",
+        "winrate": 55.32
+      },
+      {
+        "label": "40+",
+        "winrate": 54.5
+      }
     ]
   },
   {
@@ -45344,6 +47084,36 @@
         ],
         "win_rate": 0.5301,
         "games": 45822
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 53.18
+      },
+      {
+        "label": "15-20",
+        "winrate": 52.27
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.98
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.26
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.77
+      },
+      {
+        "label": "35-40",
+        "winrate": 55.19
+      },
+      {
+        "label": "40+",
+        "winrate": 55.66
       }
     ]
   },
@@ -45916,6 +47686,36 @@
         "win_rate": 0.5128,
         "games": 68787
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 50.79
+      },
+      {
+        "label": "15-20",
+        "winrate": 51.21
+      },
+      {
+        "label": "20-25",
+        "winrate": 54.05
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.1
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.07
+      },
+      {
+        "label": "35-40",
+        "winrate": 50.65
+      },
+      {
+        "label": "40+",
+        "winrate": 51.61
+      }
     ]
   },
   {
@@ -46186,6 +47986,36 @@
         ],
         "win_rate": 0.5161,
         "games": 53050
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 48.58
+      },
+      {
+        "label": "15-20",
+        "winrate": 50.7
+      },
+      {
+        "label": "20-25",
+        "winrate": 52.54
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.33
+      },
+      {
+        "label": "30-35",
+        "winrate": 51.43
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.3
+      },
+      {
+        "label": "40+",
+        "winrate": 53.17
       }
     ]
   },
@@ -46752,6 +48582,36 @@
         ],
         "win_rate": 0.5172,
         "games": 135494
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 48.09
+      },
+      {
+        "label": "15-20",
+        "winrate": 47.71
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.21
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.17
+      },
+      {
+        "label": "30-35",
+        "winrate": 53.37
+      },
+      {
+        "label": "35-40",
+        "winrate": 55.22
+      },
+      {
+        "label": "40+",
+        "winrate": 54.56
       }
     ]
   },
@@ -47909,6 +49769,36 @@
         "win_rate": 0.5162,
         "games": 100598
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 49.41
+      },
+      {
+        "label": "15-20",
+        "winrate": 50.9
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.07
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.49
+      },
+      {
+        "label": "30-35",
+        "winrate": 52.93
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.93
+      },
+      {
+        "label": "40+",
+        "winrate": 51.39
+      }
     ]
   },
   {
@@ -48179,6 +50069,36 @@
         "win_rate": 0.5304,
         "games": 49645
       }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 47.78
+      },
+      {
+        "label": "15-20",
+        "winrate": 49.53
+      },
+      {
+        "label": "20-25",
+        "winrate": 50.18
+      },
+      {
+        "label": "25-30",
+        "winrate": 52.65
+      },
+      {
+        "label": "30-35",
+        "winrate": 55.12
+      },
+      {
+        "label": "35-40",
+        "winrate": 56.04
+      },
+      {
+        "label": "40+",
+        "winrate": 54.24
+      }
     ]
   },
   {
@@ -48448,6 +50368,36 @@
         ],
         "win_rate": 0.5236,
         "games": 23056
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 51.96
+      },
+      {
+        "label": "15-20",
+        "winrate": 45.4
+      },
+      {
+        "label": "20-25",
+        "winrate": 55.67
+      },
+      {
+        "label": "25-30",
+        "winrate": 53.23
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.8
+      },
+      {
+        "label": "35-40",
+        "winrate": 52.41
+      },
+      {
+        "label": "40+",
+        "winrate": 51.15
       }
     ]
   },
@@ -49015,6 +50965,36 @@
         ],
         "win_rate": 0.5228,
         "games": 35873
+      }
+    ],
+    "win_rate_vs_game_length": [
+      {
+        "label": "0-15",
+        "winrate": 55.26
+      },
+      {
+        "label": "15-20",
+        "winrate": 57.43
+      },
+      {
+        "label": "20-25",
+        "winrate": 53.75
+      },
+      {
+        "label": "25-30",
+        "winrate": 51.34
+      },
+      {
+        "label": "30-35",
+        "winrate": 50.76
+      },
+      {
+        "label": "35-40",
+        "winrate": 51.59
+      },
+      {
+        "label": "40+",
+        "winrate": 49.65
       }
     ]
   },

@@ -31,15 +31,18 @@ print("Top 3 Recommended Bans for Aatrox:")
 for b in bans:
     print(f" - {b['champion']} (WR: {b['win_rate']}%)")
 
-picks = analyzer.get_recommended_picks("Top", enemy_team, ["Sejuani", "Ahri"], top_n=3)
-print("Top 3 Recommended Picks for Top:")
-for p in picks:
-    print(f" - {p['champion']} (Score: {p['score']}) => {p['reason']}")
+build = analyzer.get_champion_build("Aatrox", enemy_team)
+print("Build for Aatrox vs enemy team:")
+print(f" - Items: {build['items']}")
+print(f" - Boots: {build.get('boots')} ({build.get('boots_reason')})")
 
-runes_spells = analyzer.get_champion_runes_and_summoners("Aatrox")
-print("Runes & Spells for Aatrox:")
-print(f" - Page 1: {runes_spells.get('page_1')}")
+runes_spells = analyzer.get_champion_runes_and_summoners("Aatrox", "Top")
+print("Runes & Spells for Aatrox (Top):")
+print(f" - Page 1: {runes_spells.get('page_1') and runes_spells['page_1'].get('keystone')}")
 print(f" - Spells: {runes_spells.get('spells')}")
+
+jgl = analyzer.get_champion_runes_and_summoners("Aatrox", "Jungle")
+print(f" - Spells Jungle: {jgl.get('spells')}")
 
 print("\n--- Testing LCU Service Connection Check ---")
 lcu = LCUService()

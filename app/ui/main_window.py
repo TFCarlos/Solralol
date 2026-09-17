@@ -326,10 +326,8 @@ class MainWindow(QMainWindow):
         self.live_button.setEnabled(False)
 
         self.draft_nav_button = QPushButton("⚔️ Herramienta de Draft")
+        self.draft_nav_button.setObjectName("navButton")
         self.draft_nav_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.draft_nav_button.setStyleSheet(
-            "background-color: #059669; color: #FFFFFF; font-weight: bold; border-radius: 6px; padding: 6px 14px; margin-left: 8px;"
-        )
         self.draft_nav_button.clicked.connect(self.open_draft_tool_dialog)
 
         layout.addWidget(self.home_button)
@@ -988,7 +986,7 @@ class MainWindow(QMainWindow):
             0,
             0,
         )
-        self.saved_games_layout.setSpacing(10)
+        self.saved_games_layout.setSpacing(12)
 
         scroll.setWidget(self.saved_games_content)
         layout.addWidget(scroll, 1)
@@ -1058,28 +1056,39 @@ class MainWindow(QMainWindow):
     ) -> QWidget:
         row = QFrame()
         row.setObjectName("savedGameRow")
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        # Un resultado ausente no equivale a una derrota.
+        local_key = session.get("local_player_key")
+        players = session.get("players") or {}
+        local_player = (players.get(local_key) or {}) if local_key else {}
+        win = local_player.get("win")
+        result_state = "win" if win is True else "loss" if win is False else "unknown"
+        row.setProperty("result", result_state)
 
         layout = QHBoxLayout(row)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(14)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(18)
 
         champion = session.get(
             "champion_name",
             "Desconocido",
         )
 
-        champ_icon = QLabel()
-        champ_icon.setFixedSize(44, 44)
+        champ_icon = QLabel(str(champion or "?")[:1].upper())
+        champ_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        champ_icon.setFixedSize(60, 60)
         champ_icon.setObjectName("savedGameChampIcon")
+        champ_icon.setToolTip(str(champion))
         if champion and champion != "Desconocido" and hasattr(self, "data_dragon_assets"):
             icon_url = self.data_dragon_assets.champion_url(champion)
             self.data_dragon_assets.set_label_image(
-                champ_icon, icon_url, f"champ:{champion}", 44
+                champ_icon, icon_url, f"champ:{champion}", 56
             )
         layout.addWidget(champ_icon)
 
         details = QVBoxLayout()
-        details.setSpacing(4)
+        details.setSpacing(8)
 
         game_mode = session.get(
             "game_mode",
@@ -1089,16 +1098,29 @@ class MainWindow(QMainWindow):
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
 
-        title = QLabel(
-            f"{champion} · {game_mode}"
-        )
+        title = QLabel(str(champion))
+        title.setTextFormat(Qt.TextFormat.PlainText)
         title.setObjectName("savedGameTitle")
         title_row.addWidget(title)
 
-        final_sync = session.get(
-            "final_sync",
-            {},
+        result = QLabel({
+            "win": "VICTORIA",
+            "loss": "DERROTA",
+            "unknown": "Sin resultado",
+        }[result_state])
+        result.setObjectName("savedGameResult")
+        result.setProperty("result", result_state)
+        result.setToolTip(
+            "Resultado del jugador local."
+            if result_state != "unknown"
+            else "No se ha registrado el resultado del jugador local. "
+                 "Si está disponible, sincroniza la partida con Riot."
         )
+        title_row.addWidget(result)
+        title_row.addStretch(1)
+        details.addLayout(title_row)
+
+        final_sync = session.get("final_sync") or {}
 
         sync_status = final_sync.get(
             "status",
@@ -1121,10 +1143,7 @@ class MainWindow(QMainWindow):
         )
         status.setObjectName("savedGameSync")
         status.setProperty("state", sync_status)
-        title_row.addWidget(status)
-        title_row.addStretch(1)
-
-        details.addLayout(title_row)
+        status.setToolTip(str(final_sync.get("message") or status.text()))
 
         duration = self.format_match_duration(
             session.get(
@@ -1146,26 +1165,21 @@ class MainWindow(QMainWindow):
         )
 
         subtitle = QLabel(
-            f"📅 {started_at}  ·  ⏱ {duration}  ·  ⚡ {len(events)} eventos registrados"
+            f"{game_mode}   ·   {started_at}   ·   {duration}"
         )
+        subtitle.setTextFormat(Qt.TextFormat.PlainText)
         subtitle.setObjectName("savedGameDetail")
+        subtitle.setWordWrap(True)
         details.addWidget(subtitle)
 
-        sync_message = final_sync.get(
-            "message",
-            "",
-        )
-
-        if sync_message:
-            message = QLabel(
-                str(sync_message)
-            )
-            message.setObjectName(
-                "savedGameSyncMessage"
-            )
-            message.setWordWrap(True)
-            message.setMaximumWidth(470)
-            details.addWidget(message)
+        metadata_row = QHBoxLayout()
+        metadata_row.setSpacing(10)
+        metadata_row.addWidget(status)
+        event_count = QLabel(f"{len(events or [])} eventos registrados")
+        event_count.setObjectName("savedGameDetail")
+        metadata_row.addWidget(event_count)
+        metadata_row.addStretch(1)
+        details.addLayout(metadata_row)
 
         layout.addLayout(details, 1)
 
@@ -1176,8 +1190,9 @@ class MainWindow(QMainWindow):
             )
         )
 
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
+        actions = QGridLayout()
+        actions.setHorizontalSpacing(8)
+        actions.setVerticalSpacing(8)
 
         if session_id:
             if sync_status == "synced":
@@ -1198,7 +1213,7 @@ class MainWindow(QMainWindow):
                         value
                     )
                 )
-                actions.addWidget(resync_button)
+                actions.addWidget(resync_button, 1, 0)
 
             elif sync_status in {
                 "live_only",
@@ -1243,7 +1258,7 @@ class MainWindow(QMainWindow):
                     lambda checked=False, value=session_id:
                     self.request_saved_session_sync(value)
                 )
-                actions.addWidget(sync_button)
+                actions.addWidget(sync_button, 1, 0)
 
         open_button = QPushButton(
             "Abrir análisis"
@@ -1259,7 +1274,7 @@ class MainWindow(QMainWindow):
                 value
             )
         )
-        actions.addWidget(open_button)
+        actions.addWidget(open_button, 0, 0, 1, 2, Qt.AlignmentFlag.AlignRight)
 
         delete_button = QPushButton("Eliminar")
         delete_button.setObjectName("dangerButton")
@@ -1269,7 +1284,8 @@ class MainWindow(QMainWindow):
             delete_button.clicked.connect(
                 lambda checked=False, val=session_id: self.delete_saved_game_session(val)
             )
-        actions.addWidget(delete_button)
+        delete_button.setEnabled(bool(session_id))
+        actions.addWidget(delete_button, 1, 1)
 
         layout.addLayout(actions)
 

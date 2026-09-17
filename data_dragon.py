@@ -141,6 +141,8 @@ def get_item_icon_path(
     item_id: int | str,
     item_catalog: dict,
     version: str,
+    *,
+    download: bool = True,
 ) -> Path | None:
     ICON_DIR.mkdir(exist_ok=True)
     item_id = str(item_id)
@@ -157,6 +159,10 @@ def get_item_icon_path(
 
     if local_path.exists():
         return local_path
+
+    if not download:
+        fallback_path = ICON_DIR / f"{item_id}.png"
+        return fallback_path if fallback_path.exists() else None
 
     icon_url = f"{DD_BASE_URL}/cdn/{version}/img/item/{image_name}"
 
@@ -229,6 +235,8 @@ CHAMPION_IMAGE_NAME_ALIASES: dict[str, str] = {
 def get_champion_icon_path(
     champion_name: str,
     version: str,
+    *,
+    download: bool = True,
 ) -> Path | None:
     CHAMPION_ICON_DIR.mkdir(parents=True, exist_ok=True)
     raw_key = champion_name.strip().lower()
@@ -241,6 +249,10 @@ def get_champion_icon_path(
     local_path = CHAMPION_ICON_DIR / f"{safe_name}.png"
     if local_path.exists():
         return local_path
+
+    if not download:
+        fallback_path = CHAMPION_ICON_DIR / f"{safe_name.capitalize()}.png"
+        return fallback_path if fallback_path.exists() else None
 
     icon_url = f"{DD_BASE_URL}/cdn/{version}/img/champion/{safe_name}.png"
     try:
@@ -268,6 +280,8 @@ def get_champion_icon_path(
 def get_rune_icon_path(
     rune_name: str,
     version: str,
+    *,
+    download: bool = True,
 ) -> Path | None:
     """Obtiene el icono de una runa desde los assets de Data Dragon."""
     paths = {
@@ -362,6 +376,9 @@ def get_rune_icon_path(
     local_path = DATA_DIR / "rune_icons" / f"{local_name}.png"
     if local_path.exists():
         return local_path
+
+    if not download:
+        return None
 
     if not asset_path:
         asset_path = _rune_icon_catalog(version).get(lookup_name.lower())
@@ -497,7 +514,7 @@ SPELL_NAME_TO_FILE = {
 }
 
 
-def get_spell_icon_path(spell_name: str, version: str) -> Path | None:
+def get_spell_icon_path(spell_name: str, version: str, *, download: bool = True) -> Path | None:
     SPELL_ICON_DIR.mkdir(parents=True, exist_ok=True)
     raw_key = spell_name.strip().lower()
     file_name = SPELL_NAME_TO_FILE.get(raw_key)
@@ -507,6 +524,9 @@ def get_spell_icon_path(spell_name: str, version: str) -> Path | None:
     local_path = SPELL_ICON_DIR / file_name
     if local_path.exists():
         return local_path
+
+    if not download:
+        return None
 
     url = f"{DD_BASE_URL}/cdn/{version}/img/spell/{file_name}"
     try:

@@ -15,6 +15,19 @@ class DraftAnalyzerService:
         self.champions: dict[str, dict[str, Any]] = {}
         self.champ_by_id: dict[int, str] = {}
         self._load_data()
+        self.version = "16.17.1"
+        try:
+            raw_items = json.loads((self.path.parent / "items.json").read_text(encoding="utf-8"))
+            self.items = raw_items.get("items", {})
+            self.version = str(raw_items.get("version") or self.version)
+        except (OSError, ValueError):
+            self.items = {}
+        self.item_names = {}
+        for item_id, item in self.items.items():
+            if item.get("maps", {}).get("11", True) and not item.get("requiredAlly"):
+                for key in ("name", "name_es", "name_en"):
+                    if item.get(key):
+                        self.item_names.setdefault(item[key].strip().casefold(), item_id)
 
     def _load_data(self) -> None:
         if not self.path.exists():
@@ -82,7 +95,12 @@ class DraftAnalyzerService:
             prof = self.get_champion_profile(champ)
             if not prof:
                 continue
-            dmg_prof = prof.get("damage_profile", {})
+            breakdown = prof.get("damage_breakdown", {})
+            dmg_prof = {
+                key: breakdown[f"{key}_percent"]
+                for key in ("physical_damage", "magic_damage", "true_damage")
+                if f"{key}_percent" in breakdown
+            } or prof.get("damage_profile", {})
             if isinstance(dmg_prof, dict) and dmg_prof:
                 total_ad += float(dmg_prof.get("physical_damage", 50))
                 total_ap += float(dmg_prof.get("magic_damage", 40))
@@ -188,8 +206,13 @@ class DraftAnalyzerService:
                 if isinstance(legacy_format, dict):
                     values_by_bracket = legacy_format
 
-            # Todos los campeones marcados o seleccionados pesan igual. Si a
-            # un perfil le falta un tramo, 50% conserva su peso en la media.
+            if not values_by_bracket:
+                # Sin datos de curva el campeón no participa en la media:
+                # contarle como 50% aplana la evolución del equipo.
+                continue
+
+            # Todos los campeones con datos pesan igual. Si a un perfil
+            # le falta un tramo, 50% conserva su peso en la media.
             for bracket in self.TIME_BRACKETS:
                 try:
                     value = float(values_by_bracket.get(bracket, 50.0))
@@ -224,7 +247,7 @@ class DraftAnalyzerService:
         else:
             return "Composición equilibrada / Escalado neutro"
 
-    def get_recommended_bans(self, local_champion: str, top_n: int = 5) -> list[dict[str, Any]]:
+    def get_recommended_bans(self, local_champion: str, top_n: int = 3) -> list[dict[str, Any]]:
         """Devuelve los peores counters para el campeón del jugador local."""
         prof = self.get_champion_profile(local_champion)
         if not prof:
@@ -255,96 +278,74 @@ class DraftAnalyzerService:
             })
         return results
 
-    def get_recommended_picks(
-        self,
-        assigned_role: str,
-        enemy_champions: list[str],
-        my_team_champions: list[str],
-        top_n: int = 5,
-    ) -> list[dict[str, Any]]:
-        """Recomienda campeones para el rol asignado según counters a los campeones enemigos fijados."""
-        role_clean = assigned_role.capitalize()
-        valid_enemies = [c for c in enemy_champions if c and c.casefold() in self.champions]
-
-        candidates = []
-        for name, prof in self.champions.items():
-            binfo = prof.get("basic_info", {})
-            flex = binfo.get("flex_potential", [])
-            primary_role = binfo.get("primary_role", flex[0] if flex else "")
-            
-            # Filtrar por rol aproximado si se especificó
-            if role_clean and role_clean not in flex and primary_role.casefold() != role_clean.casefold():
-                continue
-
-            champ_name = prof.get("character") or binfo.get("name") or name
-            if champ_name in my_team_champions or champ_name in enemy_champions:
-                continue
-
-            # Calcular puntuación counter contra campeones enemigos conocidos
-            counter_score = 0.0
-            counter_details = []
-            matchups = prof.get("matchups", {})
-            easy_matchups = matchups.get("synergies") or matchups.get("easy_matchups") or []
-
-            # Buscar en counters del enemigo
-            for enemy in valid_enemies:
-                e_prof = self.get_champion_profile(enemy)
-                if not e_prof:
-                    continue
-                e_counters = e_prof.get("matchups", {}).get("counters", [])
-                for ec in e_counters:
-                    if isinstance(ec, dict) and str(ec.get("champion")).casefold() == champ_name.casefold():
-                        # Si figura como counter del enemigo -> win_rate bajo del enemigo = alto para mi
-                        e_wr = float(ec.get("win_rate", 0.5))
-                        my_wr = (1.0 - e_wr) if e_wr <= 1.0 else (100.0 - e_wr)
-                        counter_score += (my_wr - 50.0)
-                        counter_details.append(f"Counter a {enemy}")
-
-            base_wr = 50.0
-            scaling = prof.get("power_curve_and_scaling", {})
-            if isinstance(scaling, dict) and scaling.get("early_game"):
-                base_wr += 1.0
-
-            total_score = base_wr + counter_score
-            candidates.append({
-                "champion": champ_name,
-                "score": round(total_score, 1),
-                "role": primary_role or role_clean,
-                "reason": ", ".join(counter_details) if counter_details else "Pick sólido para la composición",
-            })
-
-        return sorted(candidates, key=lambda x: x["score"], reverse=True)[:top_n]
-
-    def get_champion_runes_and_summoners(self, champion_name: str) -> dict[str, Any]:
-        """Devuelve las páginas de runas (Page 1 U.GG, Page 2 Lolalytics) y hechizos recomendados."""
-        prof = self.get_champion_profile(champion_name)
-        if not prof:
-            return {
-                "page_1": None,
-                "page_2": None,
-                "spells": ("Destello", "Teleportación"),
-            }
-
-        common_runes = prof.get("common_runes", [])
-        page_1 = common_runes[0] if len(common_runes) > 0 else None
-        page_2 = common_runes[1] if len(common_runes) > 1 else page_1
-
-        # Hechizos recomendados por rol / perfil
-        binfo = prof.get("basic_info", {})
-        flex = binfo.get("flex_potential", [])
-        primary_role = str(binfo.get("primary_role") or (flex[0] if flex else "")).capitalize()
-
-        if primary_role == "Jungle":
-            spells = ("Aplastar", "Destello")
-        elif primary_role in ("Support", "Bot"):
-            spells = ("Destello", "Extenuación") if primary_role == "Support" else ("Destello", "Curación")
-        elif primary_role == "Mid":
-            spells = ("Destello", "Ignición")
+    def get_champion_runes_and_summoners(self, champion_name: str, role: str = "") -> dict[str, Any]:
+        """No atribuye una página a otra fuente. El rol activo manda sobre el perfil."""
+        prof = self.get_champion_profile(champion_name) or {}
+        pages = prof.get("common_runes") or prof.get("runes") or []
+        sources = {str(p.get("source", "")).casefold(): p for p in pages if isinstance(p, dict)}
+        roles = self.get_likely_roles(champion_name)
+        role = (role or (roles[0] if roles else "Top")).casefold()
+        fallback = {"support": "Extenuación", "bot": "Curación", "mid": "Ignición"}.get(role, "Teleportación")
+        spells = list(prof.get("summoner_spells") or ["Destello", fallback])[:2]
+        if len(spells) != 2 or not all(isinstance(s, str) for s in spells):
+            spells = ["Destello", fallback]
+        smite = {"smite", "aplastar"}
+        if role in {"jungle", "jungla", "jgl"}:
+            first = next((s for s in spells if s.casefold() not in smite), "Destello")
+            spells = [first, "Aplastar"]
         else:
-            spells = ("Destello", "Teleportación")
+            spells = [fallback if s.casefold() in smite else s for s in spells]
+            if spells[0].casefold() == spells[1].casefold():
+                spells = ["Destello", fallback]
+        return {"page_1": sources.get("u.gg"), "page_2": sources.get("lolalytics"), "spells": tuple(spells)}
 
+    def get_champion_build(self, champion_name: str, enemies: list[str]) -> dict[str, Any]:
+        """Seis compras principales y botas aparte; la sexta puede ser alternativa tardía."""
+        prof = self.get_champion_profile(champion_name) or {}
+        core = []
+        boots_id = ""
+        unresolved = []
+        for name in prof.get("most_played_build", []):
+            item_id = self.item_names.get(str(name).strip().casefold(), "")
+            item = self.items.get(item_id, {})
+            if not item:
+                unresolved.append(str(name))
+            elif "Boots" in item.get("tags", []):
+                boots_id = item_id
+            elif item_id not in core:
+                core.append(item_id)
+        main_count = len(core)
+        # Completar solamente con alternativas del propio campeón, nunca con objetos inventados.
+        for group in prof.get("situational_items", {}).values():
+            for name in group:
+                item_id = self.item_names.get(str(name).strip().casefold(), "")
+                item = self.items.get(item_id, {})
+                if item and "Boots" not in item.get("tags", []) and item_id not in core:
+                    core.append(item_id)
+        known_enemies = [e for e in enemies if self.get_champion_profile(e)]
+        damage = self.calculate_team_damage_breakdown(known_enemies)
+        if not known_enemies:
+            reason = "Sin enemigos conocidos: botas de la build del campeón."
+        elif damage["true"] > max(damage["physical"], damage["magic"]):
+            reason = f"Daño verdadero predominante ({damage['true']:.1f}%): las resistencias no lo reducen; se conservan las botas de la build."
+        elif damage["physical"] == damage["magic"]:
+            reason = "Daño físico y mágico equilibrado: se conservan las botas de la build."
+        elif damage["magic"] > damage["physical"]:
+            boots_id = "3111"
+            reason = f"Daño mágico predominante ({damage['magic']:.1f}%): resistencia mágica y tenacidad."
+        else:
+            boots_id = "3047"
+            reason = f"Daño físico predominante ({damage['physical']:.1f}%): armadura y reducción de ataques básicos."
+        if champion_name.casefold() == "cassiopeia":
+            boots_id = ""
+            reason = "Cassiopeia no puede comprar botas."
+        def describe(item_id: str) -> dict[str, str]:
+            return {"id": item_id, "name": self.items[item_id].get("name", item_id)}
         return {
-            "page_1": page_1,
-            "page_2": page_2,
-            "spells": spells,
+            "items": [describe(i) for i in core[:6]],
+            "boots": describe(boots_id) if boots_id in self.items else None,
+            "boots_reason": reason,
+            "note": "La sexta compra es una alternativa tardía; solo hay 6 huecos de inventario." if main_count < 6 and len(core) >= 6 else "",
+            "unresolved": unresolved,
+            "champion_id": next((i for i, name in self.champ_by_id.items() if name.casefold() == champion_name.casefold()), 0),
         }
