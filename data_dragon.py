@@ -1,5 +1,6 @@
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 import requests
@@ -232,6 +233,28 @@ CHAMPION_IMAGE_NAME_ALIASES: dict[str, str] = {
 }
 
 
+def champion_asset_name(champion_name: str) -> str:
+    """
+    Nombre de campeón tal y como lo usan los assets de Data Dragon.
+
+    La API local devuelve nombres como "Renata Glasc" o "Kog'Maw" mientras que
+    Data Dragon los indexa como "Renata" y "KogMaw": el nombre del retrato, el
+    del archivo de datos y el de la URL deben coincidir.
+    """
+    raw_key = str(champion_name or "").strip().lower()
+
+    if raw_key in CHAMPION_IMAGE_NAME_ALIASES:
+        return CHAMPION_IMAGE_NAME_ALIASES[raw_key]
+
+    return (
+        str(champion_name)
+        .replace(" ", "")
+        .replace(".", "")
+        .replace("'", "")
+        .replace("&", "")
+    )
+
+
 def get_champion_icon_path(
     champion_name: str,
     version: str,
@@ -239,12 +262,7 @@ def get_champion_icon_path(
     download: bool = True,
 ) -> Path | None:
     CHAMPION_ICON_DIR.mkdir(parents=True, exist_ok=True)
-    raw_key = champion_name.strip().lower()
-    
-    if raw_key in CHAMPION_IMAGE_NAME_ALIASES:
-        safe_name = CHAMPION_IMAGE_NAME_ALIASES[raw_key]
-    else:
-        safe_name = champion_name.replace(" ", "").replace(".", "").replace("'", "").replace("&", "")
+    safe_name = champion_asset_name(champion_name)
 
     local_path = CHAMPION_ICON_DIR / f"{safe_name}.png"
     if local_path.exists():
@@ -275,6 +293,70 @@ def get_champion_icon_path(
             except requests.RequestException:
                 pass
         return None
+
+
+RUNE_ICON_DIR = DATA_DIR / "rune_icons"
+_RUNE_ICON_INDEX: dict[str, Path] = {}
+_RUNE_ICON_INDEX_STAMP: int | None = None
+
+
+def _normalize_rune_key(name: str) -> str:
+    """Clave tolerante a mayúsculas, espacios, apóstrofos y acentos."""
+    ascii_name = (
+        unicodedata.normalize("NFKD", str(name))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    return re.sub(r"[^a-z0-9]+", "_", ascii_name.casefold()).strip("_")
+
+
+def _rune_icon_local_index() -> dict[str, Path]:
+    """
+    Indexa los iconos de runas ya descargados en ``data/rune_icons``.
+
+    La carpeta mezcla dos convenciones de nombre (la de las rutas fijas y la
+    del catálogo oficial), así que se indexa por nombre normalizado. El índice
+    se reconstruye solo si la carpeta cambia.
+    """
+    global _RUNE_ICON_INDEX, _RUNE_ICON_INDEX_STAMP
+
+    try:
+        stamp = RUNE_ICON_DIR.stat().st_mtime_ns
+    except OSError:
+        stamp = None
+
+    if stamp is not None and stamp == _RUNE_ICON_INDEX_STAMP:
+        return _RUNE_ICON_INDEX
+
+    index: dict[str, Path] = {}
+
+    try:
+        entries = list(RUNE_ICON_DIR.iterdir())
+    except OSError:
+        entries = []
+
+    for path in entries:
+        if path.suffix.lower() != ".png" or not path.is_file():
+            continue
+        index.setdefault(_normalize_rune_key(path.stem), path)
+
+    _RUNE_ICON_INDEX = index
+    _RUNE_ICON_INDEX_STAMP = stamp
+    return index
+
+
+def find_local_rune_icon(*names: str) -> Path | None:
+    """Devuelve el icono local de una runa sin usar la red."""
+    index = _rune_icon_local_index()
+
+    for name in names:
+        if not name:
+            continue
+        path = index.get(_normalize_rune_key(name))
+        if path is not None:
+            return path
+
+    return None
 
 
 def get_rune_icon_path(
@@ -354,10 +436,17 @@ def get_rune_icon_path(
         "Health Scaling": "StatMods/StatModsHealthScalingIcon/StatModsHealthScalingIcon.png",
         "Health": "StatMods/StatModsHealthPlusIcon/StatModsHealthPlusIcon.png",
         "Tenacity and Slow Resist": "StatMods/StatModsTenacityIcon/StatModsTenacityIcon.png",
-        "Dominación": "Styles/Domination/Domination.png",
-        "Precision": "Styles/Precision/Precision.png",
-        "Resolve": "Styles/Resolve/Resolve.png",
-        "Inspiration": "Styles/Inspiration/Inspiration.png",
+        # Iconos de árbol: en el CDN van por id (7201_Precision.png, ...).
+        "Precision": "Styles/7201_Precision.png",
+        "Domination": "Styles/7200_Domination.png",
+        "Sorcery": "Styles/7202_Sorcery.png",
+        "Resolve": "Styles/7204_Resolve.png",
+        "Inspiration": "Styles/7203_Whimsy.png",
+        "Dominación": "Styles/7200_Domination.png",
+        "Grasp of the Undying": "Styles/Resolve/GraspOfTheUndying/GraspOfTheUndying.png",
+        "Aftershock": "Styles/Resolve/VeteranAftershock/VeteranAftershock.png",
+        "Guardian": "Styles/Resolve/Guardian/Guardian.png",
+        "Hail of Blades": "Styles/Domination/HailOfBlades/HailOfBlades.png",
     }
     aliases = {
         "Conquistador": "Conqueror",
@@ -369,13 +458,20 @@ def get_rune_icon_path(
         "Colección de globos": "Eyeball Collection",
         "Cazador de tesoros": "Treasure Hunter",
         "Cometa": "Arcane Comet",
+        "Phase Rush": "Stormraider's Surge",
     }
     lookup_name = aliases.get(rune_name, rune_name)
     asset_path = paths.get(rune_name) or paths.get(lookup_name)
     local_name = re.sub(r"[^A-Za-z0-9._-]+", "_", lookup_name).strip("_")
-    local_path = DATA_DIR / "rune_icons" / f"{local_name}.png"
+    local_path = RUNE_ICON_DIR / f"{local_name}.png"
     if local_path.exists():
         return local_path
+
+    # La caché local mezcla nombres con espacios, guiones y minúsculas: se
+    # consulta por nombre normalizado antes de gastar una descarga.
+    cached_path = find_local_rune_icon(rune_name, lookup_name)
+    if cached_path is not None:
+        return cached_path
 
     if not download:
         return None
@@ -446,7 +542,7 @@ def get_champion_data(
     champion_name: str,
     version: str,
 ) -> dict:
-    safe_name = champion_name.replace(" ", "").replace(".", "")
+    safe_name = champion_asset_name(champion_name)
 
     if safe_name in CHAMPION_MEMORY_CACHE:
         return CHAMPION_MEMORY_CACHE[safe_name]

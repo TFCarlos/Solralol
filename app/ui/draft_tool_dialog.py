@@ -689,6 +689,10 @@ class DraftToolDialog(QDialog):
         build_box.addStretch()
 
         self.btn_import_build = QPushButton("↓  Importar build al cliente")
+        self.btn_import_build.setToolTip(
+            "Crea la página general «Solralol - [campeón] Build» en los conjuntos "
+            "de objetos del cliente, disponible para cualquier campeón"
+        )
         self._style_import_button(self.btn_import_build, "blue")
         self.btn_import_build.clicked.connect(self._import_build)
         build_box.addWidget(self.btn_import_build)

@@ -6,6 +6,8 @@ from PySide6.QtWidgets import QGridLayout, QLabel, QWidget
 
 from data_dragon import get_item_icon_path
 
+from app.services.live_player_metrics_service import player_role
+
 
 BOOT_IDS = {
     1001,
@@ -21,56 +23,16 @@ BOOT_IDS = {
 
 LAST_KNOWN_BOOTS: dict[str, dict] = {}
 
+# Ayuda de los huecos de misión cuando todavía no hay objeto que mostrar.
+QUEST_EMPTY_TOOLTIPS = {
+    "bootsQuestSlot": "Botas no publicadas por Live Client Data",
+    "pinkWardQuestSlot": "Role Quest: Control Wards",
+}
+
 
 def get_player_role(player: dict) -> str:
-    position = str(
-        player.get("position", "")
-    ).upper()
-
-    aliases = {
-        "ADC": "BOTTOM",
-        "APC": "BOTTOM",
-        "MID": "MIDDLE",
-        "SUP": "UTILITY",
-        "SUPPORT": "UTILITY",
-        "JUNG": "JUNGLE",
-    }
-
-    position = aliases.get(position, position)
-
-    if position in {
-        "TOP",
-        "JUNGLE",
-        "MIDDLE",
-        "BOTTOM",
-        "UTILITY",
-    }:
-        return position
-
-    spells = player.get(
-        "summonerSpells",
-        {},
-    )
-
-    spell_names = (
-        str(
-            spells.get(
-                "summonerSpellOne",
-                {},
-            ).get("displayName", "")
-        ).lower(),
-        str(
-            spells.get(
-                "summonerSpellTwo",
-                {},
-            ).get("displayName", "")
-        ).lower(),
-    )
-
-    if any("smite" in name for name in spell_names):
-        return "JUNGLE"
-
-    return "UNKNOWN"
+    """Rol del jugador (misma lógica que el servicio de métricas en vivo)."""
+    return player_role(player)
 
 
 def is_boots(item: dict | None) -> bool:
@@ -193,15 +155,23 @@ def create_item_slots(
     item_catalog: dict,
     version: str,
     size: int = 30,
+    spacing: int = 6,
 ) -> QWidget:
+    """Fila única de inventario: 6 objetos, trinket y hueco de misión.
+
+    Todos los huecos van en la misma fila, repartidos a lo ancho de la
+    tarjeta. La rejilla de dos filas anterior reservaba la última columna
+    para el trinket y empujaba el sexto objeto a una segunda fila, que
+    quedaba descolgado abajo a la izquierda.
+    """
     container = QWidget()
     container.setObjectName("inventoryContainer")
-    container.setFixedHeight(size * 2 + 8)
+    container.setFixedHeight(size)
 
     layout = QGridLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
-    layout.setHorizontalSpacing(4)
-    layout.setVerticalSpacing(4)
+    layout.setHorizontalSpacing(spacing)
+    layout.setVerticalSpacing(0)
 
     items = {
         int(item.get("slot", -1)): item
@@ -216,64 +186,41 @@ def create_item_slots(
     if role == "BOTTOM":
         boots_slot, boots_item = find_boots(player)
 
+    slots: list[tuple[str, dict | None]] = []
+
     for slot in range(6):
         item = items.get(slot)
 
+        # Las botas del tirador se muestran en su hueco de misión.
         if role == "BOTTOM" and slot == boots_slot:
             item = None
 
+        slots.append(("itemSlot", item))
+
+    slots.append(("trinketSlot", items.get(6)))
+
+    if role == "BOTTOM":
+        slots.append(("bootsQuestSlot", boots_item))
+    elif role == "UTILITY":
+        slots.append(("pinkWardQuestSlot", items.get(7) or items.get(8)))
+
+    for column, (object_name, item) in enumerate(slots):
         icon = create_item_icon(
             item=item,
             item_catalog=item_catalog,
             version=version,
             size=size,
-            object_name="itemSlot",
+            object_name=object_name,
         )
 
-        layout.addWidget(
-            icon,
-            slot // 3,
-            slot % 3,
-        )
+        quest_tip = QUEST_EMPTY_TOOLTIPS.get(object_name)
 
-    trinket_icon = create_item_icon(
-        item=items.get(6),
-        item_catalog=item_catalog,
-        version=version,
-        size=size,
-        object_name="trinketSlot",
-    )
-    layout.addWidget(trinket_icon, 0, 3)
+        if quest_tip is not None:
+            icon.setToolTip(
+                item.get("displayName") if item else quest_tip
+            )
 
-    if role == "BOTTOM":
-        boots_icon = create_item_icon(
-            item=boots_item,
-            item_catalog=item_catalog,
-            version=version,
-            size=size,
-            object_name="bootsQuestSlot",
-        )
-        boots_icon.setToolTip(
-            boots_item.get("displayName")
-            if boots_item
-            else "Botas no publicadas por Live Client Data"
-        )
-        layout.addWidget(boots_icon, 1, 3)
-
-    elif role == "UTILITY":
-        ward_item = items.get(7) or items.get(8)
-        ward_icon = create_item_icon(
-            item=ward_item,
-            item_catalog=item_catalog,
-            version=version,
-            size=size,
-            object_name="pinkWardQuestSlot",
-        )
-        ward_icon.setToolTip(
-            ward_item.get("displayName")
-            if ward_item
-            else "Role Quest: Control Wards"
-        )
-        layout.addWidget(ward_icon, 1, 3)
+        layout.addWidget(icon, 0, column)
+        layout.setColumnStretch(column, 1)
 
     return container

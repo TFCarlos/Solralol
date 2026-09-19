@@ -1,4 +1,4 @@
-"""Vista previa offscreen del panel de recomendaciones con afinidad en las compras."""
+"""Vista previa offscreen del panel de recomendaciones con los puntos de afinidad en las compras."""
 import json
 import os
 import sys
@@ -34,8 +34,10 @@ host.show()
 panel.show()
 app.processEvents()
 for row in panel.report["purchases"]:
-    print(row["id"], row["name"], "score:", row["score"], "afinidad:", row["affinity_percent"],
+    afinidad = f"{row['score']:g} pts" if row["score"] is not None else "sin puntuación"
+    print(row["id"], row["name"], "afinidad:", afinidad,
           "falta:", row["missing"], "oro:", row["cost"])
 labels = [w.text() for w in panel.left.findChildren(type(panel.mode), "purchaseAffinity")]
+assert labels and all(label.endswith(" pts") and "%" not in label for label in labels), labels
 print("badges:", labels)
 print("saved:", panel.grab().save("scratch/purchases_affinity_preview.png"))

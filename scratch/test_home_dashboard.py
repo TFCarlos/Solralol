@@ -46,3 +46,8 @@ assert "ESMERALDA II" in window.soloq_tier_badge.text()
 assert "Ahri" in window.most_played_title.text()
 print("[EXITO] Todas las comprobaciones del Dashboard del Invocador en Inicio han pasado.")
 
+# MainWindow arranca hilos de fondo: hay que cerrarla para que quit()+wait()
+# los detenga antes de que el intérprete los destruya (evita el abort de Qt).
+window.close()
+app.processEvents()
+

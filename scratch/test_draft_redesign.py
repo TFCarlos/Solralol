@@ -157,6 +157,10 @@ ok, msg = lcu.import_item_set(266, "Aatrox", "Top", ["1", "2", "3", "4", "5", "5
 check("item_set rechaza duplicados", not ok, msg)
 ok, msg = lcu.import_item_set(0, "Aatrox", "Top", ["1", "2", "3", "4", "5", "6"])
 check("item_set rechaza champion_id 0", not ok, msg)
+# Nunca escribir en un cliente real desde una prueba: se simula "sin cliente".
+lcu.port = None
+lcu.auth_token = None
+lcu.refresh_connection = lambda: False  # type: ignore[method-assign]
 ok, msg = lcu.import_item_set(266, "Aatrox", "Top", ["1", "2", "3", "4", "5", "6"])
 check("item_set sin cliente falla limpio", not ok and "conectado" in msg.lower(), msg)
 

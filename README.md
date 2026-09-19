@@ -37,10 +37,31 @@ en azul y rojo).
 - **Partidas guardadas**: lista de partidas grabadas localmente
   (`LiveMatchTracker`) con sus botones de sincronización/análisis (ver más
   abajo).
-- **Ajustes**: Riot API key, Riot ID y regiones.
-- **Overlay flotante**: una ventana aparte (`OverlayWindow`), con opacidad
-  ajustable y modo "click‑through", que resume la misma información sobre el
-  juego.
+- **Ajustes**: Riot API key, Riot ID, regiones y los ajustes del overlay
+  (qué paneles se muestran, qué paneles solo se ven con TAB pulsado, opacidad,
+  bloqueo de clics, aviso de objetivos y los pitidos de las alertas). La
+  página se organiza en tarjetas independientes (Riot API, IA Gemini, Overlay)
+  dentro de un `QScrollArea`, así que nunca se solapa el contenido. Toda
+  preferencia se escribe con el mismo diccionario en memoria y en disco, de
+  modo que guardar una API key ya no puede ser borrado por el overlay.
+- **Overlay flotante**: tres paneles independientes sin títulos
+  (`app/ui/overlay_window.py`), con opacidad ajustable, modo "click‑through",
+  arrastre con el ratón y posición/visibilidad recordadas en
+  `~/.solralol/settings.json`. Cada panel admite la opción "solo TAB": con
+  `app/services/tab_hotkey_service.py` se sondea la tecla TAB (sin hooks
+  globales) y el panel se muestra únicamente mientras está pulsada, como el
+  marcador del juego.
+  - **Oro**: oro por rol (aliado contra rival) con la diferencia y el total de
+    cada equipo. El oro es el valor de la build más lo ganado por asesinatos,
+    asistencias y granja, con el mismo criterio para los diez jugadores: no baja
+    al comprar en la tienda.
+  - **Alertas**: compras de objetos completos de cualquier jugador y avisos de
+    Dragón, Grumos, Heraldo y Barón un minuto antes de aparecer (los tiempos
+    siguen los del parche 26.1 y se recalculan con los eventos de la API). Cada
+    aviso suena con un pitido distinto: uno para Grumos/Heraldo/Barón, otro para
+    el Dragón y otro cuando un rival completa un objeto.
+  - **Rivales**: el campeón rival más fuerte y el más débil.
+  Los paneles solo se muestran mientras hay una partida activa.
 - **Grabación local de la partida (`LiveMatchTracker`)**: mientras juegas, la
   app toma una "foto" del estado de todos los jugadores cada pocos segundos y
   registra eventos de objetivos (dragón, barón, heraldo, torres,
@@ -142,6 +163,10 @@ Solralol/
 │   │   ├── match_history_cache.py        Caché en disco de cuentas/partidas + cooldown de rate limit
 │   │   ├── match_history_worker.py       Descarga historial/detalle en un QThread
 │   │   ├── game_calculator.py            KDA, valor de inventario, stats de objetos, runas
+│   │   ├── live_player_metrics_service.py Oro estimado, rol, informe de oro y ranking de rivales (overlays)
+│   │   ├── overlay_alert_service.py       Alertas del overlay: compras completas y objetivos inminentes
+│   │   ├── overlay_sound_service.py       Pitidos emulados del overlay (objetivos, dragón, compras rivales)
+│   │   ├── tab_hotkey_service.py          Sondeo de la tecla TAB para mostrar/ocultar paneles del overlay
 │   │   ├── data_dragon_assets.py         Descarga asíncrona (Qt) de iconos de campeón/objeto con caché
 │   │   └── settings_service.py           Carga/guarda ajustes y Riot API key en ~/.solralol/settings.json
 │   ├── ui/
@@ -149,7 +174,7 @@ Solralol/
 │   │   ├── control_window.py             Ventana principal de una arquitectura anterior (SolralolWindow); main_window.py NO la importa (ver LIMPIEZA.txt)
 │   │   ├── champion_card.py              Tarjeta visual de un jugador (usada por main_window.py)
 │   │   ├── inventory.py                  Construcción de los slots de inventario/trinket (usada por champion_card.py)
-│   │   ├── overlay_window.py             Ventana overlay flotante (usada por main_window.py)
+│   │   ├── overlay_window.py             Tres paneles flotantes (oro, alertas, rivales) con ajustes propios
 │   │   ├── styles.py                     Hoja de estilos Qt (QSS) del panel (usada por main_window.py)
 │   │   ├── live_match_analysis_dialog.py Diálogo de análisis LIVE/postpartida por rol
 │   │   └── match_inspector_dialog.py     Diálogo de detalle postpartida del historial (usado por main_window.py)

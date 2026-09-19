@@ -361,13 +361,38 @@ class LCUService:
         except requests.RequestException as exc:
             return False, f"Error de comunicación con LCU: {exc}"
 
+    ITEM_SET_TITLE_PREFIX = "Solralol - "
+    ITEM_SET_UID_PREFIX = "solralol-"
+
+    @staticmethod
+    def _item_set_container(payload: Any) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+        """Normaliza la lectura de conjuntos: contenedor {itemSets} o lista suelta.
+
+        El cliente devuelve un objeto ``{accountId, itemSets, timestamp}``, pero
+        algunas versiones responden con la lista de conjuntos directamente; ambas
+        formas se aceptan para no perder los conjuntos del jugador.
+        """
+        if isinstance(payload, dict) and isinstance(payload.get("itemSets"), list):
+            return [s for s in payload["itemSets"] if isinstance(s, dict)], payload
+        if isinstance(payload, list):
+            return [s for s in payload if isinstance(s, dict)], {}
+        return None
+
     def import_item_set(self, champion_id: int, champion_name: str, role: str,
                         item_ids: list[str], boots_id: str | None = None) -> tuple[bool, str]:
-        """Guarda un conjunto propio sin eliminar los conjuntos del usuario."""
-        if champion_id <= 0 or len(item_ids) != 6 or len(set(item_ids)) != 6:
-            return False, "Se necesitan un campeón válido y seis objetos distintos."
-        ids = item_ids + ([boots_id] if boots_id else [])
-        if not all(str(i).isdigit() and int(i) > 0 for i in ids):
+        """Crea la página general «Solralol - <Campeón> Build» sin tocar los conjuntos del usuario.
+
+        La página es general (sin campeón asociado), así que el cliente la ofrece en
+        la tienda para cualquier campeón. Cada importación sustituye la página
+        anterior de Solralol en lugar de acumular copias.
+        """
+        name = str(champion_name or "").strip()
+        if champion_id <= 0 or not name:
+            return False, "Se necesita un campeón válido para crear la página de build."
+        if len(item_ids) != 6 or len(set(item_ids)) != 6:
+            return False, "Se necesitan seis objetos distintos para la página de build."
+        ids = [str(i) for i in item_ids] + ([str(boots_id)] if boots_id else [])
+        if not all(i.isdigit() and int(i) > 0 for i in ids):
             return False, "La build contiene IDs de objetos inválidos."
         if not self.is_connected():
             return False, "Cliente de League of Legends no está conectado."
@@ -383,26 +408,44 @@ class LCUService:
             existing = self.session.get(url, timeout=3)
             if existing.status_code != 200:
                 return False, "No se pudieron leer los conjuntos existentes; no se ha sobrescrito nada."
-            payload = existing.json()
-            if not isinstance(payload, dict) or not isinstance(payload.get("itemSets"), list):
+            container = self._item_set_container(existing.json())
+            if container is None:
                 return False, "Formato de conjuntos inesperado; no se ha sobrescrito nada."
-            uid = f"solralol-draft-{champion_id}-{role.casefold()}"
+            current_sets, wrapper = container
+
+            title = f"{self.ITEM_SET_TITLE_PREFIX}{name} Build"
+            uid_role = str(role or "").strip().casefold()
+            uid = f"{self.ITEM_SET_UID_PREFIX}build-{champion_id}" + (
+                f"-{uid_role}" if uid_role else ""
+            )
             blocks = [{"type": "Objetos principales (6; última compra alternativa)",
                        "items": [{"id": str(i), "count": 1} for i in item_ids]}]
             if boots_id:
                 blocks.append({"type": "Botas recomendadas contra este equipo",
                                "items": [{"id": str(boots_id), "count": 1}]})
             item_set = {
-                "uid": uid, "title": f"Solralol - {champion_name} ({role})",
-                "type": "custom", "map": "SR", "mode": "CLASSIC",
-                "associatedMaps": [11], "associatedChampions": [champion_id],
+                "uid": uid, "title": title,
+                "type": "custom", "map": "any", "mode": "any",
+                "associatedMaps": [11, 12], "associatedChampions": [],
                 "preferredItemSlots": [], "sortrank": 0, "startedFrom": "blank",
                 "blocks": blocks,
             }
-            payload["itemSets"] = [s for s in payload["itemSets"] if s.get("uid") != uid] + [item_set]
+            # Página general única: la anterior de Solralol se reemplaza, la del
+            # jugador se conserva intacta.
+            kept = [
+                s for s in current_sets
+                if not str(s.get("uid", "")).startswith(self.ITEM_SET_UID_PREFIX)
+            ]
+            payload = dict(wrapper)
+            payload["itemSets"] = kept + [item_set]
+            payload.setdefault("accountId", 0)
+            payload.setdefault("timestamp", 0)
             response = self.session.put(url, json=payload, timeout=3)
             if response.status_code in (200, 201, 204):
-                return True, "Build guardada en los conjuntos de objetos del cliente."
+                return True, (
+                    f"Página general «{title}» creada en el cliente "
+                    "(disponible para cualquier campeón)."
+                )
             return False, f"El cliente rechazó la build ({response.status_code})."
         except (requests.RequestException, ValueError, TypeError) as exc:
             return False, f"Error al importar la build: {exc}"

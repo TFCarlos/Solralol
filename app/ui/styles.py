@@ -25,8 +25,8 @@ QLabel#brandMark {
 
 QLabel#emptyItemSlot {
     background: rgba(5, 12, 24, 175);
-    border: 1px solid rgba(128, 167, 215, 125);
-    border-radius: 4px;
+    border: 1px dashed rgba(128, 167, 215, 110);
+    border-radius: 7px;
 }
 
 QLabel#championName {
@@ -259,6 +259,7 @@ QSlider::handle:horizontal {
     background: #d9ae4f;
 }
 
+QScrollArea#settingsScrollArea,
 QScrollArea#liveScrollArea,
 QScrollArea#scrollArea {
     border: none;
@@ -1665,4 +1666,284 @@ QPushButton#secondaryAiButton:hover {
     background: rgba(51, 65, 85, 210);
 }
 
+/* ---------- Pestaña «Partida en vivo» ---------- */
+
+QFrame#liveStatusCard {
+    border: 1px solid rgba(217, 174, 79, 105);
+    border-radius: 16px;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 1,
+        stop: 0 rgba(24, 54, 92, 225),
+        stop: 0.55 rgba(11, 21, 38, 232),
+        stop: 1 rgba(42, 27, 22, 225)
+    );
+}
+
+QLabel#liveEyebrow {
+    color: #d9ae4f;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+QLabel#liveDot {
+    border: none;
+    border-radius: 4px;
+}
+
+QLabel#liveDot[state="live"] {
+    background: #4ade80;
+}
+
+QLabel#liveDot[state="idle"] {
+    background: #5b6a80;
+}
+
+QFrame#liveClock {
+    border: 1px solid rgba(217, 174, 79, 90);
+    border-radius: 10px;
+    background: rgba(9, 17, 30, 195);
+}
+
+QLabel#liveClockCaption {
+    color: #8fa2bd;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+QFrame#liveTeamPanel {
+    border: 1px solid rgba(90, 130, 180, 65);
+    border-radius: 16px;
+    background: rgba(10, 18, 31, 150);
+}
+
+QFrame#liveTeamPanel[side="ally"] {
+    border-color: rgba(74, 150, 255, 100);
+    background: rgba(11, 25, 44, 180);
+}
+
+QFrame#liveTeamPanel[side="enemy"] {
+    border-color: rgba(240, 96, 118, 100);
+    background: rgba(31, 14, 23, 180);
+}
+
+QLabel#liveTeamTag {
+    color: #9dc7ff;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+QFrame#liveTeamPanel[side="enemy"] QLabel#liveTeamTag {
+    color: #ffb3c0;
+}
+
+QLabel#liveTeamSide {
+    color: #7d8ea6;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border: 1px solid rgba(120, 160, 210, 70);
+    border-radius: 8px;
+}
+
+QLabel#liveTeamSummary {
+    color: #a9bad2;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+/* ---------- Tarjeta de jugador ---------- */
+
+QFrame#playerCard,
+QFrame#playerCardMe {
+    background: transparent;
+}
+
+QLabel#cardChampionIcon {
+    border: 1px solid rgba(120, 170, 225, 130);
+    border-radius: 10px;
+    background: rgba(5, 11, 21, 190);
+    color: #dbe8ff;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+QFrame[team="order"] QLabel#cardChampionIcon {
+    border-color: rgba(90, 165, 255, 170);
+}
+
+QFrame[team="chaos"] QLabel#cardChampionIcon {
+    border-color: rgba(240, 110, 130, 170);
+}
+
+QFrame#playerCardMe QLabel#cardChampionIcon {
+    border: 2px solid rgba(217, 174, 79, 215);
+}
+
+QLabel#cardChampionName {
+    color: #f4f7ff;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+QLabel#cardPlayerId {
+    color: #93a5bf;
+    font-size: 10px;
+}
+
+QLabel#cardRoleChip {
+    color: #cdddf2;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    padding: 1px 6px;
+    border: 1px solid rgba(130, 170, 220, 90);
+    border-radius: 7px;
+    background: rgba(20, 40, 66, 190);
+}
+
+QLabel#cardLevelBadge {
+    color: #dcecff;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 3px 9px;
+    border: 1px solid rgba(120, 170, 225, 140);
+    border-radius: 9px;
+    background: rgba(24, 52, 86, 225);
+}
+
+QFrame[team="chaos"] QLabel#cardLevelBadge {
+    border-color: rgba(240, 120, 140, 140);
+    background: rgba(62, 25, 38, 225);
+}
+
+QLabel#cardMeBadge {
+    color: #241a05;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 9px;
+    border: 1px solid #f0cc70;
+    border-radius: 9px;
+    background: #d9ae4f;
+}
+
+QFrame#cardDivider {
+    background: rgba(120, 160, 210, 45);
+}
+
+QFrame#cardStat {
+    border: 1px solid rgba(105, 145, 195, 60);
+    border-radius: 9px;
+    background: rgba(6, 14, 26, 165);
+}
+
+QLabel#cardStatLabel {
+    color: #8fa2bd;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+QLabel#cardStatValue {
+    color: #eef5ff;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+QFrame#cardRunes {
+    border: 1px solid rgba(140, 110, 190, 85);
+    border-radius: 9px;
+    background: rgba(18, 12, 32, 175);
+}
+
+QLabel#cardRuneIcon {
+    border: 1px solid rgba(180, 150, 235, 135);
+    border-radius: 13px;
+    background: rgba(9, 6, 18, 210);
+    color: #d9c6ff;
+    font-size: 12px;
+}
+
+QLabel#cardRuneTreeIcon {
+    border: 1px solid rgba(140, 160, 200, 95);
+    border-radius: 9px;
+    background: rgba(9, 6, 18, 200);
+    color: #9fb0c8;
+    font-size: 9px;
+}
+
+QLabel#cardRuneKeystone {
+    font-size: 11px;
+    font-weight: 800;
+}
+
+QLabel#cardRuneSeparator {
+    color: #6f7f96;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+QFrame#cardChips {
+    border: 1px solid rgba(105, 145, 195, 55);
+    border-radius: 9px;
+    background: rgba(6, 13, 24, 150);
+}
+
+QLabel#cardChip {
+    border: 1px solid rgba(105, 145, 195, 70);
+    border-radius: 6px;
+    background: rgba(12, 24, 42, 205);
+    color: #cfdcee;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#cardChip[kind="hp"] { color: #7ee787; border-color: rgba(126, 231, 135, 115); }
+QLabel#cardChip[kind="ad"] { color: #ffab73; border-color: rgba(255, 171, 115, 115); }
+QLabel#cardChip[kind="ap"] { color: #8ab4ff; border-color: rgba(138, 180, 255, 115); }
+QLabel#cardChip[kind="armor"] { color: #ffd479; border-color: rgba(255, 212, 121, 115); }
+QLabel#cardChip[kind="mr"] { color: #c79bff; border-color: rgba(199, 155, 255, 115); }
+QLabel#cardChip[kind="crit"] { color: #ffd479; border-color: rgba(255, 212, 121, 115); }
+QLabel#cardChip[kind="lethality"] { color: #ffab73; border-color: rgba(255, 171, 115, 115); }
+QLabel#cardChip[kind="pen"] { color: #8ab4ff; border-color: rgba(138, 180, 255, 115); }
+QLabel#cardChip[kind="lifesteal"] { color: #7ee787; border-color: rgba(126, 231, 135, 115); }
+QLabel#cardChip[kind="grievous"] { color: #ff8080; border-color: rgba(255, 128, 128, 115); }
+QLabel#cardChip[kind="more"] { color: #a9bad2; border-color: rgba(169, 186, 210, 115); }
+
+QLabel#cardChipsEmpty {
+    color: #7d8ea6;
+    font-size: 10px;
+}
+
+QLabel#cardInventoryTitle {
+    color: #d9ae4f;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+QLabel#cardInventoryCount {
+    color: #8fa2bd;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#itemSlot,
+QLabel#trinketSlot,
+QLabel#bootsQuestSlot,
+QLabel#pinkWardQuestSlot {
+    border: 1px solid rgba(125, 165, 215, 95);
+    border-radius: 7px;
+    background: rgba(5, 12, 22, 190);
+}
+
+QLabel#itemSlot:hover,
+QLabel#trinketSlot:hover,
+QLabel#bootsQuestSlot:hover,
+QLabel#pinkWardQuestSlot:hover {
+    border-color: rgba(217, 174, 79, 190);
+}
 """

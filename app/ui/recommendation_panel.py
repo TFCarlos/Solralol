@@ -139,6 +139,19 @@ class RecommendationPanel(QFrame):
                                         f"synergy-live-item:{ident}:{size}", size)
         return label
 
+    def champion_icon(self, champion, size=30):
+        """Retrato del campeón enemigo; sin assets queda el texto de respaldo."""
+        label = self.label(str(champion)[:3].upper(), "icon")
+        label.setObjectName("enemyChampionIcon")
+        label.setFixedSize(size, size)
+        label.setWordWrap(False)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setToolTip(str(champion))
+        if self.assets is not None:
+            self.assets.set_label_image(label, self.assets.champion_url(champion),
+                                        f"synergy-live-enemy:{champion}:{size}", size)
+        return label
+
     def update_recommendations(self, session):
         self._last_session = session
         report = self.engine.analyze(session)
@@ -250,13 +263,12 @@ class RecommendationPanel(QFrame):
 
     @staticmethod
     def _affinity_tooltip(entry):
-        """Explica de dónde sale el porcentaje de afinidad de una compra sugerida."""
-        percent = entry.get("affinity_percent")
+        """Explica de dónde salen los puntos de afinidad de una compra sugerida."""
         score = entry.get("score")
-        detail = f" ({score:g} pts)" if score is not None else ""
-        return (f"Afinidad estimada de este análisis: {percent:.1f} %{detail} respecto al mejor "
-                "candidato verificado de la partida. Es una heurística relativa, no una "
-                "probabilidad de victoria.")
+        detail = f"{score:g} pts" if score is not None else "sin puntuación"
+        return (f"Afinidad de esta compra: {detail}, en la misma escala que las recomendaciones "
+                "de sinergia (sinergia con el campeón y contramedidas rivales incluidas). "
+                "Son puntos heurísticos, no un porcentaje ni una probabilidad de victoria.")
 
     def _brief(self, rec):
         """First reason as a single compact line for the item card."""
@@ -332,9 +344,9 @@ class RecommendationPanel(QFrame):
                 detail = f"Falta: {', '.join(entry['missing'])}" if entry.get("missing") else "Complétalo en tienda"
                 text.addWidget(self.label(f"{detail} · {entry['cost']:,} oro pendiente", "muted"))
                 row.addLayout(text, 1)
-                percent = entry.get("affinity_percent")
-                if percent is not None:
-                    badge = self.label(f"Afinidad {percent:.1f} %", "score")
+                score = entry.get("score")
+                if score is not None:
+                    badge = self.label(f"{score:g} pts", "score")
                     badge.setObjectName("purchaseAffinity")
                     badge.setWordWrap(False)
                     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -371,17 +383,36 @@ class RecommendationPanel(QFrame):
             card, body = self.card(f"enemyCard_{threat['key']}")
             body.setContentsMargins(10, 8, 10, 8)
             body.setSpacing(5)
+            # Una sola línea compacta: retrato · nivel · campeón · KDA · fuerza · coste de build.
+            heading = QHBoxLayout()
+            heading.setSpacing(8)
+            heading.addWidget(self.champion_icon(threat["champion"], 30))
+            level = self.label(f"Nv {threat['level'] or '—'}", "eyebrow")
+            level.setObjectName("enemyLevel")
+            level.setWordWrap(False)
+            level.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+            heading.addWidget(level)
+            name = self.label(threat["champion"], "section")
+            name.setObjectName("enemyChampionName")
+            name.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+            heading.addWidget(name)
+            kda = self.label(threat["kda"], "muted")
+            kda.setObjectName("enemyKda")
+            kda.setWordWrap(False)
+            kda.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+            heading.addWidget(kda)
+            heading.addStretch(1)
             strength_label = threat["strength_label"]
             if strength_label:
                 role = "strong" if strength_label.startswith("MÁS FUERTE") else (
                     "weak" if strength_label.startswith("MÁS DÉBIL") else "muted")
                 badge = self.label(strength_label, role)
                 badge.setObjectName("enemyStrengthBadge")
+                badge.setWordWrap(False)
+                badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                badge.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
                 badge.setToolTip("Fuerza relativa estimada; más débil no significa una baja segura.")
-                body.addWidget(badge)
-            heading = QHBoxLayout()
-            heading.setSpacing(8)
-            heading.addWidget(self.label(f"{threat['champion']} · Nv {threat['level'] or '—'} · {threat['kda']}", "section"), 1)
+                heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
             inventory = threat["inventory"]
             value = inventory["value"]
             gold_text = "Build: oro desconocido" if value is None else (
@@ -456,7 +487,9 @@ class RecommendationPanel(QFrame):
     def _reflow(self):
         if not hasattr(self, "dashboard_grid"):
             return
-        columns = 2 if self.width() >= 980 else 1
+        # El encabezado de cada rival ocupa una sola línea (retrato, nivel, campeón, KDA,
+        # fuerza y coste), así que la vista de dos columnas necesita algo más de ancho.
+        columns = 2 if self.width() >= 1080 else 1
         if columns == self._columns:
             return
         self._columns = columns

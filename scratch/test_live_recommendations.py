@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, Qt
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 from app.services.live_recommendation_service import LiveRecommendationService, canonical
 from app.ui.recommendation_panel import RecommendationPanel
@@ -279,22 +279,19 @@ class EngineTests(unittest.TestCase):
         self.assertIn(self.engine.name("3123"), by_id["3033"]["reason"])
         self.assertLessEqual(len(r["purchases"]), 3)
 
-    def test_purchases_share_the_affinity_scale_and_percentage(self):
+    def test_purchases_share_the_affinity_scale(self):
         s = fixture()
         s["snapshots"][0]["players"]["me"]["items"] = [3123, 1001]
         r = self.engine.analyze(s)
         candidates = r["recommendations"] + r["purchases"]
-        best = max(row["score"] for row in candidates)
-        self.assertEqual([row["affinity_percent"] for row in candidates if row["score"] == best],
-                         [100.0])
+        self.assertTrue(r["purchases"])
+        # La afinidad se expone como puntos propios, nunca como porcentaje derivado.
         for row in candidates:
-            self.assertIsNotNone(row["affinity_percent"])
-            self.assertGreaterEqual(row["affinity_percent"], 0)
-            self.assertLessEqual(row["affinity_percent"], 100)
-            self.assertEqual(row["affinity_percent"], round(100.0 * row["score"] / best, 1))
+            self.assertIsNotNone(row["score"])
+            self.assertGreater(row["score"], 0)
+            self.assertNotIn("affinity_percent", row)
         by_id = {p["id"]: p for p in r["purchases"]}
         self.assertIn("3033", by_id)
-        self.assertLess(by_id["3033"]["affinity_percent"], 100)
         # Las compras usan exactamente la misma afinidad que las recomendaciones.
         top = r["recommendations"][0]
         item = {**self.engine.catalog[top["id"]], **self.engine.strict.get(top["id"], {}),
@@ -302,8 +299,13 @@ class EngineTests(unittest.TestCase):
         scored = self.engine._score_candidate(top["id"], item, r["profile"], r["champion"],
                                               r["owned"], r["threats"], r["physical_share"])
         self.assertEqual(scored["score"], top["score"])
+        purchase = {**self.engine.catalog["3033"], **self.engine.strict.get("3033", {}),
+                    "name": self.engine.catalog["3033"].get("name", "3033"), "tier": "Legendary"}
+        scored_purchase = self.engine._score_candidate("3033", purchase, r["profile"], r["champion"],
+                                                       r["owned"], r["threats"], r["physical_share"])
+        self.assertEqual(scored_purchase["score"], by_id["3033"]["score"])
 
-    def test_purchases_without_champion_profile_report_no_affinity(self):
+    def test_purchases_without_champion_profile_report_no_score(self):
         engine = LiveRecommendationService(self.catalog, champions={})
         s = fixture()
         s["snapshots"][0]["players"]["me"]["items"] = [3123, 1001]
@@ -312,7 +314,7 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(r["purchases"])
         for entry in r["purchases"]:
             self.assertIsNone(entry["score"])
-            self.assertIsNone(entry["affinity_percent"])
+            self.assertNotIn("affinity_percent", entry)
 
     def test_next_buy_respects_current_gold(self):
         self.assertIsNone(self.engine._next_buy("3123", ["1036"], None))
@@ -408,7 +410,7 @@ class PanelTests(unittest.TestCase):
         self.assertTrue({w.objectName() for w in cards} & {"purchaseItem_3033", "purchaseItem_6609"})
         self.assertLessEqual(len(cards), 3)
 
-    def test_purchases_render_their_affinity_percentage(self):
+    def test_purchases_render_their_affinity_points(self):
         s = fixture()
         s["snapshots"][0]["players"]["me"]["items"] = [3123, 1001]
         self.panel.update_recommendations(s)
@@ -422,17 +424,18 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(len(badges), len(report))
         for card in cards:
             ident = card.objectName().split("_", 1)[1]
-            percent = report[ident]["affinity_percent"]
-            self.assertIsNotNone(percent)
+            score = report[ident]["score"]
+            self.assertIsNotNone(score)
             badge = card.findChild(QLabel, "purchaseAffinity")
             self.assertTrue(badge.isVisible())
-            self.assertEqual(badge.text(), f"Afinidad {percent:.1f} %")
-            self.assertIn(f"{percent:.1f} %", badge.toolTip())
+            self.assertEqual(badge.text(), f"{score:g} pts")
+            self.assertIn(f"{score:g} pts", badge.toolTip())
             self.assertIn("Afinidad", badge.toolTip())
+            self.assertNotIn(" %", badge.text())
             self.assertTrue(card.rect().contains(badge.mapTo(card, badge.rect().topLeft())))
             self.assertTrue(card.rect().contains(badge.mapTo(card, badge.rect().bottomRight())))
 
-    def test_purchases_without_percentage_hide_the_badge(self):
+    def test_purchases_without_score_hide_the_badge(self):
         s = fixture()
         s["snapshots"][0]["players"]["me"]["items"] = [3123, 1001]
         self.panel.engine.champions = {}
@@ -440,7 +443,7 @@ class PanelTests(unittest.TestCase):
         self.render(1160)
         self.assertTrue(self.panel.report["purchases"])
         for entry in self.panel.report["purchases"]:
-            self.assertIsNone(entry["affinity_percent"])
+            self.assertIsNone(entry["score"])
         self.assertEqual(self.panel.left.findChildren(QLabel, "purchaseAffinity"), [])
 
     def test_compact_panel_end_to_end(self):
@@ -547,9 +550,11 @@ class PanelTests(unittest.TestCase):
 
     def test_no_routes_layout_resizing_and_plain_text(self):
         self.panel.update_recommendations(fixture())
-        for width in (1580, 1160, 800):
+        # El encabezado de rivales ocupa una línea completa, así que dos columnas
+        # solo entran a partir de 1080 px de ancho.
+        for width in (1580, 1160, 1080, 1079, 800):
             self.render(width)
-            self.assertEqual(self.panel._columns, 1 if width < 980 else 2)
+            self.assertEqual(self.panel._columns, 1 if width < 1080 else 2)
             self.assertEqual(self.panel.scroll.horizontalScrollBar().maximum(), 0)
             self.assertFalse(self.panel.findChildren(QPushButton))
             self.assertLessEqual(self.panel.content.width(), self.panel.scroll.viewport().width())
@@ -615,6 +620,54 @@ class PanelTests(unittest.TestCase):
         self.assertFalse(card.findChildren(QLabel, "enemyItemIcon"))
         self.assertFalse(card.findChildren(QLabel, "enemyInventoryBadge"))
         self.assertEqual(card.findChild(QLabel, "enemyBuildGold").text(), "Build: 0 oro")
+
+    def test_enemy_card_header_order_with_champion_portrait(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from PySide6.QtGui import QPixmap, QColor
+
+        def paint(label, url, key, size):
+            image = QPixmap(size, size)
+            image.fill(QColor("#55aa88"))
+            label.setPixmap(image)
+        assets = SimpleNamespace(item_url=lambda i: str(i), champion_url=lambda c: c,
+                                 set_label_image=Mock(side_effect=paint))
+        self.panel.configure(assets, self.catalog)
+        s = fixture(enemies=("Lux", "Garen", "Jinx"))
+        points = s["snapshots"][0]["players"]
+        points["e0"].update(items=[3083, 3031], level=16)
+        points["e1"]["level"] = 10
+        points["e2"]["level"] = 6
+        self.panel.update_recommendations(s)
+        self.render(1160)
+        expected = {"e0": "MÁS FUERTE", "e1": None, "e2": "MÁS DÉBIL"}
+        for key, strength in expected.items():
+            with self.subTest(enemy=key):
+                card = self.panel.right.findChild(QWidget, f"enemyCard_{key}")
+                champion = s["players"][key]["champion_name"]
+                portrait = card.findChild(QLabel, "enemyChampionIcon")
+                self.assertEqual(portrait.toolTip(), champion)
+                self.assertEqual((portrait.width(), portrait.height()), (30, 30))
+                self.assertFalse(portrait.pixmap().isNull())
+                level = card.findChild(QLabel, "enemyLevel")
+                self.assertEqual(level.text(), f"Nv {points[key]['level']}")
+                name = card.findChild(QLabel, "enemyChampionName")
+                self.assertEqual(name.text(), champion)
+                kda = card.findChild(QLabel, "enemyKda")
+                self.assertTrue(kda.text())
+                gold = card.findChild(QLabel, "enemyBuildGold")
+                badge = card.findChild(QLabel, "enemyStrengthBadge")
+                self.assertEqual(badge.text() if badge else None, strength)
+                # Orden del encabezado: retrato · Nv · campeón · KDA · fuerza · coste de build.
+                row = [portrait, level, name, kda] + ([badge] if badge else []) + [gold]
+                positions = [w.mapTo(card, QPoint(0, 0)).x() for w in row]
+                self.assertEqual(positions, sorted(positions))
+                # La fuerza ya no va encima del nombre: comparte su fila.
+                if badge:
+                    name_rect = QRect(name.mapTo(card, QPoint(0, 0)), name.size())
+                    center = badge.mapTo(card, QPoint(0, 0)).y() + badge.height() // 2
+                    self.assertLessEqual(name_rect.top(), center)
+                    self.assertLessEqual(center, name_rect.bottom())
 
     def test_enemy_card_unknown_and_partial_value(self):
         s = fixture(enemies=("Lux",))

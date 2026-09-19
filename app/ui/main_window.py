@@ -17,6 +17,7 @@ from PySide6.QtGui import (
 
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -37,6 +38,8 @@ from app.services.live_match_tracker import (
     LiveMatchTracker,
 )
 
+from app.services.game_calculator import get_inventory_value
+
 from app.ui.live_match_analysis_dialog import (
     LiveMatchAnalysisDialog,
 )
@@ -49,6 +52,7 @@ from app.services.data_dragon_assets import (
     DataDragonAssetService,
 )
 from app.services.settings_service import SettingsService
+from app.services.tab_hotkey_service import TabHotkeyService
 from app.services.live_data_worker import LiveDataWorker
 from app.services.match_history_worker import (
     MatchHistoryWorker,
@@ -93,6 +97,9 @@ class Backdrop(QWidget):
 
 class MainWindow(QMainWindow):
     """Ventana única de Solralol."""
+
+    # Índice de la pestaña "Partida en vivo" dentro de self.pages.
+    LIVE_PAGE_INDEX = 2
 
     snapshot_requested = Signal()
 
@@ -146,6 +153,9 @@ class MainWindow(QMainWindow):
             "gemini_api_key",
             "",
         )
+
+        self.tab_hotkey = TabHotkeyService(self)
+        self.tab_hotkey.start()
 
         self.riot_game_name = self.settings.get(
             "riot_game_name",
@@ -202,8 +212,17 @@ class MainWindow(QMainWindow):
         self.current_live_session: dict | None = None
         self.live_analysis_dialog: LiveMatchAnalysisDialog | None = None
         self.draft_tool_dialog: DraftToolDialog | None = None
+        # Se activa al cerrarse el draft y se consume cuando la partida arranca
+        # (es decir, cuando termina la pantalla de carga): el panel salta solo a
+        # "Partida en vivo".
+        self.pending_live_navigation = False
 
-        self.overlay = OverlayWindow(item_catalog)
+        self.overlay = OverlayWindow(
+            item_catalog,
+            settings_service=self.settings_service,
+            settings=self.settings,
+        )
+        self.overlay.connect_tab_hotkey(self.tab_hotkey)
 
         self.setWindowTitle("Solralol")
         self.resize(1600, 1000)
@@ -213,6 +232,8 @@ class MainWindow(QMainWindow):
         self.data_dragon_assets = (
             DataDragonAssetService(self)
         )
+        self.overlay.set_assets(self.data_dragon_assets)
+        self.overlay.state_changed.connect(self.sync_overlay_settings_ui)
         self.setStyleSheet(CONTROL_WINDOW_STYLE)
         self.setup_live_data_worker()
         self.setup_match_history_worker()
@@ -224,6 +245,12 @@ class MainWindow(QMainWindow):
         self.poll_timer.start(1000)
 
         self.request_snapshot()
+
+        # Primera pasada de layout: showMaximized() en offscreen y en algunos
+        # entornos no llena la ventana al instante y deja un scroll residual
+        # en el panel de la partida en vivo.
+        self.backdrop.adjustSize()
+        self.pages.adjustSize()
 
 
     def build_ui(self) -> None:
@@ -311,7 +338,7 @@ class MainWindow(QMainWindow):
         )
         self.live_button = self.create_nav_button(
             "Partida en vivo",
-            2,
+            self.LIVE_PAGE_INDEX,
         )
         self.saved_games_button = self.create_nav_button(
             "Partidas guardadas",
@@ -841,16 +868,31 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(12)
 
         status_card = QFrame()
-        status_card.setObjectName("sectionCard")
+        status_card.setObjectName("liveStatusCard")
         status_layout = QHBoxLayout(status_card)
-        status_layout.setContentsMargins(22, 18, 22, 18)
-        status_layout.setSpacing(16)
+        status_layout.setContentsMargins(22, 16, 22, 16)
+        status_layout.setSpacing(18)
 
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(4)
+        info_layout.setSpacing(3)
+
+        badge_row = QHBoxLayout()
+        badge_row.setSpacing(8)
+
+        self.live_dot = QLabel()
+        self.live_dot.setObjectName("liveDot")
+        self.live_dot.setFixedSize(9, 9)
+        self.live_dot.setProperty("state", "idle")
+        badge_row.addWidget(self.live_dot)
+
+        self.live_badge = QLabel("EN ESPERA")
+        self.live_badge.setObjectName("liveEyebrow")
+        badge_row.addWidget(self.live_badge)
+        badge_row.addStretch(1)
+        info_layout.addLayout(badge_row)
 
         title = QLabel("Partida en vivo")
         title.setObjectName("sectionTitle")
@@ -876,9 +918,7 @@ class MainWindow(QMainWindow):
             self.open_live_analysis_button
         )
 
-        self.live_time_label = QLabel("—")
-        self.live_time_label.setObjectName("liveTime")
-        status_layout.addWidget(self.live_time_label)
+        status_layout.addWidget(self.create_live_clock())
 
         layout.addWidget(status_card)
 
@@ -895,7 +935,7 @@ class MainWindow(QMainWindow):
 
         self.cards_layout = QVBoxLayout(self.cards_widget)
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
-        self.cards_layout.setSpacing(14)
+        self.cards_layout.setSpacing(10)
 
         self.live_scroll_area.setWidget(self.cards_widget)
         layout.addWidget(self.live_scroll_area, 1)
@@ -909,6 +949,30 @@ class MainWindow(QMainWindow):
         self.cards_layout.addWidget(self.live_empty_label, 1)
 
         return page
+
+    def create_live_clock(self) -> QFrame:
+        """Reloj de la partida que acompaña al botón de análisis LIVE."""
+        clock = QFrame()
+        clock.setObjectName("liveClock")
+        clock.setMinimumWidth(118)
+
+        layout = QVBoxLayout(clock)
+        layout.setContentsMargins(16, 5, 16, 5)
+        layout.setSpacing(0)
+
+        caption = QLabel("DURACIÓN")
+        caption.setObjectName("liveClockCaption")
+        caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(caption)
+
+        self.live_time_label = QLabel("—")
+        self.live_time_label.setObjectName("liveTime")
+        self.live_time_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        layout.addWidget(self.live_time_label)
+
+        return clock
     
     def create_saved_games_page(self) -> QWidget:
         page = QWidget()
@@ -1511,32 +1575,108 @@ class MainWindow(QMainWindow):
         page = QWidget()
         page.setObjectName("settingsPage")
 
+        scroll = QScrollArea()
+        scroll.setObjectName("settingsScrollArea")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(18)
+        layout.setSpacing(0)
+        layout.addWidget(scroll)
 
-        panel = QFrame()
-        panel.setObjectName("sectionCard")
-        panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(22, 20, 22, 20)
-        panel_layout.setSpacing(16)
+        content = QWidget()
+        content.setObjectName("settingsContent")
+        scroll.setWidget(content)
 
-        title = QLabel("Ajustes")
-        title.setObjectName("sectionTitle")
-        panel_layout.addWidget(title)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(18)
+
+        for card in self._settings_cards():
+            content_layout.addWidget(card)
+
+        content_layout.addStretch(1)
+
+        return page
+
+    def _settings_cards(self) -> list[QWidget]:
+        return [
+            self._settings_api_card(),
+            self._settings_gemini_card(),
+            self._settings_overlay_card(),
+        ]
+
+    def _settings_card(self, title: str) -> tuple[QFrame, QVBoxLayout]:
+        card = QFrame()
+        card.setObjectName("sectionCard")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(22, 20, 22, 20)
+        card_layout.setSpacing(12)
+
+        header = QLabel(title)
+        header.setObjectName("sectionTitle")
+        card_layout.addWidget(header)
+
+        return card, card_layout
+
+    def _settings_description(self, text: str) -> QLabel:
+        description = QLabel(text)
+        description.setObjectName("mutedText")
+        description.setWordWrap(True)
+        description.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.MinimumExpanding,
+        )
+
+        return description
+
+    def _settings_slider_row(
+        self,
+        label: str,
+        low: int,
+        high: int,
+        step: int,
+        start: int,
+    ) -> tuple[QHBoxLayout, QSlider, QLabel]:
+        row = QHBoxLayout()
+        row.setSpacing(10)
+
+        caption = QLabel(label)
+        caption.setObjectName("settingsLabel")
+        caption.setMinimumWidth(150)
+        row.addWidget(caption)
+
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(low, high)
+        slider.setSingleStep(step)
+        slider.setValue(start)
+        row.addWidget(slider, 1)
+
+        value = QLabel()
+        value.setObjectName("opacityValue")
+        value.setMinimumWidth(46)
+        value.setAlignment(Qt.AlignmentFlag.AlignRight)
+        row.addWidget(value)
+
+        return row, slider, value
+
+    def _settings_api_card(self) -> QWidget:
+        card, card_layout = self._settings_card("Ajustes")
 
         api_title = QLabel("Riot API")
         api_title.setObjectName("settingsGroupTitle")
-        panel_layout.addWidget(api_title)
+        card_layout.addWidget(api_title)
 
-        api_description = QLabel(
-            "Introduce tu Riot API key para habilitar los datos de "
-            "invocador, historial de partidas y estadísticas externas. "
-            "La clave se guarda localmente en tu configuración."
+        card_layout.addWidget(
+            self._settings_description(
+                "Introduce tu Riot API key para habilitar los datos de "
+                "invocador, historial de partidas y estadísticas externas. "
+                "La clave se guarda localmente en tu configuración."
+            )
         )
-        api_description.setObjectName("mutedText")
-        api_description.setWordWrap(True)
-        panel_layout.addWidget(api_description)
 
         self.api_key_input = QLineEdit()
         self.api_key_input.setObjectName("apiKeyInput")
@@ -1547,7 +1687,7 @@ class MainWindow(QMainWindow):
             QLineEdit.EchoMode.Password
         )
         self.api_key_input.setText(self.riot_api_key)
-        panel_layout.addWidget(self.api_key_input)
+        card_layout.addWidget(self.api_key_input)
 
         api_actions = QHBoxLayout()
         api_actions.setSpacing(10)
@@ -1573,101 +1713,285 @@ class MainWindow(QMainWindow):
         api_actions.addWidget(self.clear_api_key_button)
 
         api_actions.addStretch(1)
-        panel_layout.addLayout(api_actions)
+        card_layout.addLayout(api_actions)
 
         self.api_key_status = QLabel()
         self.api_key_status.setObjectName("apiKeyStatus")
         self.update_api_key_status()
 
-        panel_layout.addWidget(self.api_key_status)
+        card_layout.addWidget(self.api_key_status)
 
-        gemini_title = QLabel("IA Gemini (Google AI Studio)")
-        gemini_title.setObjectName("settingsGroupTitle")
-        panel_layout.addWidget(gemini_title)
+        return card
 
-        gemini_description = QLabel(
-            "Introduce tu API key de Google AI Studio (Gemini) para habilitar "
-            "el re-análisis inteligente de campeones desde la pestaña de edición."
+    def _settings_gemini_card(self) -> QWidget:
+        card, card_layout = self._settings_card(
+            "IA Gemini (Google AI Studio)"
         )
-        gemini_description.setObjectName("mutedText")
-        gemini_description.setWordWrap(True)
-        panel_layout.addWidget(gemini_description)
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Introduce tu API key de Google AI Studio (Gemini) para "
+                "habilitar el re-análisis inteligente de campeones desde "
+                "la pestaña de edición."
+            )
+        )
 
         self.gemini_api_key_input = QLineEdit()
         self.gemini_api_key_input.setObjectName("apiKeyInput")
         self.gemini_api_key_input.setPlaceholderText("AIzaSy...")
-        self.gemini_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.gemini_api_key_input.setEchoMode(
+            QLineEdit.EchoMode.Password
+        )
         self.gemini_api_key_input.setText(self.gemini_api_key)
-        panel_layout.addWidget(self.gemini_api_key_input)
+        card_layout.addWidget(self.gemini_api_key_input)
 
         gemini_actions = QHBoxLayout()
         gemini_actions.setSpacing(10)
 
-        self.save_gemini_api_key_button = QPushButton("Guardar y comprobar Gemini Key")
+        self.save_gemini_api_key_button = QPushButton(
+            "Guardar y comprobar Gemini Key"
+        )
         self.save_gemini_api_key_button.setObjectName("primaryButton")
-        self.save_gemini_api_key_button.clicked.connect(self.save_and_validate_gemini_api_key)
+        self.save_gemini_api_key_button.clicked.connect(
+            self.save_and_validate_gemini_api_key
+        )
         gemini_actions.addWidget(self.save_gemini_api_key_button)
 
-        self.clear_gemini_api_key_button = QPushButton("Eliminar clave Gemini")
-        self.clear_gemini_api_key_button.setObjectName("secondaryButton")
-        self.clear_gemini_api_key_button.clicked.connect(self.clear_gemini_api_key)
+        self.clear_gemini_api_key_button = QPushButton(
+            "Eliminar clave Gemini"
+        )
+        self.clear_gemini_api_key_button.setObjectName(
+            "secondaryButton"
+        )
+        self.clear_gemini_api_key_button.clicked.connect(
+            self.clear_gemini_api_key
+        )
         gemini_actions.addWidget(self.clear_gemini_api_key_button)
 
         gemini_actions.addStretch(1)
-        panel_layout.addLayout(gemini_actions)
+        card_layout.addLayout(gemini_actions)
 
         self.gemini_api_key_status = QLabel()
         self.gemini_api_key_status.setObjectName("apiKeyStatus")
         self.gemini_api_key_status.setWordWrap(True)
-        panel_layout.addWidget(self.gemini_api_key_status)
+        card_layout.addWidget(self.gemini_api_key_status)
 
         self.update_gemini_api_key_status()
+
+        return card
+
+    def _settings_overlay_card(self) -> QWidget:
+        card, card_layout = self._settings_card("Overlay en partida")
 
         self.show_overlay_button = QPushButton("Mostrar overlay")
         self.show_overlay_button.setObjectName("primaryButton")
         self.show_overlay_button.clicked.connect(
             self.toggle_overlay_visibility
         )
-        panel_layout.addWidget(self.show_overlay_button)
+        card_layout.addWidget(self.show_overlay_button)
+
+        overlay_group_title = QLabel("Paneles del overlay")
+        overlay_group_title.setObjectName("settingsGroupTitle")
+        card_layout.addWidget(overlay_group_title)
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Tres paneles independientes sobre el juego, sin títulos: "
+                "oro por rol aliado contra rival, alertas de objetos "
+                "completos y objetivos inminentes, y el rival más fuerte y "
+                "el más débil. Se arrastran con el ratón y solo aparecen "
+                "durante una partida."
+            )
+        )
+
+        panels_row = QHBoxLayout()
+        panels_row.setSpacing(10)
+
+        self.overlay_panel_buttons: dict[str, QPushButton] = {}
+        self.overlay_tab_only_checkboxes: dict[str, QCheckBox] = {}
+
+        for panel_key, panel_name in (
+            ("gold", "Oro"),
+            ("alerts", "Alertas"),
+            ("threat", "Rivales"),
+        ):
+            button = QPushButton(panel_name)
+            button.setObjectName("analysisSourceButton")
+            button.setCheckable(True)
+            button.clicked.connect(
+                lambda _checked=False, key=panel_key: (
+                    self.toggle_overlay_panel(key)
+                )
+            )
+            panels_row.addWidget(button)
+            self.overlay_panel_buttons[panel_key] = button
+
+        panels_row.addStretch(1)
+        card_layout.addLayout(panels_row)
+
+        tab_only_title = QLabel("Mostrar solo con TAB pulsado")
+        tab_only_title.setObjectName("settingsLabel")
+        tab_only_title.setToolTip(
+            "Cada panel marcado solo se muestra mientras mantienes "
+            "pulsado TAB, como el marcador del juego."
+        )
+        card_layout.addWidget(tab_only_title)
+
+        tab_only_row = QHBoxLayout()
+        tab_only_row.setSpacing(10)
+
+        for panel_key, panel_name in (
+            ("gold", "Oro"),
+            ("alerts", "Alertas"),
+            ("threat", "Rivales"),
+        ):
+            checkbox = QCheckBox(f"Solo TAB: {panel_name}")
+            checkbox.setChecked(self.overlay.is_tab_only(panel_key))
+            checkbox.setToolTip(
+                f"El panel {panel_name} solo aparece mientras "
+                "mantienes pulsado TAB."
+            )
+            checkbox.toggled.connect(
+                lambda checked, key=panel_key: (
+                    self.toggle_overlay_tab_only(key, checked)
+                )
+            )
+            tab_only_row.addWidget(checkbox)
+            self.overlay_tab_only_checkboxes[panel_key] = checkbox
+
+        tab_only_row.addStretch(1)
+        card_layout.addLayout(tab_only_row)
 
         self.lock_overlay_button = QPushButton("Bloquear clics: NO")
         self.lock_overlay_button.setObjectName("secondaryButton")
         self.lock_overlay_button.clicked.connect(
             self.toggle_overlay_click_through
         )
-        panel_layout.addWidget(self.lock_overlay_button)
+        card_layout.addWidget(self.lock_overlay_button)
 
-        opacity_row = QHBoxLayout()
-        opacity_row.setSpacing(10)
-
-        opacity_label = QLabel("Opacidad del overlay")
-        opacity_label.setObjectName("settingsLabel")
-        opacity_row.addWidget(opacity_label)
-
-        self.opacity_slider = QSlider(Qt.Orientation.Horizontal)
-        self.opacity_slider.setRange(30, 100)
-        self.opacity_slider.setValue(92)
+        opacity_row, self.opacity_slider, self.opacity_value = (
+            self._settings_slider_row(
+                "Opacidad del overlay",
+                30,
+                100,
+                1,
+                self.overlay.opacity,
+            )
+        )
+        self.opacity_value.setText(f"{self.overlay.opacity}%")
         self.opacity_slider.valueChanged.connect(
             self.change_overlay_opacity
         )
-        opacity_row.addWidget(self.opacity_slider, 1)
+        card_layout.addLayout(opacity_row)
 
-        self.opacity_value = QLabel("92%")
-        self.opacity_value.setObjectName("opacityValue")
-        opacity_row.addWidget(self.opacity_value)
-        panel_layout.addLayout(opacity_row)
-
-        info = QLabel(
-            "Los controles se aplican al overlay inmediatamente. "
-            "La lectura usa una frecuencia de un segundo y las tarjetas se regeneran cada diez segundos."
+        lead_row, self.alert_lead_slider, self.alert_lead_value = (
+            self._settings_slider_row(
+                "Aviso de objetivos",
+                15,
+                180,
+                5,
+                self.overlay.alert_lead_seconds,
+            )
         )
-        info.setObjectName("mutedText")
-        info.setWordWrap(True)
-        panel_layout.addWidget(info)
+        self.alert_lead_value.setText(
+            f"{self.overlay.alert_lead_seconds} s"
+        )
+        self.alert_lead_slider.valueChanged.connect(
+            self.change_overlay_alert_lead
+        )
+        card_layout.addLayout(lead_row)
 
-        layout.addWidget(panel)
-        layout.addStretch(1)
-        return page
+        # Controles de sonido
+        sound_title = QLabel("Sonidos del overlay")
+        sound_title.setObjectName("settingsGroupTitle")
+        card_layout.addWidget(sound_title)
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Cada aviso emite un pitido distinto: uno para Grumos, "
+                "Heraldo o Barón, otro para el Dragón y otro cuando un "
+                "rival completa un objeto. No se usan archivos de audio "
+                "externos."
+            )
+        )
+
+        self.sound_enabled_checkbox = QCheckBox("Activar sonidos del overlay")
+        self.sound_enabled_checkbox.setChecked(self.overlay.is_sound_enabled())
+        self.sound_enabled_checkbox.toggled.connect(
+            self.toggle_overlay_sound_enabled
+        )
+        card_layout.addWidget(self.sound_enabled_checkbox)
+
+        self.sound_objective_checkbox = QCheckBox(
+            "Pitido: objetivos (Grumos, Heraldo, Barón)"
+        )
+        self.sound_objective_checkbox.setChecked(
+            self.overlay.sound_service.kind_enabled("objective")
+        )
+        self.sound_objective_checkbox.toggled.connect(
+            lambda checked, kind="objective": self.toggle_overlay_sound_kind(
+                kind, checked
+            )
+        )
+        card_layout.addWidget(self.sound_objective_checkbox)
+
+        self.sound_dragon_checkbox = QCheckBox("Pitido: Dragón")
+        self.sound_dragon_checkbox.setChecked(
+            self.overlay.sound_service.kind_enabled("dragon")
+        )
+        self.sound_dragon_checkbox.toggled.connect(
+            lambda checked, kind="dragon": self.toggle_overlay_sound_kind(
+                kind, checked
+            )
+        )
+        card_layout.addWidget(self.sound_dragon_checkbox)
+
+        self.sound_enemy_buy_checkbox = QCheckBox(
+            "Pitido: compra de objeto rival"
+        )
+        self.sound_enemy_buy_checkbox.setChecked(
+            self.overlay.sound_service.kind_enabled("enemy_buy")
+        )
+        self.sound_enemy_buy_checkbox.toggled.connect(
+            lambda checked, kind="enemy_buy": self.toggle_overlay_sound_kind(
+                kind, checked
+            )
+        )
+        card_layout.addWidget(self.sound_enemy_buy_checkbox)
+
+        volume_row, self.sound_volume_slider, self.sound_volume_value = (
+            self._settings_slider_row(
+                "Volumen de los pitidos",
+                0,
+                100,
+                5,
+                int(round(self.overlay.sound_service.volume * 100)),
+            )
+        )
+        self.sound_volume_value.setText(
+            f"{int(round(self.overlay.sound_service.volume * 100))}%"
+        )
+        self.sound_volume_slider.valueChanged.connect(
+            self.change_overlay_sound_volume
+        )
+        card_layout.addLayout(volume_row)
+
+        self.overlay_status = QLabel()
+        self.overlay_status.setObjectName("apiKeyStatus")
+        self.overlay_status.setWordWrap(True)
+        card_layout.addWidget(self.overlay_status)
+
+        self.sync_overlay_settings_ui()
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Los controles se aplican al overlay inmediatamente. "
+                "La lectura usa una frecuencia de un segundo y las tarjetas "
+                "se regeneran cada diez segundos."
+            )
+        )
+
+        return card
 
     def update_api_key_status(self) -> None:
         if self.riot_api_key:
@@ -1724,10 +2048,9 @@ class MainWindow(QMainWindow):
         self.save_api_key_button.setEnabled(True)
 
         if valid:
-            self.settings_service.save_riot_api_key(
-                api_key
-            )
             self.riot_api_key = api_key
+            self.settings["riot_api_key"] = api_key
+            self.settings_service.save(self.settings)
 
             self.api_key_status.setText(message)
             self.api_key_status.setProperty(
@@ -1735,8 +2058,9 @@ class MainWindow(QMainWindow):
                 "valid",
             )
         else:
-            self.settings_service.clear_riot_api_key()
             self.riot_api_key = ""
+            self.settings.pop("riot_api_key", None)
+            self.settings_service.save(self.settings)
 
             self.api_key_status.setText(message)
             self.api_key_status.setProperty(
@@ -1753,9 +2077,10 @@ class MainWindow(QMainWindow):
 
 
     def clear_api_key(self) -> None:
-        self.settings_service.clear_riot_api_key()
-
         self.riot_api_key = ""
+        self.settings.pop("riot_api_key", None)
+        self.settings_service.save(self.settings)
+
         self.api_key_input.clear()
 
         self.api_key_status.setText(
@@ -1798,13 +2123,15 @@ class MainWindow(QMainWindow):
         self.save_gemini_api_key_button.setEnabled(True)
 
         if valid:
-            self.settings_service.save_gemini_api_key(api_key)
             self.gemini_api_key = api_key
+            self.settings["gemini_api_key"] = api_key
+            self.settings_service.save(self.settings)
             self.gemini_api_key_status.setText(message)
             self.gemini_api_key_status.setProperty("state", "valid")
         else:
-            self.settings_service.clear_gemini_api_key()
             self.gemini_api_key = ""
+            self.settings.pop("gemini_api_key", None)
+            self.settings_service.save(self.settings)
             self.gemini_api_key_status.setText(message)
             self.gemini_api_key_status.setProperty("state", "invalid")
 
@@ -1812,8 +2139,9 @@ class MainWindow(QMainWindow):
         self.gemini_api_key_status.style().polish(self.gemini_api_key_status)
 
     def clear_gemini_api_key(self) -> None:
-        self.settings_service.clear_gemini_api_key()
         self.gemini_api_key = ""
+        self.settings.pop("gemini_api_key", None)
+        self.settings_service.save(self.settings)
         self.gemini_api_key_input.clear()
         self.gemini_api_key_status.setText("Gemini API key eliminada de la configuración local.")
         self.gemini_api_key_status.setProperty("state", "missing")
@@ -2437,6 +2765,23 @@ class MainWindow(QMainWindow):
             self.history_status
         )
 
+    def set_live_badge(
+        self,
+        state: str,
+        text: str,
+    ) -> None:
+        """Actualiza el punto y el texto de estado de la cabecera LIVE."""
+        if not hasattr(self, "live_badge"):
+            return
+
+        self.live_badge.setText(text)
+        self.live_dot.setProperty("state", state)
+
+        self.live_dot.style().unpolish(self.live_dot)
+        self.live_dot.style().polish(self.live_dot)
+
+        self.live_dot.update()
+
     def request_snapshot(self) -> None:
         if self.is_refreshing:
             return
@@ -2498,10 +2843,9 @@ class MainWindow(QMainWindow):
         self.current_live_session = None
         self.live_status.setText("No hay una partida activa.")
         self.live_time_label.setText("—")
+        self.set_live_badge("idle", "EN ESPERA")
 
-        self.overlay.game_label.setText("Esperando partida...")
-        self.overlay.player_label.setText("Sin datos de jugador")
-        self.overlay.enemy_label.setText("")
+        self.overlay.clear()
 
         if (
             self.was_in_game
@@ -2570,6 +2914,21 @@ class MainWindow(QMainWindow):
             "game_mode",
             "UNKNOWN",
         )
+        total_players = len(snapshot.get("all_players", []))
+
+        short_modes = {
+            "CLASSIC": "Grieta del Invocador",
+            "PRACTICETOOL": "Herramienta de práctica",
+            "ARAM": "ARAM",
+            "TFT": "TFT",
+            "CHERRY": "Arena",
+            "ODYSSEY": "Odisea",
+        }
+
+        if game_mode in short_modes:
+            mode_text = short_modes[game_mode]
+        else:
+            mode_text = str(game_mode).replace("_", " ").title()
 
         self.connection_label.setText("Partida en curso")
         self.home_title.setText(
@@ -2603,20 +2962,23 @@ class MainWindow(QMainWindow):
         self.open_live_analysis_button.setEnabled(
             self.current_live_session is not None
         )
+
+        # La partida ya está en curso (la pantalla de carga terminó): si el draft
+        # acaba de terminar, el panel se coloca en "Partida en vivo".
+        if self.pending_live_navigation:
+            self.pending_live_navigation = False
+            self.navigate_to_live_page()
+
         self.live_status.setText(
-            f"{game_mode} · {champion} · "
-            f"{len(snapshot.get('all_players', []))} jugadores"
+            f"{mode_text} · {champion} · "
+            f"{total_players} jugadores"
         )
         self.live_time_label.setText(
             f"{minutes:02d}:{seconds:02d}"
         )
+        self.set_live_badge("live", "EN VIVO")
 
-        self.overlay.update_data(
-            game_time,
-            local_player,
-            snapshot.get("enemies", []),
-            snapshot.get("local_live_stats", {}),
-        )
+        self.overlay.update_snapshot(snapshot)
 
         if not self.live_match_tracker.is_tracking:
             self.live_match_tracker.start(snapshot)
@@ -2958,6 +3320,13 @@ class MainWindow(QMainWindow):
         self,
         players: list[dict],
     ) -> list[dict]:
+        """Ordena la fila como TOP → JUNGLA → MID → BOT → SUPPORT.
+
+        `sorted` es estable, así que los jugadores sin rol reconocible
+        conservan el orden original del snapshot (modos como ARAM o bots,
+        donde la API no informa posición) en lugar de reordenarse
+        alfabéticamente y quedar en posiciones sin sentido.
+        """
         role_order = {
             "TOP": 0,
             "JUNGLE": 1,
@@ -2969,51 +3338,94 @@ class MainWindow(QMainWindow):
 
         return sorted(
             players,
-            key=lambda player: (
-                role_order.get(
-                    self.get_player_role(player),
-                    99,
-                ),
-                str(
-                    player.get(
-                        "championName",
-                        "",
-                    )
-                ),
+            key=lambda player: role_order.get(
+                self.get_player_role(player),
+                99,
             ),
         )
 
     def rebuild_cards(self, snapshot: dict) -> None:
+        """Reconstruye el panel: un bloque por equipo con su cabecera."""
         self.clear_cards()
 
-        all_players = snapshot.get(
-            "all_players",
-            [],
-        )
+        all_players = snapshot.get("all_players", [])
 
-        order = [
-            player
-            for player in all_players
-            if player.get("team") == "ORDER"
+        if not isinstance(all_players, list):
+            all_players = []
+
+        local_team = str(
+            snapshot.get("local_team", "")
+        ).upper()
+
+        if local_team not in ("ORDER", "CHAOS"):
+            local_team = "ORDER"
+
+        teams = [
+            ("ORDER", "Equipo azul"),
+            ("CHAOS", "Equipo rojo"),
         ]
 
-        chaos = [
-            player
-            for player in all_players
-            if player.get("team") == "CHAOS"
-        ]
+        if local_team == "CHAOS":
+            teams.reverse()
 
-        order = self.sort_players_by_role(order)
-        chaos = self.sort_players_by_role(chaos)
+        if not all_players:
+            waiting = QLabel(
+                "Esperando los datos de los diez jugadores..."
+            )
+            waiting.setObjectName("liveSummary")
+            waiting.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            waiting.setWordWrap(True)
+            self.cards_layout.addWidget(waiting, 1)
+            return
 
-        self.add_team_grid(order, snapshot)
-        self.add_team_grid(chaos, snapshot)
+        for team, side_name in teams:
+            players = self.sort_players_by_role(
+                [
+                    player
+                    for player in all_players
+                    if player.get("team") == team
+                ]
+            )
 
-    def add_team_grid(
+            if not players:
+                continue
+
+            self.add_team_panel(
+                team,
+                side_name,
+                players,
+                snapshot,
+                is_local_team=team == local_team,
+            )
+
+    def add_team_panel(
         self,
+        team: str,
+        side_name: str,
         players: list[dict],
         snapshot: dict,
+        is_local_team: bool,
     ) -> None:
+        """Añade el bloque de un equipo con su cabecera y sus tarjetas."""
+        panel = QFrame()
+        panel.setObjectName("liveTeamPanel")
+        panel.setProperty(
+            "side",
+            "ally" if is_local_team else "enemy",
+        )
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(10)
+
+        layout.addLayout(
+            self.create_team_header(
+                players,
+                side_name,
+                is_local_team,
+            )
+        )
+
         grid_container = QWidget()
         grid_container.setObjectName("teamCardsRow")
 
@@ -3025,15 +3437,12 @@ class MainWindow(QMainWindow):
         for column in range(5):
             grid.setColumnStretch(column, 1)
 
-        local_player = snapshot.get(
-            "local_player",
-            {},
-        )
+        local_player = snapshot.get("local_player", {})
 
         for index, player in enumerate(players[:5]):
-            is_local = (
-                player.get("riotId")
-                == local_player.get("riotId")
+            is_local = self.player_is_local(
+                player,
+                local_player,
             )
 
             card = ChampionCard(
@@ -3059,7 +3468,91 @@ class MainWindow(QMainWindow):
 
             grid.addWidget(card, 0, index)
 
-        self.cards_layout.addWidget(grid_container)
+        layout.addWidget(grid_container)
+        self.cards_layout.addWidget(panel)
+        # Tras reconstruir, el alto del contenido debe ser válido de
+        # inmediato: el scroll depende de él y la tarjeta mide su fondo.
+        self.cards_widget.adjustSize()
+
+    def create_team_header(
+        self,
+        players: list[dict],
+        side_name: str,
+        is_local_team: bool,
+    ) -> QHBoxLayout:
+        header = QHBoxLayout()
+        header.setSpacing(10)
+        header.setContentsMargins(0, 0, 4, 0)
+
+        tag = QLabel(
+            "TU EQUIPO" if is_local_team else "EQUIPO ENEMIGO"
+        )
+        tag.setObjectName("liveTeamTag")
+        header.addWidget(tag)
+
+        side = QLabel(side_name)
+        side.setObjectName("liveTeamSide")
+        header.addWidget(side)
+        header.addStretch(1)
+
+        summary = QLabel(self.format_team_summary(players))
+        summary.setObjectName("liveTeamSummary")
+        summary.setWordWrap(False)
+        header.addWidget(summary)
+
+        return header
+
+    def format_team_summary(self, players: list[dict]) -> str:
+        """Resumen del equipo: asesinatos, oro en objetos y jugadores."""
+        kills = 0
+        gold = 0
+
+        for player in players:
+            scores = player.get("scores", {})
+
+            if isinstance(scores, dict):
+                try:
+                    kills += int(scores.get("kills", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+
+            gold += get_inventory_value(
+                player,
+                self.item_catalog,
+            )
+
+        gold_text = (
+            f"{gold / 1000:.1f}k" if gold >= 1000 else str(gold)
+        )
+        total = min(len(players), 5)
+        players_text = (
+            "1 JUGADOR" if total == 1 else f"{total} JUGADORES"
+        )
+
+        return (
+            f"{kills} ASESINATOS · {gold_text} ORO EN OBJETOS · "
+            f"{players_text}"
+        )
+
+    @staticmethod
+    def player_is_local(
+        player: dict,
+        local_player: dict,
+    ) -> bool:
+        """True cuando la tarjeta corresponde al jugador local."""
+        if not isinstance(local_player, dict) or not local_player:
+            return False
+
+        if player is local_player:
+            return True
+
+        for key in ("riotId", "summonerName"):
+            local_name = local_player.get(key)
+
+            if local_name and player.get(key) == local_name:
+                return True
+
+        return False
 
     def clear_cards(
         self,
@@ -3079,36 +3572,175 @@ class MainWindow(QMainWindow):
                 widget.setParent(None)
                 continue
 
+            # Las tarjetas antiguas deben desaparecer de inmediato: si solo se
+            # planifican con deleteLater(), en offscreen/ciertos estilos pueden
+            # seguir pintándose un ciclo y dejar texto fantasma tras el fondo
+            # semitransparente de la tarjeta nueva.
+            widget.hide()
+            try:
+                widget.setParent(None)
+            except RuntimeError:
+                pass
             widget.deleteLater()
 
     def toggle_overlay_visibility(self) -> None:
-        if self.overlay.isVisible():
-            self.overlay.hide()
-            self.show_overlay_button.setText(
-                "Mostrar overlay"
-            )
-        else:
-            self.overlay.show()
-            self.overlay.raise_()
-            self.show_overlay_button.setText(
-                "Ocultar overlay"
-            )
+        enabled = self.overlay.toggle_all()
+        self.show_overlay_button.setText(
+            "Ocultar overlay"
+            if enabled
+            else "Mostrar overlay"
+        )
+        self.sync_overlay_settings_ui()
 
     def toggle_overlay_click_through(self) -> None:
         enabled = not self.overlay.click_through
         self.overlay.set_click_through(enabled)
-
-        self.lock_overlay_button.setText(
-            "Bloquear clics: SÍ"
-            if enabled
-            else "Bloquear clics: NO"
-        )
+        self.sync_overlay_settings_ui()
 
     def change_overlay_opacity(self, percent: int) -> None:
         self.overlay.set_overlay_opacity(percent)
         self.opacity_value.setText(
             f"{percent}%"
         )
+
+    def change_overlay_alert_lead(self, seconds: int) -> None:
+        self.overlay.set_alert_lead_seconds(seconds)
+        self.alert_lead_value.setText(
+            f"{seconds} s"
+        )
+
+    def toggle_overlay_panel(self, key: str) -> None:
+        self.overlay.set_panel_enabled(
+            key,
+            not self.overlay.is_panel_enabled(key),
+        )
+        self.sync_overlay_settings_ui()
+
+    def toggle_overlay_tab_only(self, key: str, enabled: bool) -> None:
+        """Ese panel solo se muestra mientras TAB está pulsado."""
+        self.overlay.set_tab_only(key, enabled)
+        self.sync_overlay_settings_ui()
+
+    def sync_overlay_settings_ui(self) -> None:
+        """Refresca los controles de overlay de Ajustes con el estado real."""
+        if not hasattr(self, "show_overlay_button"):
+            return
+
+        enabled = self.overlay.enabled_panels()
+        self.show_overlay_button.setText(
+            "Ocultar overlay"
+            if self.overlay.any_enabled()
+            else "Mostrar overlay"
+        )
+        self.lock_overlay_button.setText(
+            "Bloquear clics: SÍ"
+            if self.overlay.click_through
+            else "Bloquear clics: NO"
+        )
+
+        for key, button in self.overlay_panel_buttons.items():
+            button.blockSignals(True)
+            button.setChecked(enabled.get(key, False))
+            button.blockSignals(False)
+
+        if hasattr(self, "overlay_tab_only_checkboxes"):
+            for key, checkbox in self.overlay_tab_only_checkboxes.items():
+                checkbox.blockSignals(True)
+                checkbox.setChecked(self.overlay.is_tab_only(key))
+                checkbox.blockSignals(False)
+
+        panel_names = {
+            "gold": "Oro",
+            "alerts": "Alertas",
+            "threat": "Rivales",
+        }
+        active = [
+            name
+            for key, name in panel_names.items()
+            if enabled.get(key, False)
+        ]
+        tab_hidden = sorted(
+            name
+            for key, name in panel_names.items()
+            if enabled.get(key, False) and self.overlay.is_tab_only(key)
+        )
+        tab_notice = (
+            f" Sin TAB activo están ocultos: {', '.join(tab_hidden)}."
+            if tab_hidden
+            else ""
+        )
+
+        if self.overlay.in_game:
+            text = (
+                "Paneles en pantalla: " + ", ".join(active) + "."
+                if active
+                else "Todos los paneles están apagados."
+            )
+        else:
+            text = (
+                "Paneles activos: "
+                + ", ".join(active)
+                + ". Aparecerán al empezar una partida."
+                if active
+                else "Todos los paneles están apagados."
+            )
+
+        self.overlay_status.setText(text + tab_notice)
+        self.sync_overlay_sound_controls()
+
+    def toggle_overlay_sound_enabled(self, enabled: bool) -> None:
+        """Activa o desactiva todos los pitidos del overlay."""
+        self.overlay.set_sound_enabled(enabled)
+        self.sync_overlay_sound_controls()
+
+    def toggle_overlay_sound_kind(self, kind: str, enabled: bool) -> None:
+        """Activa o desactiva un tipo concreto de pitido."""
+        self.overlay.set_sound_kind_enabled(kind, enabled)
+        self.sync_overlay_sound_controls()
+
+    def change_overlay_sound_volume(self, percent: int) -> None:
+        """Cambia el volumen de los pitidos del overlay."""
+        self.overlay.set_sound_volume(percent / 100.0)
+        self.sound_volume_value.setText(f"{percent}%")
+
+    def sync_overlay_sound_controls(self) -> None:
+        """Refleja el estado real de los pitidos en los controles de Ajustes."""
+        if not hasattr(self, "sound_enabled_checkbox"):
+            return
+
+        service = self.overlay.sound_service
+        enabled = self.overlay.is_sound_enabled()
+
+        widgets = (
+            self.sound_enabled_checkbox,
+            self.sound_objective_checkbox,
+            self.sound_dragon_checkbox,
+            self.sound_enemy_buy_checkbox,
+            self.sound_volume_slider,
+        )
+
+        for widget in widgets:
+            widget.blockSignals(True)
+
+        self.sound_enabled_checkbox.setChecked(enabled)
+        self.sound_objective_checkbox.setChecked(
+            service.kind_enabled("objective")
+        )
+        self.sound_dragon_checkbox.setChecked(service.kind_enabled("dragon"))
+        self.sound_enemy_buy_checkbox.setChecked(
+            service.kind_enabled("enemy_buy")
+        )
+        self.sound_volume_slider.setValue(int(round(service.volume * 100)))
+        self.sound_volume_value.setText(f"{int(round(service.volume * 100))}%")
+
+        # Con el interruptor general apagado el resto de controles se atenúan.
+        self.sound_enabled_checkbox.setEnabled(True)
+
+        for widget in widgets[1:]:
+            widget.setEnabled(enabled)
+
+        for widget in widgets:
+            widget.blockSignals(False)
 
     def setup_champ_select_worker(self) -> None:
         self.champ_select_worker = ChampSelectWorker(parent=self)
@@ -3127,6 +3759,7 @@ class MainWindow(QMainWindow):
 
     @Slot(dict)
     def _on_champ_select_started(self, session: dict) -> None:
+        self.pending_live_navigation = False
         self.open_draft_tool_dialog()
         if self.draft_tool_dialog:
             self.draft_tool_dialog.update_from_lcu_session(session)
@@ -3139,9 +3772,22 @@ class MainWindow(QMainWindow):
     def _on_champ_select_ended(self) -> None:
         if self.draft_tool_dialog and self.draft_tool_dialog.isVisible():
             self.draft_tool_dialog._set_lcu_managed_controls(False)
+            # El draft ha terminado: se cierra para poder ver el panel principal.
+            self.draft_tool_dialog.close()
+        # El draft ha terminado; cuando la pantalla de carga acabe y la partida
+        # arranque (primer snapshot de la API local) el panel irá solo a
+        # "Partida en vivo" (ver show_game).
+        self.pending_live_navigation = True
+
+    def navigate_to_live_page(self) -> None:
+        """Coloca el panel principal en la pestaña "Partida en vivo"."""
+        self.pages.setCurrentIndex(self.LIVE_PAGE_INDEX)
+        if hasattr(self, "live_button"):
+            self.live_button.setChecked(True)
 
     def closeEvent(self, event) -> None:
         self.poll_timer.stop()
+        self.tab_hotkey.stop()
         self.overlay.close()
 
         if hasattr(self, "champ_select_worker") and self.champ_select_worker.isRunning():

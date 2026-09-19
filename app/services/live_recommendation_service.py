@@ -346,7 +346,6 @@ class LiveRecommendationService:
         purchases = self._purchases(owned, map_id, profile, champ, threats, physical_share)
         for rec in recommendations + purchases:
             rec["next_buy"] = self._next_buy(rec["id"], owned, gold, map_id)
-        self._attach_affinity(recommendations + purchases)
         purchase = self.purchase(recommendations[0]["id"], owned, gold, map_id) if recommendations else {"status": "none", "text": "Sin compras compatibles verificables con el catálogo y el perfil disponibles."}
         if ended:
             purchase = {"status": "postgame", "text": "Partida finalizada: revisión del último estado, no una orden de compra en directo."}
@@ -407,7 +406,7 @@ class LiveRecommendationService:
             row = {"id": ident, "name": self.name(ident),
                    "reason": "Completas: " + ", ".join(self.name(c) for c in sorted(consumed)),
                    "missing": [self.name(c) for c in self._missing_parts(ident, owned)],
-                   "cost": remaining, "score": None, "affinity_percent": None}
+                   "cost": remaining, "score": None}
             if profile:
                 scored = self._score_candidate(
                     ident, {**item, **self.strict.get(ident, {}), "name": item.get("name", ident),
@@ -418,21 +417,6 @@ class LiveRecommendationService:
             rows.append(row)
         rows.sort(key=lambda r: (len(r["missing"]), r["cost"], r["id"]))
         return rows[:limit]
-
-    @staticmethod
-    def _attach_affinity(rows):
-        """Expresa la afinidad de cada candidato como porcentaje del mejor candidato de este análisis.
-
-        El porcentaje es relativo a la muestra analizada (100 % = mejor opción verificada),
-        no una probabilidad de victoria ni un porcentaje de uso del objeto.
-        """
-        scores = [number(row.get("score"), None) for row in rows]
-        best = max((score for score in scores if score is not None), default=0.0)
-        for row in rows:
-            score = number(row.get("score"), None)
-            row["affinity_percent"] = (round(100.0 * score / best, 1)
-                                       if score is not None and best > 0 else None)
-        return rows
 
     def _rank(self, profile, champ, owned, threats, physical_share, map_id):
         if sum(1 for i in owned if "Trinket" not in self.catalog.get(i, {}).get("tags", [])) >= 6:
