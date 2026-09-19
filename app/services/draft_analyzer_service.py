@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import itertools
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 class DraftAnalyzerService:
     """Servicio de análisis en tiempo real para fase de Draft (Champ Select)."""
 
     TIME_BRACKETS = ["0-15", "15-20", "20-25", "25-30", "30-35", "35-40", "40+"]
+
+    # Líneas del draft en el orden que usa la herramienta.
+    ROLES = ("Top", "Jungle", "Mid", "Bot", "Support")
+
+    # Peso de cada línea según su posición entre los roles habituales del
+    # campeón: la primera es su línea natural y el resto, alternativas.
+    ROLE_CONFIDENCE = (1.0, 0.6, 0.4, 0.25, 0.15)
+
+    # Mismas cuatro categorías y mismo orden que la tarjeta SITUACIONALES del
+    # analizador local, para que la build importada y la vista coincidan.
+    SITUATIONAL_CATEGORIES = (
+        ("corta_curas", "Corta curas"),
+        ("tanque", "Tanque / Resistencias"),
+        ("asesino", "Asesino / Daño explosivo"),
+        ("utilidad_y_defensa", "Utilidad y Defensa"),
+    )
 
     def __init__(self, champions_strict_path: Path | None = None) -> None:
         self.path = champions_strict_path or Path(__file__).resolve().parents[2] / "data" / "champions_strict.json"
@@ -83,6 +100,68 @@ class DraftAnalyzerService:
             if role and role not in roles:
                 roles.append(role)
         return roles
+
+    def assign_likely_roles(self, champion_names: list[str],
+                            exclude: Iterable[str] = ()) -> list[str]:
+        """Reparte las líneas entre los campeones: la hipótesis que mejor encaja.
+
+        Durante el draft no se conoce la línea real de nadie (el cliente solo
+        publica la posición asignada de los aliados y a veces ni eso), así que en
+        lugar de afirmar una línea se propone la combinación **sin repeticiones**
+        que maximiza la confianza con los roles habituales de cada campeón.
+
+        Ante empates manda el orden recibido: el primer campeón conserva su línea
+        natural antes que los siguientes. Un campeón sin datos de rol recibe una
+        cadena vacía, porque de él no se puede decir nada; ``exclude`` reserva
+        las líneas que ya están ocupadas (por ejemplo, las que sí publicó LCU).
+        """
+        candidates = [role for role in self.ROLES if role not in exclude]
+        likely = [self.get_likely_roles(name) for name in champion_names]
+        # Solo entran campeones y líneas con algún encaje posible: el resto no
+        # altera el resultado y encarece la búsqueda.
+        known = [
+            index for index, roles in enumerate(likely)
+            if any(self._role_confidence(roles, role) > 0 for role in candidates)
+        ]
+        candidates = [
+            role for role in candidates
+            if any(self._role_confidence(roles, role) > 0 for roles in likely)
+        ]
+        assignment = [""] * len(champion_names)
+        if not known or not candidates:
+            return assignment
+        best_score: tuple[float, ...] = ()
+        best_roles: dict[int, str] = {}
+        # Se prueban todos los repartos parciales: un campeón puede quedarse sin
+        # línea (nadie recibe una que no juega) y cada línea se usa una sola vez.
+        for count in range(min(len(known), len(candidates)), -1, -1):
+            for champions in itertools.combinations(known, count):
+                for roles in itertools.permutations(candidates, count):
+                    chosen = dict(zip(champions, roles))
+                    scores = tuple(
+                        self._role_confidence(likely[index], chosen[index])
+                        if index in chosen else 0.0
+                        for index in known
+                    )
+                    # Primero el total; después, menos líneas inventadas; y en
+                    # empate, el orden recibido: el primer campeón conserva su
+                    # línea natural antes que los siguientes.
+                    score = (sum(scores), -count, *scores)
+                    if score > best_score:
+                        best_score, best_roles = score, chosen
+        for champion, role in best_roles.items():
+            assignment[champion] = role
+        return assignment
+
+    @classmethod
+    def _role_confidence(cls, likely_roles: list[str], role: str) -> float:
+        """Confianza de una línea para un campeón; 0 si no es uno de sus roles."""
+        if role not in likely_roles:
+            return 0.0
+        index = likely_roles.index(role)
+        if index < len(cls.ROLE_CONFIDENCE):
+            return cls.ROLE_CONFIDENCE[index]
+        return cls.ROLE_CONFIDENCE[-1]
 
     def calculate_team_damage_breakdown(self, team_champions: list[str]) -> dict[str, float]:
         """Calcula el desglose porcentual de daño físico, mágico y verdadero del equipo."""
@@ -299,6 +378,36 @@ class DraftAnalyzerService:
                 spells = ["Destello", fallback]
         return {"page_1": sources.get("u.gg"), "page_2": sources.get("lolalytics"), "spells": tuple(spells)}
 
+    def get_situational_items(self, champion_name: str) -> list[dict[str, Any]]:
+        """Opciones situacionales del campeón por categoría, ya resueltas a objetos.
+
+        Devuelve la misma información que la tarjeta SITUACIONALES del analizador
+        local: las cuatro categorías conocidas en orden, y dentro de cada una los
+        objetos comprables del campeón. Se omiten botas y nombres sin resolver en
+        el catálogo para no inventar compras.
+        """
+        prof = self.get_champion_profile(champion_name) or {}
+        situational = prof.get("situational_items", {})
+        if not isinstance(situational, dict):
+            return []
+        groups: list[dict[str, Any]] = []
+        for cat_key, cat_label in self.SITUATIONAL_CATEGORIES:
+            names = situational.get(cat_key, [])
+            if not isinstance(names, list):
+                continue
+            items: list[dict[str, str]] = []
+            seen: set[str] = set()
+            for name in names:
+                item_id = self.item_names.get(str(name).strip().casefold(), "")
+                item = self.items.get(item_id, {})
+                if not item or item_id in seen or "Boots" in item.get("tags", []):
+                    continue
+                seen.add(item_id)
+                items.append({"id": item_id, "name": item.get("name", item_id)})
+            if items:
+                groups.append({"key": cat_key, "label": cat_label, "items": items})
+        return groups
+
     def get_champion_build(self, champion_name: str, enemies: list[str]) -> dict[str, Any]:
         """Seis compras principales y botas aparte; la sexta puede ser alternativa tardía."""
         prof = self.get_champion_profile(champion_name) or {}
@@ -315,13 +424,13 @@ class DraftAnalyzerService:
             elif item_id not in core:
                 core.append(item_id)
         main_count = len(core)
-        # Completar solamente con alternativas del propio campeón, nunca con objetos inventados.
-        for group in prof.get("situational_items", {}).values():
-            for name in group:
-                item_id = self.item_names.get(str(name).strip().casefold(), "")
-                item = self.items.get(item_id, {})
-                if item and "Boots" not in item.get("tags", []) and item_id not in core:
-                    core.append(item_id)
+        # Alternativas situacionales del campeón, sin objetos inventados: se usan
+        # para completar el núcleo y además viajan a la build importada.
+        situational = self.get_situational_items(champion_name)
+        for group in situational:
+            for item in group["items"]:
+                if item["id"] not in core:
+                    core.append(item["id"])
         known_enemies = [e for e in enemies if self.get_champion_profile(e)]
         damage = self.calculate_team_damage_breakdown(known_enemies)
         if not known_enemies:
@@ -347,5 +456,6 @@ class DraftAnalyzerService:
             "boots_reason": reason,
             "note": "La sexta compra es una alternativa tardía; solo hay 6 huecos de inventario." if main_count < 6 and len(core) >= 6 else "",
             "unresolved": unresolved,
+            "situational": situational,
             "champion_id": next((i for i, name in self.champ_by_id.items() if name.casefold() == champion_name.casefold()), 0),
         }

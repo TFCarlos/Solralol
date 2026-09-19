@@ -5,3 +5,4 @@ echo Entorno virtual activado: %VIRTUAL_ENV%
 cmd /k
 
 #.\.venv\Scripts\Activate.ps1
+#python main.py

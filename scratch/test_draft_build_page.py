@@ -5,7 +5,8 @@ HTTP simulada, porque el cliente real solo existe durante una partida:
 1. El botón existe y avisa de lo que hace.
 2. Con Briar seleccionada crea la página general «Solralol - Briar Build».
 3. La página no queda ligada a ningún campeón (mapa y modo «any»).
-4. Lleva los 6 objetos de la build calculada y las botas recomendadas.
+4. Lleva los 6 objetos de la build calculada, las botas recomendadas y los
+   bloques de objetos situacionales del campeón.
 5. Se conserva el conjunto propio del jugador y se reemplaza el de Solralol.
 6. Se informa del éxito en pantalla.
 7. Sin campeón seleccionado no se toca el cliente.
@@ -112,13 +113,25 @@ check("mapas SR + ARAM", page["associatedMaps"] == [11, 12], str(page["associate
 build = dialog.analyzer.get_champion_build("Briar", ENEMIES)
 expected_items = [item["id"] for item in build["items"]]
 expected_boots = build["boots"]["id"] if build["boots"] else None
+expected_situational = build.get("situational", [])
 imported_items = [item["id"] for item in page["blocks"][0]["items"]]
 check("6 objetos de la build calculada", imported_items == expected_items,
       f"importados={imported_items} esperados={expected_items}")
 check("botas recomendadas incluidas",
-      len(page["blocks"]) == 2 and page["blocks"][1]["items"] == [
-          {"id": expected_boots, "count": 1}],
-      str(page["blocks"][1:]))
+      page["blocks"][1]["items"] == [{"id": expected_boots, "count": 1}],
+      str(page["blocks"][1:2]))
+situational_blocks = page["blocks"][2:]
+check("bloques situacionales del campeón incluidos",
+      [block["type"] for block in situational_blocks]
+      == [group["label"] for group in expected_situational],
+      str([block["type"] for block in situational_blocks]))
+check("situacionales con los mismos objetos que la vista local",
+      [[item["id"] for item in block["items"]] for block in situational_blocks]
+      == [[item["id"] for item in group["items"]] for group in expected_situational],
+      str([[item["id"] for item in block["items"]] for block in situational_blocks]))
+check("total de bloques (principales + botas + situacionales)",
+      len(page["blocks"]) == 2 + len(expected_situational),
+      str(len(page["blocks"])))
 check("conjunto propio del jugador intacto", any(s.get("uid") == "user-own" for s in sets))
 
 # Reimportar no acumula páginas de Solralol.

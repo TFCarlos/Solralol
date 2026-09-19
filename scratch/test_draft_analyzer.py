@@ -35,6 +35,9 @@ build = analyzer.get_champion_build("Aatrox", enemy_team)
 print("Build for Aatrox vs enemy team:")
 print(f" - Items: {build['items']}")
 print(f" - Boots: {build.get('boots')} ({build.get('boots_reason')})")
+print(" - Situacionales:")
+for group in build.get("situational", []):
+    print(f"    {group['label']}: {[item['name'] for item in group['items']]}")
 
 runes_spells = analyzer.get_champion_runes_and_summoners("Aatrox", "Top")
 print("Runes & Spells for Aatrox (Top):")

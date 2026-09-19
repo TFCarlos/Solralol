@@ -4,7 +4,7 @@ Verifica:
 1. PUT al endpoint correcto (item-sets/{summonerId}/sets).
 2. Los conjuntos propios del jugador se conservan intactos.
 3. La página es general y se llama «Solralol - <Campeón> Build».
-4. Lleva 6 objetos + bloque de botas.
+4. Lleva 6 objetos + bloque de botas + bloques situacionales del campeón.
 5. Reimportar no duplica la página: la anterior de Solralol se sustituye.
 6. Se admite que el cliente devuelva el contenedor {itemSets} o una lista suelta.
 7. Un error HTTP se comunica sin lanzar excepciones.
@@ -127,6 +127,51 @@ check("nuevo título con el campeón actual", briar["title"] == "Solralol - Bria
 check("sin páginas huérfanas de Solralol",
       sum(1 for s in sets if str(s["uid"]).startswith("solralol-")) == 1)
 check("el conjunto del jugador sigue ahí", any(s["uid"] == "user-own" for s in sets))
+
+# 8. Objetos situacionales: cada grupo se añade como bloque tras las botas.
+SITUATIONAL = [
+    {"key": "corta_curas", "label": "Corta curas",
+     "items": [{"id": "3033", "name": "Recordatorio letal"}]},
+    {"key": "tanque", "label": "Tanque / Resistencias",
+     "items": [{"id": "6333", "name": "Baile de la muerte"},
+               {"id": "3071", "name": "Cuchilla negra"}]},
+    {"key": "asesino", "label": "Asesino / Daño explosivo",
+     "items": [{"id": "6692", "name": "Eclipse"}, {"id": "6692", "name": "duplicado"}]},
+    {"key": "utilidad_y_defensa", "label": "Utilidad y Defensa", "items": []},
+]
+sit_fake = FakeSession()
+ok, msg = build_service(sit_fake).import_item_set(
+    266, "Aatrox", "Top", ITEMS, boots_id="3111", situational=SITUATIONAL)
+check("import con situacionales ok", ok, msg)
+check("se anuncia el número de bloques situacionales", "3 bloques" in msg, msg)
+sit_page = next(s for s in sit_fake.puts[0][1]["itemSets"]
+                if str(s["uid"]).startswith("solralol-build-"))
+check("principales y botas siguen en primer lugar",
+      [b["type"] for b in sit_page["blocks"][:2]] == [
+          "Objetos principales (6; última compra alternativa)",
+          "Botas recomendadas contra este equipo"],
+      str([b["type"] for b in sit_page["blocks"][:2]]))
+check("etiquetas situacionales en orden",
+      [b["type"] for b in sit_page["blocks"][2:]]
+      == ["Corta curas", "Tanque / Resistencias", "Asesino / Daño explosivo"],
+      str([b["type"] for b in sit_page["blocks"][2:]]))
+check("objetos situacionales con count 1",
+      sit_page["blocks"][2]["items"] == [{"id": "3033", "count": 1}]
+      and sit_page["blocks"][3]["items"] == [{"id": "6333", "count": 1},
+                                             {"id": "3071", "count": 1}],
+      str(sit_page["blocks"][2:4]))
+check("IDs situacionales duplicados eliminados",
+      sit_page["blocks"][4]["items"] == [{"id": "6692", "count": 1}],
+      str(sit_page["blocks"][4]["items"]))
+check("grupo situacional vacío omitido", len(sit_page["blocks"]) == 5,
+      str(len(sit_page["blocks"])))
+
+no_sit = FakeSession()
+build_service(no_sit).import_item_set(266, "Aatrox", "Top", ITEMS, boots_id="3111")
+page_no_sit = next(s for s in no_sit.puts[0][1]["itemSets"]
+                   if str(s["uid"]).startswith("solralol-build-"))
+check("sin situacionales no se añaden bloques", len(page_no_sit["blocks"]) == 2,
+      str(len(page_no_sit["blocks"])))
 
 loose = FakeSession([{"uid": "user-own", "title": "Mi build"}])
 ok, msg = build_service(loose).import_item_set(266, "Aatrox", "Top", ITEMS)

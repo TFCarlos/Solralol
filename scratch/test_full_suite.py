@@ -19,6 +19,7 @@ TESTS = [
     os.path.join("scratch", "test_draft_winrate_fix.py"),
     os.path.join("scratch", "test_draft_analyzer.py"),
     os.path.join("scratch", "test_draft_redesign.py"),
+    os.path.join("scratch", "test_draft_role_hypothesis.py"),
     os.path.join("scratch", "test_lcu_itemset_flow.py"),
 ]
 

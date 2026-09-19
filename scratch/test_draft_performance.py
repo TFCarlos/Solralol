@@ -72,6 +72,12 @@ with tempfile.TemporaryDirectory() as temp, ExitStack() as stack:
         print(f"Primera sesión: {updates.call_count} análisis, {(time.perf_counter()-start)*1000:.3f} ms")
         assert updates.call_count == 1
         assert dialog.local_champ_combo.currentText() == "Aatrox"
+        # Las líneas aliadas vienen del cliente; las rivales son hipótesis.
+        assert [c.currentText() for c in dialog.my_team_role_combos] == dialog.ROLES
+        assert dialog.my_team_roles == dialog.ROLES
+        assert [r.text() for r in dialog.enemy_team_role_labels] == [
+            "~Top", "~Jungle", "~Mid", "~Bot", "~Support"]
+        assert dialog.enemy_team_roles == dialog.ROLES
         for resolver in resolvers:
             resolver.reset_mock()
         updates.reset_mock()
@@ -113,7 +119,8 @@ with tempfile.TemporaryDirectory() as temp, ExitStack() as stack:
         dialog.update_from_lcu_session(changed)
         assert updates.call_count == 5
         assert all(c.currentText() == "-- Vacío --" for c in dialog.enemy_team_combo_widgets)
-        assert [r.text() for r in dialog.enemy_team_role_labels] == dialog.ROLES
+        assert [r.text() for r in dialog.enemy_team_role_labels] == ["—"] * 5
+        assert dialog.enemy_team_roles == [""] * 5
         assert dialog.my_header_ban_labels[0].text() == "—"
 
         dialog._set_lcu_managed_controls(False)

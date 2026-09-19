@@ -378,13 +378,46 @@ class LCUService:
             return [s for s in payload if isinstance(s, dict)], {}
         return None
 
+    @staticmethod
+    def _situational_blocks(situational: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        """Convierte los grupos situacionales del campeón en bloques de la página.
+
+        Cada grupo se traduce a un bloque con el mismo nombre que muestra la
+        tarjeta SITUACIONALES del analizador local. Un grupo sin nombre, sin
+        objetos o con IDs inválidos se omite en lugar de romper la importación.
+        """
+        blocks: list[dict[str, Any]] = []
+        for group in situational or []:
+            if not isinstance(group, dict):
+                continue
+            label = str(group.get("label") or group.get("key") or "").strip()
+            raw_items = group.get("items")
+            if not label or not isinstance(raw_items, list):
+                continue
+            ids: list[str] = []
+            for entry in raw_items:
+                item_id = str(entry.get("id", "")) if isinstance(entry, dict) else str(entry)
+                if item_id.isdigit() and int(item_id) > 0 and item_id not in ids:
+                    ids.append(item_id)
+            if ids:
+                blocks.append({"type": label,
+                               "items": [{"id": i, "count": 1} for i in ids]})
+        return blocks
+
     def import_item_set(self, champion_id: int, champion_name: str, role: str,
-                        item_ids: list[str], boots_id: str | None = None) -> tuple[bool, str]:
+                        item_ids: list[str], boots_id: str | None = None,
+                        situational: list[dict[str, Any]] | None = None) -> tuple[bool, str]:
         """Crea la página general «Solralol - <Campeón> Build» sin tocar los conjuntos del usuario.
 
         La página es general (sin campeón asociado), así que el cliente la ofrece en
         la tienda para cualquier campeón. Cada importación sustituye la página
         anterior de Solralol en lugar de acumular copias.
+
+        ``situational`` son los grupos situacionales del campeón (Corta curas,
+        Tanque / Resistencias, Asesino / Daño explosivo, Utilidad y Defensa) tal
+        como los expone ``DraftAnalyzerService.get_situational_items``; cada grupo
+        se añade como un bloque adicional después de los objetos principales y las
+        botas. Los grupos vacíos o con IDs inválidos se omiten.
         """
         name = str(champion_name or "").strip()
         if champion_id <= 0 or not name:
@@ -423,6 +456,8 @@ class LCUService:
             if boots_id:
                 blocks.append({"type": "Botas recomendadas contra este equipo",
                                "items": [{"id": str(boots_id), "count": 1}]})
+            situational_blocks = self._situational_blocks(situational)
+            blocks.extend(situational_blocks)
             item_set = {
                 "uid": uid, "title": title,
                 "type": "custom", "map": "any", "mode": "any",
@@ -442,9 +477,13 @@ class LCUService:
             payload.setdefault("timestamp", 0)
             response = self.session.put(url, json=payload, timeout=3)
             if response.status_code in (200, 201, 204):
+                extra = (
+                    f" Incluye {len(situational_blocks)} bloques de objetos situacionales."
+                    if situational_blocks else ""
+                )
                 return True, (
                     f"Página general «{title}» creada en el cliente "
-                    "(disponible para cualquier campeón)."
+                    f"(disponible para cualquier campeón).{extra}"
                 )
             return False, f"El cliente rechazó la build ({response.status_code})."
         except (requests.RequestException, ValueError, TypeError) as exc:

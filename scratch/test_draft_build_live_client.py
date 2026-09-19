@@ -6,7 +6,7 @@ hay cliente conectado, la prueba se omite sin fallar.
 
 1. El botón crea de verdad «Solralol - Briar Build» en los conjuntos del cliente.
 2. La página es general (sin campeón asociado), disponible en SR y ARAM.
-3. Lleva los 6 objetos y las botas de la build calculada por el analizador.
+3. Lleva los 6 objetos, las botas y los bloques situacionales de la build calculada.
 4. Los conjuntos propios del jugador siguen intactos.
 5. Reimportar deja una sola página de Solralol.
 """
@@ -97,8 +97,17 @@ check("6 objetos de la build calculada",
       blocks and [i["id"] for i in blocks[0]["items"]] == expected_items,
       str([i["id"] for i in blocks[0]["items"]] if blocks else None))
 check("botas recomendadas incluidas",
-      len(blocks) == 2 and blocks[1]["items"] == [{"id": expected_boots, "count": 1}],
-      str(blocks[1:]))
+      len(blocks) >= 2 and blocks[1]["items"] == [{"id": expected_boots, "count": 1}],
+      str(blocks[1:2]))
+expected_situational = build.get("situational", [])
+check("bloques situacionales del campeón incluidos",
+      [block.get("type") for block in blocks[2:]]
+      == [group["label"] for group in expected_situational],
+      str([block.get("type") for block in blocks[2:]]))
+check("situacionales con los mismos objetos que la vista local",
+      [[item["id"] for item in block["items"]] for block in blocks[2:]]
+      == [[item["id"] for item in group["items"]] for group in expected_situational],
+      str([[item["id"] for item in block["items"]] for block in blocks[2:]]))
 
 user_sets_after = [s for s in after if not str(s.get("uid", "")).startswith("solralol-")]
 check("conjuntos del jugador intactos",

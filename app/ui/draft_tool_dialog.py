@@ -223,7 +223,13 @@ class DraftPowerCurveWidget(QWidget):
 class DraftToolDialog(QDialog):
     """Diálogo completo de la Herramienta de Draft en tiempo real."""
 
-    ROLES = ["Top", "Jungle", "Mid", "Bot", "Support"]
+    ROLES = list(DraftAnalyzerService.ROLES)
+
+    # Marca de línea probable: en el draft nadie sabe la línea real del rival.
+    PROBABLE_ROLE_PREFIX = "~"
+
+    # Marcador de línea desconocida: no hay dato del cliente ni del campeón.
+    UNKNOWN_ROLE = "?"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -260,6 +266,12 @@ class DraftToolDialog(QDialog):
         self.enemy_team_pick_state_widgets: list[QCheckBox] = []
         self.my_team_role_combos: list[QComboBox] = []
         self.enemy_team_role_labels: list[QLabel] = []
+        # Línea efectiva por fila (sin la marca de hipótesis) y qué líneas
+        # aliadas publicó el cliente como posición asignada.
+        self.my_team_roles: list[str] = [""] * len(self.ROLES)
+        self.enemy_team_roles: list[str] = [""] * len(self.ROLES)
+        self.my_team_roles_from_client: list[bool] = [False] * len(self.ROLES)
+        self._local_slot: int | None = None
         self.my_team_icon_labels: list[QLabel] = []
         self.enemy_team_icon_labels: list[QLabel] = []
         self.my_team_matchup_labels: list[QLabel] = []
@@ -445,9 +457,10 @@ class DraftToolDialog(QDialog):
             slot_h = QHBoxLayout(slot_card)
             slot_h.setContentsMargins(6, 3, 6, 3)
             slot_h.setSpacing(6)
-            role_lbl = QLabel(self.ROLES[i])
-            role_lbl.setFixedWidth(60)
-            role_lbl.setStyleSheet("color: #94A3B8; font-weight: bold;")
+            role_lbl = QLabel("—")
+            role_lbl.setFixedWidth(72)
+            role_lbl.setStyleSheet("color: #64748B; font-weight: bold;")
+            role_lbl.setToolTip("Línea del rival: el cliente no la publica.")
 
             champ_cb = QComboBox()
             champ_cb.addItems(["-- Vacío --"] + self.all_champion_names)
@@ -691,7 +704,9 @@ class DraftToolDialog(QDialog):
         self.btn_import_build = QPushButton("↓  Importar build al cliente")
         self.btn_import_build.setToolTip(
             "Crea la página general «Solralol - [campeón] Build» en los conjuntos "
-            "de objetos del cliente, disponible para cualquier campeón"
+            "de objetos del cliente, disponible para cualquier campeón. Incluye los "
+            "6 objetos principales, las botas recomendadas y los objetos "
+            "situacionales del campeón (Corta curas, Tanque, Asesino y Utilidad)."
         )
         self._style_import_button(self.btn_import_build, "blue")
         self.btn_import_build.clicked.connect(self._import_build)
@@ -863,6 +878,10 @@ class DraftToolDialog(QDialog):
         """Bloquea los datos que LCU conoce durante la selección real."""
         if not lcu_active:
             self._last_session_key = None
+            # Al volver al modo manual no quedan rastros de líneas deducidas.
+            self.my_team_roles_from_client = [False] * len(self.ROLES)
+            for combo in [self.local_role_combo, *self.my_team_role_combos]:
+                self._clear_role_hints(combo)
         self.lcu_draft_active = lcu_active
         self.local_champ_combo.setEnabled(not lcu_active)
         self.local_role_combo.setEnabled(not lcu_active)
@@ -933,7 +952,10 @@ class DraftToolDialog(QDialog):
             state_combo.setChecked(False)
         self.local_champ_combo.setCurrentText("")
 
-        # Actualizar aliados
+        # Actualizar aliados. El cliente sí publica la posición asignada de los
+        # aliados (assignedPosition), así que su línea es un dato confirmado.
+        self.my_team_roles_from_client = [False] * len(self.ROLES)
+        self._local_slot = None
         for i, player in enumerate(my_team[:5]):
             selected_id = player.get("championId")
             intended_id = player.get("championPickIntent")
@@ -942,17 +964,19 @@ class DraftToolDialog(QDialog):
             if champ_name:
                 self.my_team_combo_widgets[i].setCurrentText(champ_name)
                 self.my_team_pick_state_widgets[i].setChecked(bool(selected_id))
+            assigned_pos = self._role_from_position(player.get("assignedPosition", ""))
+            if assigned_pos:
+                self._show_role(self.my_team_role_combos[i], assigned_pos)
+                self.my_team_roles_from_client[i] = True
             if player.get("cellId") == local_cell_id:
+                self._local_slot = i
                 if champ_name:
                     self.local_champ_combo.setCurrentText(champ_name)
-                assigned_pos = player.get("assignedPosition", "")
                 if assigned_pos:
-                    pos_map = {"top": "Top", "jungle": "Jungle", "middle": "Mid", "bottom": "Bot", "utility": "Support"}
-                    clean_pos = pos_map.get(assigned_pos.lower(), "Top")
-                    self.local_role_combo.setCurrentText(clean_pos)
+                    self.local_role_combo.setCurrentText(assigned_pos)
 
         # Actualizar enemigos. LCU no revela su asignación de línea, así que
-        # la inferimos después a partir de sus roles más habituales.
+        # solo se puede proponer una hipótesis a partir de sus roles habituales.
         for i, player in enumerate(their_team[:5]):
             selected_id = player.get("championId")
             intended_id = player.get("championPickIntent")
@@ -962,25 +986,134 @@ class DraftToolDialog(QDialog):
                 self.enemy_team_combo_widgets[i].setCurrentText(champ_name)
                 self.enemy_team_pick_state_widgets[i].setChecked(bool(selected_id))
 
-        self._assign_likely_enemy_roles()
+        self._apply_role_hints()
 
-    def _assign_likely_enemy_roles(self) -> None:
-        """Muestra la línea más probable de cada enemigo sin afirmar que sea segura."""
-        assigned_roles: set[str] = set()
-        for index, (role_label, champion_combo) in enumerate(zip(self.enemy_team_role_labels, self.enemy_team_combo_widgets)):
-            champion_name = champion_combo.currentText()
-            if not champion_name or champion_name == "-- Vacío --":
-                role_label.setText(self.ROLES[index])
-                role_label.setToolTip("")
+    @staticmethod
+    def _role_from_position(position: str) -> str:
+        """Traduce la posición que publica LCU al nombre de línea de la interfaz."""
+        return {
+            "top": "Top", "jungle": "Jungle", "middle": "Mid",
+            "bottom": "Bot", "utility": "Support",
+        }.get(str(position or "").casefold(), "")
+
+    @classmethod
+    def _base_role(cls, text: str) -> str:
+        """Línea real de un texto con o sin marca de hipótesis; "" si no lo es."""
+        clean = str(text or "").strip().lstrip(cls.PROBABLE_ROLE_PREFIX)
+        return clean if clean in cls.ROLES else ""
+
+    def _show_role(self, combo: QComboBox, role: str, probable: bool = False) -> None:
+        """Pinta una línea en un selector; sin línea muestra el marcador ``?``.
+
+        Cualquier marcador anterior (``~Rol`` o ``?``) se retira para no dejar
+        residuos en el desplegable cuando la línea vuelve a ser un dato real.
+        """
+        text = (
+            f"{self.PROBABLE_ROLE_PREFIX}{role}" if probable and role
+            else role or self.UNKNOWN_ROLE
+        )
+        with QSignalBlocker(combo):
+            for index in reversed(range(combo.count())):
+                item = str(combo.itemText(index))
+                if item not in self.ROLES and item != text:
+                    combo.removeItem(index)
+            if combo.findText(text) < 0:
+                combo.addItem(text)
+            combo.setCurrentText(text)
+
+    def _clear_role_hints(self, combo: QComboBox) -> None:
+        """Devuelve un selector a las cinco líneas reales al salir del modo LCU."""
+        current = self._base_role(combo.currentText()) or self.ROLES[0]
+        with QSignalBlocker(combo):
+            for index in reversed(range(combo.count())):
+                if str(combo.itemText(index)) not in self.ROLES:
+                    combo.removeItem(index)
+            combo.setCurrentText(current)
+
+    def _apply_role_hints(self) -> None:
+        """Etiqueta cada fila con lo que se sabe: línea confirmada o probable.
+
+        El cliente publica la posición de los aliados, nunca la de los rivales.
+        Todo lo que no venga del cliente se muestra como hipótesis (``~Rol``)
+        para no presentar una suposición como si fuera la línea real.
+        """
+        self._apply_enemy_role_hints()
+        self._apply_ally_role_hints()
+
+    def _apply_enemy_role_hints(self) -> None:
+        """Propone la línea de cada rival y la marca como hipótesis."""
+        names = [combo.currentText() for combo in self.enemy_team_combo_widgets]
+        guessed = list(self.analyzer.assign_likely_roles(names))
+        self.enemy_team_roles = (guessed + [""] * len(names))[:len(names)]
+        for label, name, role in zip(self.enemy_team_role_labels, names, self.enemy_team_roles):
+            if not role:
+                label.setText("—")
+                label.setStyleSheet("color: #64748B; font-weight: bold;")
+                label.setToolTip(
+                    "Línea del rival: el cliente no la publica."
+                    if not name or name == "-- Vacío --"
+                    else f"Sin datos de línea para {name}."
+                )
                 continue
-            likely_roles = self.analyzer.get_likely_roles(champion_name)
-            chosen_role = next((role for role in likely_roles if role not in assigned_roles), None)
-            chosen_role = chosen_role or (likely_roles[0] if likely_roles else "?")
-            assigned_roles.add(chosen_role)
-            role_label.setText(chosen_role)
-            role_label.setToolTip(
-                f"Rol probable de {champion_name}, inferido de sus datos de campeón."
+            label.setText(f"{self.PROBABLE_ROLE_PREFIX}{role}")
+            label.setStyleSheet("color: #FBBF24; font-weight: bold; font-style: italic;")
+            label.setToolTip(
+                f"Línea probable de {name}: {role}. El cliente no publica la posición "
+                "de los rivales; es la hipótesis que mejor encaja con los campeones "
+                "elegidos y puede cambiar durante la partida."
             )
+
+    def _apply_ally_role_hints(self) -> None:
+        """Mantiene las líneas del cliente y marca con ``~`` las deducidas."""
+        roles: list[str] = []
+        deduced: list[bool] = []
+        for index, combo in enumerate(self.my_team_role_combos):
+            from_client = self.lcu_draft_active and self.my_team_roles_from_client[index]
+            role = self._base_role(combo.currentText())
+            roles.append(role if (from_client or not self.lcu_draft_active) else "")
+            deduced.append(False)
+        if self.lcu_draft_active:
+            confirmed = [role for role in roles if role]
+            pending = [index for index, role in enumerate(roles) if not role]
+            names = [self.my_team_combo_widgets[index].currentText() for index in pending]
+            for index, name, role in zip(
+                pending, names, self.analyzer.assign_likely_roles(names, exclude=confirmed)
+            ):
+                if not role:
+                    continue
+                roles[index] = role
+                deduced[index] = True
+                self.my_team_role_combos[index].setToolTip(
+                    f"Línea probable de {name or 'tu aliado'}: {role}. El cliente no "
+                    "publicó su posición; es una hipótesis según sus roles habituales."
+                )
+        for combo, role, is_deduced in zip(self.my_team_role_combos, roles, deduced):
+            self._show_role(combo, role, probable=is_deduced)
+            if is_deduced:
+                combo.setStyleSheet(
+                    "QComboBox { color: #FBBF24; font-style: italic; border-color: #B98A2E; }"
+                )
+                continue
+            if role:
+                combo.setStyleSheet("")
+                combo.setToolTip(
+                    "Línea asignada por el cliente." if self.lcu_draft_active
+                    else "Línea que declaras para este aliado."
+                )
+                continue
+            combo.setStyleSheet("QComboBox { color: #94A3B8; font-style: italic; }")
+            combo.setToolTip(
+                "Sin datos de línea: el cliente no publicó la posición de este aliado "
+                "y su campeón no aporta roles conocidos."
+            )
+        if self.lcu_draft_active and self._local_slot is not None and deduced[self._local_slot]:
+            # La cabecera «Tu rol» acompaña a la hipótesis de la fila del jugador.
+            self._show_role(self.local_role_combo, roles[self._local_slot], probable=True)
+        self.my_team_roles = roles
+
+    def _current_local_role(self) -> str:
+        """Línea del jugador sin la marca de hipótesis, apta para runas y build."""
+        return self._base_role(self.local_role_combo.currentText()) or self.ROLES[0]
 
     def _on_draft_changed(self) -> None:
         self._update_analytics()
@@ -1087,17 +1220,20 @@ class DraftToolDialog(QDialog):
                 label.setStyleSheet(f"color: {color}; font-weight: 700;")
 
     def _update_analytics(self) -> None:
+        # Las líneas se recalculan antes de analizar: confirmadas o hipótesis.
+        self._apply_role_hints()
+
         # Obtener selecciones de equipo
         my_team_champs = [cb.currentText() for cb in self.my_team_combo_widgets if cb.currentText() and cb.currentText() != "-- Vacío --"]
         enemy_team_champs = [cb.currentText() for cb in self.enemy_team_combo_widgets if cb.currentText() and cb.currentText() != "-- Vacío --"]
 
         local_champ = self.local_champ_combo.currentText()
-        local_role = self.local_role_combo.currentText()
+        local_role = self._current_local_role()
         if not self.lcu_draft_active:
             # En modo manual el rol marcado en cabecera identifica al jugador.
             # Su campeón es el aliado que ocupe ese mismo rol.
-            for role_combo, champion_combo in zip(self.my_team_role_combos, self.my_team_combo_widgets):
-                if role_combo.currentText() == local_role and champion_combo.currentText() != "-- Vacío --":
+            for role, champion_combo in zip(self.my_team_roles, self.my_team_combo_widgets):
+                if role == local_role and champion_combo.currentText() != "-- Vacío --":
                     local_champ = champion_combo.currentText()
                     break
 
@@ -1116,15 +1252,17 @@ class DraftToolDialog(QDialog):
         curve_my_champs = my_team_champs
         curve_enemy_champs = enemy_team_champs
         if self.curve_scope != "Equipo vs equipo":
+            # Se filtra por la línea efectiva (confirmada o hipótesis), no por el
+            # texto pintado, que puede llevar la marca de línea probable.
             curve_my_champs = [
                 combo.currentText()
-                for role, combo in zip(self.my_team_role_combos, self.my_team_combo_widgets)
-                if role.currentText() == self.curve_scope and combo.currentText() != "-- Vacío --"
+                for role, combo in zip(self.my_team_roles, self.my_team_combo_widgets)
+                if role == self.curve_scope and combo.currentText() != "-- Vacío --"
             ]
             curve_enemy_champs = [
                 combo.currentText()
-                for role, combo in zip(self.enemy_team_role_labels, self.enemy_team_combo_widgets)
-                if role.text() == self.curve_scope and combo.currentText() != "-- Vacío --"
+                for role, combo in zip(self.enemy_team_roles, self.enemy_team_combo_widgets)
+                if role == self.curve_scope and combo.currentText() != "-- Vacío --"
             ]
         my_curve = self.analyzer.calculate_team_power_curve(curve_my_champs)
         en_curve = self.analyzer.calculate_team_power_curve(curve_enemy_champs)
@@ -1226,9 +1364,10 @@ class DraftToolDialog(QDialog):
         success, msg = self.lcu_service.import_item_set(
             champion_id=int(build.get("champion_id") or 0),
             champion_name=local_champ,
-            role=self.local_role_combo.currentText(),
+            role=self._current_local_role(),
             item_ids=item_ids,
             boots_id=boots["id"] if boots else None,
+            situational=build.get("situational", []),
         )
         if success:
             QMessageBox.information(self, "Éxito al Importar Build", msg)
@@ -1241,7 +1380,7 @@ class DraftToolDialog(QDialog):
             QMessageBox.warning(self, "Importar Runas", "Selecciona primero un campeón válido.")
             return
 
-        data = self.analyzer.get_champion_runes_and_summoners(local_champ, self.local_role_combo.currentText())
+        data = self.analyzer.get_champion_runes_and_summoners(local_champ, self._current_local_role())
         page = data.get("page_1") if page_index == 1 else data.get("page_2")
         if not page:
             QMessageBox.warning(self, "Importar Runas", f"No hay datos de runas (Página {page_index}) para {local_champ}.")
@@ -1268,7 +1407,7 @@ class DraftToolDialog(QDialog):
             QMessageBox.warning(self, "Importar Hechizos", "Selecciona primero un campeón válido.")
             return
 
-        data = self.analyzer.get_champion_runes_and_summoners(local_champ, self.local_role_combo.currentText())
+        data = self.analyzer.get_champion_runes_and_summoners(local_champ, self._current_local_role())
         spells = data.get("spells", ("Destello", "Teleportación"))
 
         success, msg = self.lcu_service.import_summoner_spells(spells[0], spells[1])
