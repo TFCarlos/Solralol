@@ -16,6 +16,8 @@ class LiveDataWorker(QObject):
     read_failed = Signal(str)
     live_analysis_ready = Signal(object)
     live_analysis_failed = Signal(str)
+    #: La API local dejó de responder después de estar en partida: ha terminado.
+    game_ended = Signal()
 
     def __init__(self, item_catalog: dict[str, Any] | None = None) -> None:
         super().__init__()
@@ -30,12 +32,17 @@ class LiveDataWorker(QObject):
             snapshot = self.game_service.get_game_snapshot()
 
             if snapshot is None:
+                was_in_game = self.was_in_game
                 self._finish_tracking()
                 self.was_in_game = False
                 self.last_game_signature = ""
                 self._emit_read_failed(
                     "League no está en una partida activa."
                 )
+
+                if was_in_game:
+                    self._emit_game_ended()
+
                 return
 
             snapshot = deepcopy(snapshot)
@@ -110,6 +117,12 @@ class LiveDataWorker(QObject):
     def _emit_read_failed(self, message: str) -> None:
         try:
             self.read_failed.emit(message)
+        except RuntimeError:
+            pass
+
+    def _emit_game_ended(self) -> None:
+        try:
+            self.game_ended.emit()
         except RuntimeError:
             pass
 

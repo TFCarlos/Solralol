@@ -661,6 +661,46 @@ class OverlayWindowTests(unittest.TestCase):
         for key, panel in self.overlay.panels.items():
             self.assertFalse(panel.isVisible(), key)
 
+    def test_recording_row_is_hidden_by_default(self):
+        panel = self.overlay.panels["alerts"]
+
+        self.assertFalse(panel.recording)
+        self.assertFalse(panel.recording_row.isVisibleTo(panel))
+
+    def test_recording_row_shows_elapsed_while_active(self):
+        panel = self.overlay.panels["alerts"]
+        panel.show()
+        self.app.processEvents()
+
+        self.overlay.set_recording(True, 75.0)
+        self.app.processEvents()
+
+        self.assertTrue(panel.recording)
+        self.assertTrue(panel.recording_row.isVisible())
+        self.assertEqual(panel.recording_row.text.text(), "Grabando 01:15")
+        self.assertEqual(panel.recording_row.dot.text(), "●")
+
+    def test_recording_row_hides_and_loses_state_on_clear(self):
+        panel = self.overlay.panels["alerts"]
+
+        self.overlay.set_recording(True, 30.0)
+        self.overlay.clear()
+        self.app.processEvents()
+
+        self.assertFalse(panel.recording)
+        self.assertFalse(panel.recording_row.isVisibleTo(panel))
+        self.assertIsNone(self.overlay._recording_snapshot)
+
+    def test_recording_row_survives_alert_renders(self):
+        panel = self.overlay.panels["alerts"]
+
+        self.overlay.set_recording(True, 45.0)
+        self.overlay.update_snapshot(snapshot(600.0))
+        self.app.processEvents()
+
+        self.assertTrue(panel.recording_row.isVisibleTo(panel))
+        self.assertEqual(panel.recording_row.text.text(), "Grabando 00:45")
+
     def test_gold_panel_texts(self):
         self.overlay.update_snapshot(snapshot(600.0))
         panel = self.overlay.panels["gold"]

@@ -21,10 +21,10 @@ disponibles.
 ## 1. Qué hace la aplicación
 
 La ventana principal (`app/ui/main_window.py`, clase `MainWindow`) organiza la
-app en 5 pestañas de navegación (`Inicio`, `Análisis`, `Partida en vivo`,
-`Partidas guardadas`, `Ajustes`), sobre un `QStackedWidget`, con un fondo
-degradado propio (`Backdrop`, dibujado a mano con `QPainter`/`QRadialGradient`
-en azul y rojo).
+app en 6 pestañas de navegación (`Inicio`, `Análisis`, `Partida en vivo`,
+`Partidas guardadas`, `Grabaciones`, `Ajustes`), sobre un `QStackedWidget`, con
+un fondo degradado propio (`Backdrop`, dibujado a mano con
+`QPainter`/`QRadialGradient` en azul y rojo).
 
 - **Inicio**: estado del cliente de League (tarjetas de métricas) y, en la
   misma página, la sección "Actividad reciente" con el buscador de historial
@@ -37,6 +37,8 @@ en azul y rojo).
 - **Partidas guardadas**: lista de partidas grabadas localmente
   (`LiveMatchTracker`) con sus botones de sincronización/análisis (ver más
   abajo).
+- **Grabaciones**: vídeo de cada partida, grabado solo (ver el punto
+  **Grabación en vídeo de la partida** más abajo).
 - **Ajustes**: Riot API key, Riot ID, regiones y los ajustes del overlay
   (qué paneles se muestran, qué paneles solo se ven con TAB pulsado, opacidad,
   bloqueo de clics, aviso de objetivos y los pitidos de las alertas). La
@@ -59,7 +61,9 @@ en azul y rojo).
     Dragón, Grumos, Heraldo y Barón un minuto antes de aparecer (los tiempos
     siguen los del parche 26.1 y se recalculan con los eventos de la API). Cada
     aviso suena con un pitido distinto: uno para Grumos/Heraldo/Barón, otro para
-    el Dragón y otro cuando un rival completa un objeto.
+    el Dragón y otro cuando un rival completa un objeto. Cuando la partida se
+    está grabando, el panel añade una fila roja «● Grabando mm:ss» con el
+    tiempo acumulado del vídeo (se oculta al terminar la grabación).
   - **Rivales**: el campeón rival más fuerte y el más débil.
   Los paneles solo se muestran mientras hay una partida activa.
 - **Grabación local de la partida (`LiveMatchTracker`)**: mientras juegas, la
@@ -67,6 +71,58 @@ en azul y rojo).
   registra eventos de objetivos (dragón, barón, heraldo, torres,
   inhibidores). Al terminar la partida, esa sesión se guarda en
   `~/.solralol/live_match_sessions.json`.
+- **Grabación en vídeo de la partida (`RecordingService`, ffmpeg)**: la
+  grabación empieza sola al detectar la partida y termina al acabarla (o al
+  cerrar la app). Guarda el vídeo de la pantalla con el sonido del juego; el
+  micrófono es opcional y se mezcla en la misma pista con `amix`. Al cerrar
+  ffmpeg se escribe un JSON junto al vídeo (mismo nombre, extensión `.json`)
+  con campeón, modo, duración y los marcadores de la partida.
+  El fin de la partida se detecta en el worker (`LiveDataWorker.game_ended`)
+  y, además, hay una red de seguridad: si la API local deja de responder
+  medio minuto seguido estando en partida, la grabación se cierra igualmente.
+  En la pestaña **Grabaciones** (y en Ajustes → Grabaciones) hay un botón
+  **«⏹ Detener grabación»** para cortar a mano la partida en curso: la
+  grabación se cierra de forma limpia y la sesión LIVE sigue abierta.
+  Mientras se graba, el **overlay de alertas** muestra una fila
+  «● Grabando mm:ss» con el tiempo de vídeo acumulado.
+  La pestaña **Grabaciones** lista la carpeta de vídeos, los reproduce con los
+  controles clásicos (atrás/adelante 10&nbsp;s, volumen) y dibuja esos
+  marcadores sobre la barra de progreso —asesinatos, muertes, asistencias y
+  objetivos (dragones, barones, heraldos, torres e inhibidores)— para saltar a
+  ese momento con un clic. Cada fila tiene su botón **Eliminar** (con
+  confirmación): desaparecen el vídeo y su JSON. Si Windows tiene el fichero
+  en uso —por ejemplo porque se está reproduciendo— suelta el reproductor,
+  reintenta y, si aún así no puede, avisa en lugar de fallar en silencio; no
+  se deja borrar la partida que se está grabando en ese momento.
+
+- **Ventana independiente de repaso (app/ui/postgame_replay_window.py +
+  postgame_sidebar.py)**: una ventana aparte con el vídeo a lo grande
+  (pantalla completa con F), la barra inferior con **indicadores de
+  colores** (asesinatos, muertes, asistencias, dragones, barones, heraldos,
+  torres e inhibidores) y los controles clásicos (retroceder 10 s,
+  play/pausa, avanzar 10 s), junto a un lateral con dos pestañas:
+  **Marcador** (los diez jugadores con K/D/A, CS, oro, visión y resultado,
+  más un gráfico de radar del enfrentamiento: CS/min, oro/min, visión, KDA
+  y participación en kills, comparado con el rival directo) y **Revisión**
+  (timeline de sucesos clasificados con valoración y un consejo corto; un
+  clic en cada fila salta el vídeo a ese momento, con el desfase entre la
+  grabación y la partida ya descontado).
+  El desglose se calcula **siempre con la telemetría local** (snapshots y
+  eventos de la Live Client Data API guardados por LiveMatchTracker), así
+  que está disponible al instante, sincronices o no la partida con la Riot
+  API. Si la sincronizas, el botón **Re-desglosar** vuelve a leer la
+  sesión de disco y reconstruye marcador, radar y revisión (los números
+  siguen saliendo de lo local). La ventana enlaza vídeo y sesión por el
+  session_id que el motor guarda en el JSON lateral de cada grabación;
+  si no hay sesión, el desglose se oculta y el reproductor sigue
+  funcionando. La partida guardada se abre desde cada fila de **Partidas
+  guardadas** (botón **Repaso con vídeo**), y el análisis ya conocido
+  (LiveMatchAnalysisDialog) sigue intacto.
+  En **Ajustes → Grabaciones** se eligen la calidad
+  (desplegable de 1080p a 420p), el bitrate (1,5 a 16&nbsp;Mbps), el sonido del
+  juego y el micrófono, la carpeta de destino y el límite de peso de la
+  carpeta: al superarlo se conserva siempre la última grabación y se borran las
+  más antiguas hasta caber.
 - **Sincronización con Riot (`PostgameSyncService`)**: una vez la partida ha
   terminado, la sesión grabada localmente puede cotejarse con la partida real
   en los servidores de Riot (Match‑V5 + Timeline). Si Riot ya la tiene
@@ -101,6 +157,15 @@ en azul y rojo).
     del proyecto** en este export (ver `LIMPIEZA.txt`). Puede ser un
     resto de una función de atajos de teclado no implementada, o puede
     quitarse si no se va a usar.
+- Para grabar partidas hace falta **ffmpeg**. `requirements.txt` incluye
+  `imageio-ffmpeg`, que trae un binario estático listo para usar, así que con
+  instalar las dependencias ya funciona. Si prefieres tu propio binario,
+  `find_ffmpeg` (en `app/services/recording_service.py`) busca primero la ruta
+  guardada en `ffmpeg_path`, luego el `PATH`, las instalaciones típicas
+  (`C:\ffmpeg\bin`, WinGet, Chocolatey, `~/.solralol/ffmpeg`) y, por último,
+  el de `imageio-ffmpeg`.
+- La reproducción usa `PySide6.QtMultimedia` / `PySide6.QtMultimediaWidgets`
+  (incluidos en `PySide6_Addons`, ya presentes en `requirements.txt`).
 - Para el visor de Análisis y para los diálogos de análisis debe estar
   disponible `PySide6.QtWebEngineWidgets` / `PySide6.QtWebEngineCore`.
 - Una Riot API key propia (desarrollador o de producción) para el historial y
@@ -167,6 +232,7 @@ Solralol/
 │   │   ├── overlay_alert_service.py       Alertas del overlay: compras completas y objetivos inminentes
 │   │   ├── overlay_sound_service.py       Pitidos emulados del overlay (objetivos, dragón, compras rivales)
 │   │   ├── tab_hotkey_service.py          Sondeo de la tecla TAB para mostrar/ocultar paneles del overlay
+│   │   ├── recording_service.py          Grabación de partidas con ffmpeg: presets, orden de captura, marcadores y biblioteca local
 │   │   ├── data_dragon_assets.py         Descarga asíncrona (Qt) de iconos de campeón/objeto con caché
 │   │   └── settings_service.py           Carga/guarda ajustes y Riot API key en ~/.solralol/settings.json
 │   ├── ui/
@@ -175,6 +241,7 @@ Solralol/
 │   │   ├── champion_card.py              Tarjeta visual de un jugador (usada por main_window.py)
 │   │   ├── inventory.py                  Construcción de los slots de inventario/trinket (usada por champion_card.py)
 │   │   ├── overlay_window.py             Tres paneles flotantes (oro, alertas, rivales) con ajustes propios
+│   │   ├── recordings_page.py            Pestaña Grabaciones: biblioteca de vídeos y reproductor con marcadores en la barra
 │   │   ├── styles.py                     Hoja de estilos Qt (QSS) del panel (usada por main_window.py)
 │   │   ├── live_match_analysis_dialog.py Diálogo de análisis LIVE/postpartida por rol
 │   │   └── match_inspector_dialog.py     Diálogo de detalle postpartida del historial (usado por main_window.py)
@@ -384,7 +451,7 @@ vigentes; se han verificado contra el código real de `main_window.py`:
 
 ## 8. Navegación de la ventana principal
 
-`MainWindow` usa un `QStackedWidget` (`self.pages`) con 5 páginas, controladas
+`MainWindow` usa un `QStackedWidget` (`self.pages`) con 6 páginas, controladas
 por botones de navegación exclusivos (`QButtonGroup`):
 
 | # | Botón | Página | Contenido |
@@ -393,7 +460,12 @@ por botones de navegación exclusivos (`QButtonGroup`):
 | 1 | Análisis | `create_analysis_page` | Visor web externo (LoLalytics / U.GG / LeagueOfGraphs) con bloqueador de anuncios. |
 | 2 | Partida en vivo | `create_live_page` | Tarjetas por jugador + botón "Abrir análisis LIVE". Deshabilitada (`live_button.setEnabled(False)`) hasta que hay partida activa. |
 | 3 | Partidas guardadas | `create_saved_games_page` | Lista de sesiones grabadas con los botones "Buscar Riot" / "Re-sincronizar" / "Abrir análisis". |
-| 4 | Ajustes | `create_settings_page` | Riot API key, Riot ID, regiones. |
+| 4 | Grabaciones | `RecordingsPage` | Biblioteca de vídeos de la carpeta de grabaciones y reproductor con marcadores de la partida en la barra de progreso. |
+| 5 | Ajustes | `create_settings_page` | Riot API key, Riot ID, regiones y la tarjeta "Grabaciones". |
+
+Los índices están en constantes de clase (`MainWindow.LIVE_PAGE_INDEX`,
+`MainWindow.RECORDINGS_PAGE_INDEX`, `MainWindow.SETTINGS_PAGE_INDEX`) para que
+insertar una pestaña nueva no obligue a revisar cada `setCurrentIndex`.
 
 ## 9. Documentación extensa
 

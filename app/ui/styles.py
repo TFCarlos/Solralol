@@ -8,6 +8,7 @@ QWidget#centralWidget,
 QWidget#livePage,
 QWidget#homePage,
 QWidget#settingsPage,
+QWidget#recordingsPage,
 QWidget#cardsWidget {
     background: transparent;
     color: #e8f0ff;
@@ -1154,6 +1155,166 @@ QLabel#savedGameSync[state="failed"] {
     border: 1px solid rgba(239, 68, 68, 110);
 }
 
+QFrame#recordingPlayerCard {
+    border: 1px solid rgba(97, 148, 211, 62);
+    border-radius: 16px;
+    background: rgba(15, 27, 48, 195);
+}
+
+QScrollArea#recordingsScroll,
+QWidget#recordingsContent {
+    border: none;
+    background: transparent;
+}
+
+QLabel#recordingsStatus {
+    min-height: 22px;
+    color: #9eb4d3;
+    font-size: 11px;
+}
+
+QLabel#recordingsStatus[state="live"] {
+    color: #ff9ca7;
+    font-weight: 800;
+}
+
+QLabel#recordingsEmpty {
+    min-height: 180px;
+    padding: 26px;
+    border: 1px dashed rgba(97, 148, 211, 110);
+    border-radius: 12px;
+    color: #9eb4d3;
+    background: rgba(6, 15, 29, 130);
+}
+
+QFrame#recordingRow {
+    border: 1px solid #293c56;
+    border-left: 4px solid #4adea0;
+    border-radius: 12px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #102d2c, stop:0.45 #102033, stop:1 #0b1423);
+}
+
+QFrame#recordingRow:hover {
+    border-top-color: #607698;
+    border-right-color: #607698;
+    border-bottom-color: #607698;
+}
+
+QLabel#recordingTitle {
+    color: #eef4ff;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+QLabel#recordingDetail {
+    color: #a3b4cc;
+    font-size: 12px;
+}
+
+QLabel#recordingBadge {
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #acbdd3;
+    background: #243247;
+    border: 1px solid #3b4e68;
+}
+
+QLabel#recordingBadge[state="live"] {
+    color: #ffb3c0;
+    background: #482631;
+    border-color: #77404c;
+}
+
+QLabel#recordingBadge[state="pending"] {
+    color: #facc15;
+    background: rgba(217, 174, 79, 40);
+    border: 1px solid rgba(217, 174, 79, 110);
+}
+
+QFrame#recordingRow QPushButton {
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 8px;
+    font-size: 11px;
+}
+
+QLabel#recordingPlayerTitle {
+    color: #f4f7ff;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+QLabel#recordingPlayerTime {
+    color: #d9ae4f;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+QLabel#recordingMarkerLegend {
+    color: #8fa2bd;
+    font-size: 11px;
+}
+
+QSlider#recordingSlider::groove:horizontal {
+    height: 9px;
+    border-radius: 4px;
+    background: #29476a;
+}
+
+QSlider#recordingSlider::handle:horizontal {
+    width: 15px;
+    margin: -4px 0;
+    border: 1px solid #f0cc70;
+    border-radius: 7px;
+    background: #d9ae4f;
+}
+
+QPushButton#recordingPlayButton {
+    min-height: 34px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-weight: 700;
+    color: #dbe9ff;
+    background: #1b3657;
+    border: 1px solid #3e6d9e;
+}
+
+QPushButton#recordingPlayButton:hover {
+    background: #285783;
+}
+
+QPushButton#recordingPlayButton:disabled {
+    color: #596c86;
+    background: rgba(18, 29, 45, 130);
+    border-color: rgba(97, 148, 211, 28);
+}
+
+QSlider#recordingVolume {
+    max-width: 120px;
+}
+
+QListWidget#recordingMarkerList {
+    background: rgba(6, 15, 29, 160);
+    border: 1px solid rgba(97, 148, 211, 65);
+    border-radius: 8px;
+    color: #cbdcff;
+    font-size: 11px;
+    outline: none;
+}
+
+QListWidget#recordingMarkerList::item {
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(97, 148, 211, 30);
+}
+
+QListWidget#recordingMarkerList::item:hover {
+    background: rgba(55, 104, 164, 120);
+    color: #ffffff;
+}
+
 QDialog#liveMatchAnalysisDialog {
     background: #07101f;
     color: #e8f0ff;
@@ -1946,4 +2107,247 @@ QLabel#bootsQuestSlot:hover,
 QLabel#pinkWardQuestSlot:hover {
     border-color: rgba(217, 174, 79, 190);
 }
+/* ---- Ventana independiente de repaso post-partida ---- */
+
+QMainWindow#postgameReplayWindow,
+QWidget#postgameRoot {
+    background: #07111f;
+}
+
+QFrame#postgameHeader {
+    border: 1px solid rgba(97, 148, 211, 70);
+    border-radius: 14px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #0c1b30, stop:0.6 #102738, stop:1 #0b1423);
+}
+
+QLabel#postgameTitle {
+    color: #f4f7ff;
+    font-size: 19px;
+    font-weight: 800;
+}
+
+QLabel#postgameSubtitle {
+    color: #9eb4d3;
+    font-size: 12px;
+}
+
+QLabel#postgameBadge {
+    padding: 6px 12px;
+    border-radius: 7px;
+    color: #acbdd3;
+    font-size: 11px;
+    font-weight: 800;
+    background: #243247;
+    border: 1px solid #3b4e68;
+}
+
+QLabel#postgameBadge[state="synced"] {
+    color: #4adea0;
+    background: rgba(23, 70, 60, 190);
+    border-color: rgba(74, 222, 160, 130);
+}
+
+QFrame#postgamePlayerCard {
+    border: 1px solid rgba(97, 148, 211, 62);
+    border-radius: 16px;
+    background: rgba(15, 27, 48, 195);
+}
+
+QVideoWidget#postgameVideo {
+    border-radius: 10px;
+    background: #05090f;
+}
+
+QSlider#postgameMarkerSlider::groove:horizontal {
+    height: 9px;
+    border-radius: 4px;
+    background: #29476a;
+}
+
+QSlider#postgameMarkerSlider::handle:horizontal {
+    width: 15px;
+    margin: -4px 0;
+    border: 1px solid #f0cc70;
+    border-radius: 7px;
+    background: #d9ae4f;
+}
+
+QLabel#postgameTime {
+    color: #d9ae4f;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+QLabel#postgameMarkerLegend {
+    color: #8fa2bd;
+    font-size: 11px;
+}
+
+QLabel#postgameStatus {
+    min-height: 22px;
+    color: #9eb4d3;
+    font-size: 11px;
+}
+
+QFrame#postgameSidebarHeader {
+    border: 1px solid rgba(97, 148, 211, 55);
+    border-radius: 12px;
+    background: rgba(11, 22, 38, 200);
+}
+
+QLabel#postgameSidebarTitle {
+    color: #eef4ff;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+QLabel#postgameSidebarBadge {
+    padding: 4px 9px;
+    border-radius: 6px;
+    color: #9eb4d3;
+    font-size: 10px;
+    font-weight: 800;
+    background: #1c2a3e;
+    border: 1px solid #33475f;
+}
+
+QLabel#postgameSidebarBadge[state="synced"] {
+    color: #4adea0;
+    border-color: rgba(74, 222, 160, 120);
+}
+
+QTabWidget#postgameTabs::pane {
+    border: 1px solid rgba(97, 148, 211, 55);
+    border-radius: 10px;
+    background: rgba(8, 17, 31, 190);
+}
+
+QTabWidget#postgameTabs QTabBar::tab {
+    padding: 8px 16px;
+    color: #9db3ca;
+    background: #0d2237;
+    border: 1px solid #234663;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+
+QTabWidget#postgameTabs QTabBar::tab:selected {
+    color: #101a27;
+    background: #d9ae4f;
+    font-weight: 800;
+}
+
+QTableWidget#postgameScoreTable {
+    border: 1px solid rgba(97, 148, 211, 60);
+    border-radius: 8px;
+    color: #cbdcff;
+    background: rgba(6, 15, 29, 170);
+    alternate-background-color: rgba(16, 37, 59, 150);
+    gridline-color: rgba(97, 148, 211, 45);
+    font-size: 11px;
+}
+
+QTableWidget#postgameScoreTable::item:selected {
+    color: #101a27;
+    background: #d9ae4f;
+}
+
+QTableWidget#postgameScoreTable QHeaderView::section {
+    color: #d9ae4f;
+    background: #153452;
+    border: 0;
+    padding: 6px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#postgameStatsLine {
+    color: #a3b4cc;
+    font-size: 11px;
+}
+
+QLabel#postgameReviewEmpty {
+    padding: 16px;
+    border: 1px dashed rgba(97, 148, 211, 110);
+    border-radius: 10px;
+    color: #9eb4d3;
+    background: rgba(6, 15, 29, 130);
+}
+
+QScrollArea#postgameReviewScroll,
+QWidget#postgameReviewContent {
+    border: none;
+    background: transparent;
+}
+
+QFrame#postgameEventRow {
+    border: 1px solid rgba(97, 148, 211, 45);
+    border-radius: 9px;
+    background: rgba(14, 26, 44, 190);
+}
+
+QFrame#postgameEventRow:hover {
+    border-color: rgba(217, 174, 79, 150);
+    background: rgba(21, 39, 64, 210);
+}
+
+QLabel#postgameEventTime {
+    color: #d9ae4f;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+QLabel#postgameEventTitle {
+    color: #eef4ff;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+QLabel#postgameEventTitle[evaluation="1"] { color: #7ee7a6; }
+QLabel#postgameEventTitle[evaluation="-1"] { color: #ff9ca7; }
+
+QLabel#postgameEventDetail {
+    color: #b9c8dc;
+    font-size: 11px;
+}
+
+QLabel#postgameEventFeedback {
+    color: #8fa2bd;
+    font-size: 10px;
+}
+
+QLabel#postgameEventPlayer {
+    color: #d9ae4f;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QComboBox#postgamePlayerCombo {
+    min-height: 28px;
+    padding: 2px 8px;
+    border: 1px solid #3b4e68;
+    border-radius: 7px;
+    color: #dbe9ff;
+    background: #16273d;
+}
+
+QPushButton#postgameScopeButton {
+    min-height: 28px;
+    padding: 2px 10px;
+    border: 1px solid #3b4e68;
+    border-radius: 7px;
+    color: #b9c8dc;
+    background: #16273d;
+    font-size: 11px;
+}
+
+QPushButton#postgameScopeButton:checked {
+    color: #101a27;
+    background: #d9ae4f;
+    border-color: #f0cc70;
+    font-weight: 800;
+}
+
+
 """

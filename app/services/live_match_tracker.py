@@ -38,6 +38,40 @@ class LiveMatchTracker:
         "inhibkilled": ("inhibitor", "Inhibidor"),
     }
 
+    #: Prefijos de nombres de unidades del juego (no de jugadores) en los
+    #: eventos: con ellos se sabe de qué bando es la unidad que remató.
+    UNIT_NAME_PREFIXES = (
+        "sru_",
+        "minion",
+        "nexus",
+        "turret",
+        "baron",
+        "dragon",
+        "herald",
+    )
+
+    #: Bando de una UNIDAD por el nombre interno (veterano del Live Client):
+    #: ``Order``/``T100`` = azul (ORDER, TeamID 100) y ``Chaos``/``T200`` =
+    #: rojo (CHAOS, TeamID 200). Es el equipo que remató el objetivo.
+    UNIT_TEAM_TOKENS = (
+        ("order", "ORDER"),
+        ("chaos", "CHAOS"),
+        ("t100", "ORDER"),
+        ("t200", "CHAOS"),
+    )
+
+    #: Dueño de una ESTRUCTURA por su nombre interno: ``Turret_OrderTurretShrine_A``,
+    #: ``Turret_T1_L_03_A`` o ``Barracks_T2_L1``. El número 1 es el bando azul
+    #: (ORDER, TeamID 100) y el 2 el rojo (CHAOS, TeamID 200); como el nombre
+    #: describe la torre/inhibidor DESTRUIDO, el objetivo lo consigue el bando
+    #: contrario.
+    STRUCTURE_OWNER_TOKENS = (
+        ("orderturret", "ORDER"),
+        ("chaosturret", "CHAOS"),
+        ("_t1_", "ORDER"),
+        ("_t2_", "CHAOS"),
+    )
+
     def __init__(self, item_catalog: dict[str, Any]) -> None:
         self.item_catalog = item_catalog
         self.sessions_path = (
@@ -600,18 +634,116 @@ class LiveMatchTracker:
         objective = self.OBJECTIVE_EVENTS.get(event_name)
         if objective:
             objective_key, objective_label = objective
-            team = self._team_from_key(killer_key)
-            team_label = self._team_label(team)
+            structure = str(
+                raw_event.get("TurretKilled")
+                or raw_event.get("InhibKilled")
+                or raw_event.get("BarracksKilled")
+                or ""
+            )
+            assisters = self._assister_keys(raw_event)
+            team, team_source = self._objective_team(
+                killer_key,
+                str(raw_event.get("KillerName", "")),
+                assisters,
+                structure,
+            )
             self._append_event(
                 time_value=time_value,
                 event_type="objective",
                 player_key=killer_key,
                 team=team,
+                team_source=team_source,
                 role=self._role_from_key(killer_key),
                 precision="exact",
-                label=f"{team_label} consiguió {objective_label}",
+                label=f"{self._team_label(team)} consiguió {objective_label}",
                 objective=objective_key,
+                objective_label=objective_label,
+                # Se guarda de dónde salió el bando y el nombre interno de la
+                # estructura: así la revisión puede explicar quién lo logró
+                # aunque el evento original no traiga el nombre del asesino.
+                objective_team=team,
+                structure=structure,
+                monster=str(
+                    raw_event.get("DragonType")
+                    or raw_event.get("MonsterType")
+                    or ""
+                ),
+                stolen=str(raw_event.get("Stolen", "")),
+                assister_keys=assisters,
             )
+
+    def _objective_team(
+        self,
+        killer_key: str | None,
+        killer_name: str,
+        assister_keys: list[str],
+        structure: str,
+    ) -> tuple[str, str]:
+        """Bando que ha conseguido un objetivo (torre, dragón, barón...).
+
+        El Live Client no siempre identifica al asesino: cuando una torre cae
+        por un súbdito, ``KillerName`` viene vacío o con el nombre de la
+        unidad, así que el bando se deduce por capas:
+
+        1. el jugador que remató (o cualquiera de sus asistentes),
+        2. la unidad que remató (``Minion_T100...``, ``SRU_OrderMinionMelee``):
+           su nombre ya lleva el bando,
+        3. la estructura destruida (``Turret_T2_L_03_A``, ``Barracks_T1_L1``):
+           el nombre indica de quién era, así que el objetivo es del rival.
+        """
+        team = self._team_from_key(killer_key)
+
+        if team:
+            return team, "killer"
+
+        team = self._team_from_unit_name(killer_name)
+
+        if team:
+            return team, "unit"
+
+        for key in assister_keys:
+            team = self._team_from_key(key)
+
+            if team:
+                return team, "assister"
+
+        owner = self._structure_owner(structure)
+
+        if owner == "ORDER":
+            return "CHAOS", "structure"
+
+        if owner == "CHAOS":
+            return "ORDER", "structure"
+
+        return "", "unknown"
+
+    @classmethod
+    def _team_from_unit_name(cls, name: str) -> str:
+        """Bando de la unidad que remató, si el nombre es de una unidad."""
+        text = str(name or "").strip().casefold()
+
+        if not text or not text.startswith(cls.UNIT_NAME_PREFIXES):
+            return ""
+
+        for token, team in cls.UNIT_TEAM_TOKENS:
+            if token in text:
+                return team
+
+        return ""
+
+    @classmethod
+    def _structure_owner(cls, name: str) -> str:
+        """Bando al que pertenecía la estructura destruida (o ``""``)."""
+        text = str(name or "").strip().casefold()
+
+        if not text:
+            return ""
+
+        for token, team in cls.STRUCTURE_OWNER_TOKENS:
+            if token in text:
+                return team
+
+        return ""
 
     def _append_event(
         self,
@@ -694,7 +826,7 @@ class LiveMatchTracker:
             return "Equipo aliado"
         if team:
             return "Equipo enemigo"
-        return "Bando no identificado"
+        return "Bando sin identificar"
 
     def _display_from_key(
         self,

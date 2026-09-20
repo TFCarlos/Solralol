@@ -10,6 +10,36 @@ from app.services.match_history_cache import MatchHistoryCache
 from app.services.riot_api_service import RiotApiError, RiotApiService
 
 
+#: Tipo canónico y nombre legible de cada objetivo oficial (Riot/Live Client).
+#: Sin esta traducción los edificios se guardaban con su nombre interno
+#: ("Tower Building") y la revisión no sabía pintarlos ni valorarlos como
+#: objetivo, ni deducir de qué bando eran.
+OFFICIAL_OBJECTIVE_KINDS: dict[str, tuple[str, str]] = {
+    "tower_building": ("tower", "Torre"),
+    "inhibitor_building": ("inhibitor", "Inhibidor"),
+    "barracks": ("inhibitor", "Inhibidor"),
+    "dragon": ("dragon", "Dragón"),
+    "baron_nashor": ("baron", "Barón (Nashor)"),
+    "rift_herald": ("rift_herald", "Heraldo"),
+    "horde": ("horde", "Grumos"),
+}
+
+
+def official_objective_kind(
+    raw: Any,
+    fallback: str = "Objetivo",
+) -> tuple[str, str]:
+    """``(tipo canónico, nombre legible)`` de un objetivo de la Riot API."""
+    text = str(raw or "").strip().casefold()
+
+    if text in OFFICIAL_OBJECTIVE_KINDS:
+        return OFFICIAL_OBJECTIVE_KINDS[text]
+
+    readable = str(raw or "").replace("_", " ").strip().title() or fallback
+
+    return "objective", readable
+
+
 
 class PostgameSyncService:
     """Empareja una sesión LIVE finalizada con su Match-V5 oficial."""
@@ -720,35 +750,60 @@ class PostgameSyncService:
         if event_type == "BUILDING_KILL":
             team_id = int(event.get("killerTeamId", 0))
             killer_key = key_map.get(int(event.get("killerId", 0)))
-            building = str(event.get("buildingType", "edificio")).replace("_", " ").title()
+            kind, label = official_objective_kind(
+                event.get("buildingType"), "Edificio"
+            )
+            lane = str(event.get("laneType") or "").replace("_", " ").title()
+            detail = " · ".join(part for part in (label, lane) if part)
+            # ``teamId`` = bando DUEÑO del edificio (lo pierde);
+            # ``killerTeamId`` = bando que lo destruye (lo consigue).
+            killer_side = self._side_of(session, killer_key)
+            killer_team = self._team_of(session, killer_key)
             return self._event(
                 timestamp,
                 order,
                 "objective",
                 killer_key,
                 session,
-                f"{self._team_label(session, team_id)} consiguió {building}",
-                objective=building,
+                f"{self._team_label(session, team_id, killer_team)} consiguió {detail}",
+                objective=kind,
+                objective_label=label,
+                objective_team=killer_team,
+                team_source="official" if team_id in (100, 200) else "killer",
+                owner_team=self._riot_team_name(event.get("teamId", 0)),
+                structure=str(event.get("buildingType") or ""),
             )
 
 
         if event_type == "ELITE_MONSTER_KILL":
             team_id = int(event.get("killerTeamId", 0))
-            monster = str(event.get("monsterType", "objetivo")).replace("_", " ").title()
+            killer_key = key_map.get(int(event.get("killerId", 0)))
+            kind, label = official_objective_kind(event.get("monsterType"))
+            dragon = str(event.get("dragonType") or "").replace("_", " ").title()
+            detail = f"{label} ({dragon})" if dragon and kind == "dragon" else label
+            killer_team = self._team_of(session, killer_key)
             return self._event(
                 timestamp,
                 order,
                 "objective",
                 killer_key,
                 session,
-                f"{self._team_label(session, team_id)} consiguió {monster}",
-                objective=monster,
+                f"{self._team_label(session, team_id, killer_team)} consiguió {detail}",
+                objective=kind,
+                objective_label=label,
+                objective_team=killer_team
+                if team_id not in (100, 200)
+                else self._riot_team_name(team_id),
+                team_source="official" if team_id in (100, 200) else "killer",
+                monster=str(event.get("monsterType") or ""),
+                owner_team="",
             )
         return None
 
 
     def _event(self, time_value, order, event_type, player_key, session, label, **extra):
         meta = session.get("players", {}).get(player_key, {})
+        objective_team = str(extra.get("objective_team") or "")
         result = {
             "time": round(time_value, 1),
             "time_label": self._format_time(time_value),
@@ -756,7 +811,10 @@ class PostgameSyncService:
             "type": event_type,
             "precision": "official",
             "player_key": player_key,
-            "team": meta.get("team", ""),
+            # El bando del evento es el que CONSIGUE el objetivo
+            # (``objective_team``), no el del jugador que sale en el campo
+            # ``player_key`` (en torres con remate de súbdito puede ser None).
+            "team": objective_team or meta.get("team", ""),
             "role": meta.get("role", "UNKNOWN"),
             "label": label,
         }
@@ -764,10 +822,59 @@ class PostgameSyncService:
         return result
 
 
+    def _team_of(
+        self,
+        session: dict[str, Any],
+        player_key: str | None,
+    ) -> str:
+        """Bando del jugador (fallback si la Riot API no trae ``killerTeamId``)."""
+        if not player_key:
+            return ""
+
+        players = session.get("players", {})
+        meta = players.get(player_key) if isinstance(players, dict) else None
+
+        if not isinstance(meta, dict):
+            return ""
+
+        return str(meta.get("team", "") or "")
+
+    def _side_of(
+        self,
+        session: dict[str, Any],
+        player_key: str | None,
+    ) -> str:
+        """``"ally"``/``"enemy"`` del jugador que remató (o ``""``)."""
+        team = self._team_of(session, player_key)
+        local_team = str(session.get("local_team") or "").strip().upper()
+
+        if team and local_team:
+            return "ally" if team.upper() == local_team else "enemy"
+
+        return ""
+
+    @staticmethod
+    def _riot_team_name(riot_team_id: Any) -> str:
+        """Nombre de bando ORDER/CHAOS desde un teamId oficial (o ``""``)."""
+        try:
+            value = int(riot_team_id or 0)
+        except (TypeError, ValueError):
+            return ""
+
+        if value == 100:
+            return "ORDER"
+
+        if value == 200:
+            return "CHAOS"
+
+        return ""
+
+
     def _team_label(
         self,
         session: dict[str, Any],
         riot_team_id: int,
+        fallback_team: str = "",
     ) -> str:
         """Convierte teamId oficial de Riot a aliado/enemigo de la sesión."""
         local_team = str(
@@ -776,14 +883,20 @@ class PostgameSyncService:
                 "",
             )
         ).upper()
-
+        event_team = ""
 
         if riot_team_id == 100:
             event_team = "ORDER"
         elif riot_team_id == 200:
             event_team = "CHAOS"
-        else:
-            return "Bando no identificado"
+
+        if not event_team:
+            # La Riot API no siempre trae el bando del objetivo: si se conoce
+            # el del jugador que lo remató, ese manda.
+            event_team = str(fallback_team or "").upper()
+
+        if not event_team:
+            return "Bando sin identificar"
 
 
         if local_team and event_team == local_team:

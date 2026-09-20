@@ -6,7 +6,11 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=[
+        'imageio_ffmpeg',
+        'PySide6.QtMultimedia',
+        'PySide6.QtMultimediaWidgets',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

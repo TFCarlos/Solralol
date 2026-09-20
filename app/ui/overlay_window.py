@@ -188,6 +188,24 @@ QLabel#overlayAlertText {
     font-weight: 700;
 }
 
+QFrame#overlayRecordingRow {
+    background: rgba(74, 22, 30, 215);
+    border: 1px solid rgba(255, 135, 147, 200);
+    border-radius: 7px;
+}
+
+QLabel#overlayRecordingDot {
+    color: #ff8793;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+QLabel#overlayRecordingText {
+    color: #ffdbe0;
+    font-size: 11px;
+    font-weight: 800;
+}
+
 QLabel#overlayMarker {
     color: #ff8793;
     font-size: 12px;
@@ -679,6 +697,36 @@ class _AlertRow(QFrame):
         layout.addWidget(self.text, 1)
 
 
+class _RecordingRow(QFrame):
+    """Fila fija del panel de alertas: indica que la partida se está grabando."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("overlayRecordingRow")
+
+        self.dot = QLabel("●")
+        self.dot.setObjectName("overlayRecordingDot")
+        self.dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.text = QLabel("")
+        self.text.setObjectName("overlayRecordingText")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 5, 8, 5)
+        layout.setSpacing(8)
+        layout.addWidget(self.dot)
+        layout.addWidget(self.text, 1)
+
+    def set_elapsed(self, elapsed_seconds: float) -> None:
+        try:
+            total = max(0, int(float(elapsed_seconds)))
+        except (TypeError, ValueError):
+            total = 0
+
+        minutes, seconds = divmod(total, 60)
+        self.text.setText(f"Grabando {minutes:02d}:{seconds:02d}")
+
+
 class AlertsPanel(_FloatingPanel):
     """Panel 2: compras de objetos completos y objetivos a punto de aparecer."""
 
@@ -688,12 +736,25 @@ class AlertsPanel(_FloatingPanel):
         self.feed: list[dict] = []
         self.rows: list[_AlertRow] = []
         self._visible_count = -1
+        self.recording = False
+
+        self.recording_row = _RecordingRow()
+        self.recording_row.hide()
+        self.body.addWidget(self.recording_row)
 
         self.body.setSpacing(4)
 
     def render(self, alerts: list[dict]) -> None:
         self.feed = alerts if isinstance(alerts, list) else []
         self.feed = self.feed[:MAX_ALERT_ROWS]
+
+        if (
+            self.recording
+            and self.recording_row.parentWidget() is not None
+            and not self.recording_row.isVisibleTo(self)
+        ):
+            self.recording_row.setVisible(True)
+            self._visible_count = -1
 
         while len(self.rows) < MAX_ALERT_ROWS:
             row = _AlertRow()
@@ -781,6 +842,31 @@ class AlertsPanel(_FloatingPanel):
                 ALERT_TEXT_WIDTH,
             )
             row.text.setToolTip(str(alert.get("detail", "") or ""))
+
+    def set_recording(self, active: bool, elapsed_seconds: float = 0.0) -> None:
+        """Muestra u oculta la fila «Grabando» del panel de alertas.
+
+        Con los padres ocultos Qt ignora ``setVisible(True)`` en el hijo, así
+        que si el panel aún no se ha mostrado la primera vez la fila quedará
+        visible en cuanto se ordene el layout del panel.
+        """
+        active = bool(active)
+
+        if active:
+            self.recording_row.set_elapsed(elapsed_seconds)
+
+        already = (
+            self.recording == active
+            and self.recording_row.isVisibleTo(self) == active
+        )
+
+        if already:
+            return
+
+        self.recording = active
+        self.recording_row.setVisible(active)
+        self._visible_count = -1
+        self.adjustSize()
 
     def _clear_row(self, row: _AlertRow) -> None:
         row.slot_a.setPixmap(QPixmap())
@@ -960,6 +1046,7 @@ class OverlayWindow(QObject):
         self.tab_down = False
         self._in_game = False
         self._last_game_time = -1.0
+        self._recording_snapshot: tuple[bool, float] | None = None
 
         for panel in self.panels.values():
             panel.moved_callback = self._panel_moved
@@ -1112,6 +1199,12 @@ class OverlayWindow(QObject):
         self.panels["alerts"].render(
             self.alert_tracker.update(snapshot)
         )
+
+        if self._recording_snapshot is not None:
+            self.panels["alerts"].set_recording(
+                self._recording_snapshot[0], self._recording_snapshot[1]
+            )
+
         self.refresh_visibility()
 
         # Cada aviso nuevo emite su pitido (si los sonidos están activados).
@@ -1172,12 +1265,29 @@ class OverlayWindow(QObject):
         """True si los pitidos del overlay están activados."""
         return self.sound_service.enabled
 
+    def set_recording(self, active: bool, elapsed_seconds: float = 0.0) -> None:
+        """Guarda el estado de grabación para mostrarlo en el panel de alertas.
+
+        La fila «Grabando» se pinta en el siguiente ``render`` (o en el
+        siguiente ``update_snapshot``), porque los widgets solo deben tocarse
+        desde el hilo que los usa.
+        """
+        try:
+            elapsed = max(0.0, float(elapsed_seconds))
+        except (TypeError, ValueError):
+            elapsed = 0.0
+
+        self._recording_snapshot = (bool(active), elapsed)
+        self.panels["alerts"].set_recording(active, elapsed)
+
     def clear(self) -> None:
         """Sin partida no hay nada que mostrar: se ocultan los paneles."""
         self._in_game = False
         self._last_game_time = -1.0
         self._last_sound_alerts.clear()
         self.alert_tracker.reset()
+        self._recording_snapshot = None
+        self.panels["alerts"].set_recording(False)
 
         for panel in self.panels.values():
             if panel.isVisible():

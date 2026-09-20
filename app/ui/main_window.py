@@ -14,6 +14,8 @@ from PySide6.QtGui import (
     QPainter,
     QRadialGradient,
 )
+from app.ui.postgame_replay_window import PostgameReplayWindow
+
 
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -62,7 +64,28 @@ from app.services.postgame_sync_worker import (
     PostgameSyncWorker,
 )
 
+from app.services.recording_service import (
+    BITRATE_PRESETS,
+    DEFAULT_BITRATE,
+    LIMIT_DEFAULT_GB,
+    LIMIT_MAX_GB,
+    LIMIT_MIN_GB,
+    QUALITY_PRESETS,
+    RecordingConfig,
+    RecordingLibrary,
+    RecordingService,
+    bitrate_label,
+    find_video_for_session,
+    format_size,
+    list_audio_devices,
+    pick_game_audio_device,
+    pick_microphone_device,
+    quality_label,
+    recording_settings_defaults,
+)
 from app.ui.champion_card import ChampionCard
+from app.ui.recordings_page import RecordingsPage  # noqa: E402
+from app.ui.postgame_replay_window import PostgameReplayWindow  # noqa: E402
 from app.ui.overlay_window import OverlayWindow
 from app.ui.styles import CONTROL_WINDOW_STYLE
 from app.ui.champ_select_worker import ChampSelectWorker
@@ -100,6 +123,14 @@ class MainWindow(QMainWindow):
 
     # Índice de la pestaña "Partida en vivo" dentro de self.pages.
     LIVE_PAGE_INDEX = 2
+    # Índice de la pestaña "Grabaciones" (antes de "Ajustes").
+    RECORDINGS_PAGE_INDEX = 4
+    SETTINGS_PAGE_INDEX = 5
+    #: Sondeos seguidos sin respuesta de la API local para dar la partida por
+    #: terminada (el sondeo es de 1 s, así que 30 ≈ medio minuto). Es la red de
+    #: seguridad que cierra la grabación si la partida termina sin que llegue
+    #: ninguna señal de fin.
+    LIVE_LOST_POLLS_BEFORE_STOP = 30
 
     snapshot_requested = Signal()
 
@@ -191,6 +222,32 @@ class MainWindow(QMainWindow):
             "euw1",
         )
 
+        for key, value in recording_settings_defaults().items():
+            self.settings.setdefault(key, value)
+
+        self.recording_config = RecordingConfig.from_settings(
+            self.settings
+        )
+        self.recording_library = RecordingLibrary(
+            self.recording_config.output_dir
+        )
+        self.recording_service = RecordingService(
+            self.recording_library,
+            self,
+        )
+        self.recording_service.refresh_ffmpeg(
+            self.recording_config.ffmpeg_path
+        )
+        self.recording_service.failed.connect(
+            self._on_recording_failed
+        )
+        self.recording_service.finished.connect(
+            self._on_recording_finished
+        )
+        self.recording_service.state_changed.connect(
+            self._sync_overlay_recording
+        )
+
         self.match_history: list[dict] = []
         self.history_is_loading = False
 
@@ -205,12 +262,16 @@ class MainWindow(QMainWindow):
         )
         self.saved_live_sessions: list[dict] = []
         self.live_session_finished = False
+        #: Sondeos seguidos sin respuesta de la API local estando en partida.
+        self.live_snapshots_lost = 0
 
         self.postgame_sync_in_progress = False
         self.pending_postgame_session_id = ""
 
         self.current_live_session: dict | None = None
         self.live_analysis_dialog: LiveMatchAnalysisDialog | None = None
+        #: Ventana independiente de repaso (vídeo + desglose post-partida).
+        self.replay_window: PostgameReplayWindow | None = None
         self.draft_tool_dialog: DraftToolDialog | None = None
         # Se activa al cerrarse el draft y se consume cuando la partida arranca
         # (es decir, cuando termina la pantalla de carga): el panel salta solo a
@@ -279,6 +340,21 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(
             self.create_saved_games_page()
         )
+        self.recordings_page = RecordingsPage(
+            self.recording_library,
+            self.recording_service,
+            self,
+        )
+        self.recordings_page.open_folder_requested.connect(
+            self.open_recordings_folder
+        )
+        self.recordings_page.stop_recording_requested.connect(
+            self.stop_recording_manually
+        )
+        self.recordings_page.open_window_requested.connect(
+            self.open_replay_window_for_video
+        )
+        self.pages.addWidget(self.recordings_page)
         self.pages.addWidget(
             self.create_settings_page()
         )
@@ -344,9 +420,13 @@ class MainWindow(QMainWindow):
             "Partidas guardadas",
             3,
         )
+        self.recordings_button = self.create_nav_button(
+            "Grabaciones",
+            self.RECORDINGS_PAGE_INDEX,
+        )
         self.settings_button = self.create_nav_button(
             "Ajustes",
-            4,
+            self.SETTINGS_PAGE_INDEX,
         )
 
         self.home_button.setChecked(True)
@@ -361,6 +441,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.analysis_button)
         layout.addWidget(self.live_button)
         layout.addWidget(self.saved_games_button)
+        layout.addWidget(self.recordings_button)
         layout.addWidget(self.settings_button)
         layout.addWidget(self.draft_nav_button)
         layout.addStretch(1)
@@ -1338,7 +1419,21 @@ class MainWindow(QMainWindow):
                 value
             )
         )
-        actions.addWidget(open_button, 0, 0, 1, 2, Qt.AlignmentFlag.AlignRight)
+        actions.addWidget(open_button, 0, 1, Qt.AlignmentFlag.AlignRight)
+
+        replay_button = QPushButton("Repaso con vídeo")
+        replay_button.setObjectName("primaryButton")
+        replay_button.setFixedWidth(145)
+        replay_button.setFixedHeight(36)
+        replay_button.setToolTip(
+            "Abre la ventana independiente de repaso: grabación de la "
+            "partida y desglose construido con la telemetría local."
+        )
+        replay_button.clicked.connect(
+            lambda checked=False, value=session:
+            self.open_replay_window(session=value)
+        )
+        actions.addWidget(replay_button, 0, 0, Qt.AlignmentFlag.AlignRight)
 
         delete_button = QPushButton("Eliminar")
         delete_button.setObjectName("dangerButton")
@@ -1606,6 +1701,7 @@ class MainWindow(QMainWindow):
         return [
             self._settings_api_card(),
             self._settings_gemini_card(),
+            self._settings_recordings_card(),
             self._settings_overlay_card(),
         ]
 
@@ -1779,6 +1875,668 @@ class MainWindow(QMainWindow):
         self.update_gemini_api_key_status()
 
         return card
+
+    def _settings_recordings_card(self) -> QWidget:
+        card, card_layout = self._settings_card("Grabaciones")
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Cada partida se graba sola: la grabación empieza cuando "
+                "empieza la partida y termina al acabarla. Guarda el vídeo "
+                "de la pantalla con el sonido del juego; el micrófono es "
+                "opcional. Los cambios se aplican a la próxima grabación."
+            )
+        )
+
+        self.recording_auto_checkbox = QCheckBox(
+            "Grabar cada partida automáticamente"
+        )
+        self.recording_auto_checkbox.setChecked(
+            bool(self.settings.get("recording_auto", True))
+        )
+        self.recording_auto_checkbox.toggled.connect(
+            self._on_recording_auto_toggled
+        )
+        card_layout.addWidget(self.recording_auto_checkbox)
+
+        quality_row = QHBoxLayout()
+        quality_row.setSpacing(10)
+
+        quality_caption = QLabel("Calidad de vídeo")
+        quality_caption.setObjectName("settingsLabel")
+        quality_caption.setMinimumWidth(150)
+        quality_row.addWidget(quality_caption)
+
+        self.recording_quality_combo = QComboBox()
+        self.recording_quality_combo.setObjectName("analysisCombo")
+
+        for key in (
+            "1080",
+            "108030",
+            "900",
+            "90030",
+            "720",
+            "72030",
+            "540",
+            "480",
+            "420",
+        ):
+            self.recording_quality_combo.addItem(
+                quality_label(key), key
+            )
+
+        self.set_combo_value(
+            self.recording_quality_combo,
+            str(self.settings.get("recording_quality", "1080")),
+        )
+        self.recording_quality_combo.currentIndexChanged.connect(
+            self._on_recording_quality_changed
+        )
+        quality_row.addWidget(self.recording_quality_combo, 1)
+        card_layout.addLayout(quality_row)
+
+        bitrate_row = QHBoxLayout()
+        bitrate_row.setSpacing(10)
+
+        bitrate_caption = QLabel("Bitrate de vídeo")
+        bitrate_caption.setObjectName("settingsLabel")
+        bitrate_caption.setMinimumWidth(150)
+        bitrate_row.addWidget(bitrate_caption)
+
+        self.recording_bitrate_combo = QComboBox()
+        self.recording_bitrate_combo.setObjectName("analysisCombo")
+
+        for value in sorted(BITRATE_PRESETS):
+            self.recording_bitrate_combo.addItem(
+                bitrate_label(value), value
+            )
+
+        self.set_combo_value(
+            self.recording_bitrate_combo,
+            int(self.settings.get("recording_bitrate", DEFAULT_BITRATE)),
+        )
+        self.recording_bitrate_combo.currentIndexChanged.connect(
+            self._on_recording_bitrate_changed
+        )
+        bitrate_row.addWidget(self.recording_bitrate_combo, 1)
+        card_layout.addLayout(bitrate_row)
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Desplegables: calidad de 1080p a 420p, y bitrate de "
+                "1,5 a 16 Mbps. Más calidad y más bitrate = más peso."
+            )
+        )
+
+        game_audio_row = QHBoxLayout()
+        game_audio_row.setSpacing(10)
+
+        game_audio_caption = QLabel("Sonido del juego")
+        game_audio_caption.setObjectName("settingsLabel")
+        game_audio_caption.setMinimumWidth(150)
+        game_audio_row.addWidget(game_audio_caption)
+
+        self.recording_game_audio_combo = QComboBox()
+        self.recording_game_audio_combo.setObjectName("analysisCombo")
+        self.recording_game_audio_combo.currentIndexChanged.connect(
+            self._on_recording_game_audio_changed
+        )
+        game_audio_row.addWidget(self.recording_game_audio_combo, 1)
+        card_layout.addLayout(game_audio_row)
+
+        self.recording_mic_checkbox = QCheckBox("Grabar mi micrófono")
+        self.recording_mic_checkbox.setChecked(
+            bool(self.settings.get("recording_mic_enabled", False))
+        )
+        self.recording_mic_checkbox.toggled.connect(
+            self._on_recording_mic_toggled
+        )
+        card_layout.addWidget(self.recording_mic_checkbox)
+
+        mic_row = QHBoxLayout()
+        mic_row.setSpacing(10)
+
+        mic_caption = QLabel("Micrófono")
+        mic_caption.setObjectName("settingsLabel")
+        mic_caption.setMinimumWidth(150)
+        mic_row.addWidget(mic_caption)
+
+        self.recording_mic_combo = QComboBox()
+        self.recording_mic_combo.setObjectName("analysisCombo")
+        self.recording_mic_combo.currentIndexChanged.connect(
+            self._on_recording_mic_device_changed
+        )
+        mic_row.addWidget(self.recording_mic_combo, 1)
+        card_layout.addLayout(mic_row)
+
+        self.recording_devices_button = QPushButton(
+            "Buscar dispositivos de sonido"
+        )
+        self.recording_devices_button.setObjectName("secondaryButton")
+        self.recording_devices_button.clicked.connect(
+            self.refresh_recording_devices
+        )
+        card_layout.addWidget(self.recording_devices_button)
+
+        folder_row = QHBoxLayout()
+        folder_row.setSpacing(10)
+
+        folder_caption = QLabel("Carpeta de grabaciones")
+        folder_caption.setObjectName("settingsLabel")
+        folder_caption.setMinimumWidth(150)
+        folder_row.addWidget(folder_caption)
+
+        self.recording_dir_input = QLineEdit(
+            str(self.settings.get("recording_output_dir", ""))
+        )
+        self.recording_dir_input.setReadOnly(True)
+        self.recording_dir_input.setObjectName("apiKeyInput")
+        folder_row.addWidget(self.recording_dir_input, 1)
+
+        self.recording_dir_button = QPushButton("Cambiar…")
+        self.recording_dir_button.setObjectName("secondaryButton")
+        self.recording_dir_button.clicked.connect(
+            self.choose_recordings_folder
+        )
+        folder_row.addWidget(self.recording_dir_button)
+
+        self.recording_folder_button = QPushButton("Abrir")
+        self.recording_folder_button.setObjectName("secondaryButton")
+        self.recording_folder_button.clicked.connect(
+            self.open_recordings_folder
+        )
+        folder_row.addWidget(self.recording_folder_button)
+
+        card_layout.addLayout(folder_row)
+
+        limit_row, self.recording_limit_slider, self.recording_limit_value = (
+            self._settings_slider_row(
+                "Límite de peso total",
+                LIMIT_MIN_GB,
+                LIMIT_MAX_GB,
+                5,
+                int(
+                    float(
+                        self.settings.get(
+                            "recording_size_limit_gb",
+                            LIMIT_DEFAULT_GB,
+                        )
+                    )
+                ),
+            )
+        )
+        self.recording_limit_value.setText(
+            f"{int(float(self.settings.get('recording_size_limit_gb', LIMIT_DEFAULT_GB)))} GB"
+        )
+        self.recording_limit_slider.valueChanged.connect(
+            self._on_recording_limit_changed
+        )
+        card_layout.addLayout(limit_row)
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Cuando la carpeta supere ese límite, la última "
+                "grabación se guarda igual y se borran las más "
+                "antiguas hasta caber."
+            )
+        )
+
+        self.recording_status = QLabel()
+        self.recording_status.setObjectName("apiKeyStatus")
+        self.recording_status.setWordWrap(True)
+        card_layout.addWidget(self.recording_status)
+
+        self.refresh_recording_devices(silent=True)
+        self.sync_recording_controls()
+
+        return card
+
+    # -- ajustes de grabación -------------------------------------------
+
+    def _save_recording_settings(self) -> None:
+        self.settings_service.save(self.settings)
+        self.recording_config = RecordingConfig.from_settings(
+            self.settings
+        )
+        self.recording_library.set_directory(
+            self.recording_config.output_dir
+        )
+
+    def _on_recording_auto_toggled(self, checked: bool) -> None:
+        self.settings["recording_auto"] = bool(checked)
+        self._save_recording_settings()
+        self.sync_recording_controls()
+
+    def _on_recording_quality_changed(self, _index: int) -> None:
+        value = self.recording_quality_combo.currentData()
+
+        if value:
+            self.settings["recording_quality"] = str(value)
+            self._save_recording_settings()
+
+        self.sync_recording_controls()
+
+    def _on_recording_bitrate_changed(self, _index: int) -> None:
+        value = self.recording_bitrate_combo.currentData()
+
+        if value is not None:
+            self.settings["recording_bitrate"] = int(value)
+            self._save_recording_settings()
+
+        self.sync_recording_controls()
+
+    def _on_recording_game_audio_changed(self, _index: int) -> None:
+        if not hasattr(self, "recording_game_audio_combo"):
+            return
+
+        value = self.recording_game_audio_combo.currentData()
+
+        if value is not None:
+            self.settings["recording_game_audio_device"] = str(value)
+            self._save_recording_settings()
+
+        self.sync_recording_controls()
+
+    def _on_recording_mic_toggled(self, checked: bool) -> None:
+        self.settings["recording_mic_enabled"] = bool(checked)
+        self._save_recording_settings()
+        self.sync_recording_controls()
+
+    def _on_recording_mic_device_changed(self, _index: int) -> None:
+        if not hasattr(self, "recording_mic_combo"):
+            return
+
+        value = self.recording_mic_combo.currentData()
+
+        if value is not None:
+            self.settings["recording_mic_device"] = str(value)
+            self._save_recording_settings()
+
+    def _on_recording_limit_changed(self, gigabytes: int) -> None:
+        self.settings["recording_size_limit_gb"] = float(gigabytes)
+        self.recording_limit_value.setText(f"{int(gigabytes)} GB")
+        self._save_recording_settings()
+        self.sync_recording_controls()
+
+    def refresh_recording_devices(self, silent: bool = False) -> None:
+        """Rellena los desplegables de sonido con lo que ve ffmpeg."""
+        if not hasattr(self, "recording_game_audio_combo"):
+            return
+
+        found = self.recording_service.refresh_ffmpeg(
+            str(self.settings.get("ffmpeg_path") or "")
+        )
+
+        if not found:
+            for combo in (
+                self.recording_game_audio_combo,
+                self.recording_mic_combo,
+            ):
+                combo.blockSignals(True)
+                combo.clear()
+                combo.addItem("Sin ffmpeg: no se puede grabar", "")
+                combo.blockSignals(False)
+
+            self.sync_recording_controls()
+
+            if not silent:
+                self.recording_status.setText(
+                    self.recording_service.ffmpeg_hint
+                )
+
+            return
+
+        devices = list_audio_devices(found)
+        saved_game = str(
+            self.settings.get("recording_game_audio_device") or ""
+        )
+        saved_mic = str(self.settings.get("recording_mic_device") or "")
+
+        if not saved_game:
+            saved_game = pick_game_audio_device(devices)
+
+            if saved_game:
+                self.settings["recording_game_audio_device"] = saved_game
+
+        if not saved_mic:
+            saved_mic = pick_microphone_device(devices)
+
+            if saved_mic:
+                self.settings["recording_mic_device"] = saved_mic
+
+        self._fill_audio_combo(
+            self.recording_game_audio_combo, devices, saved_game,
+            "Sin sonido del juego (solo vídeo)",
+        )
+        self._fill_audio_combo(
+            self.recording_mic_combo, devices, saved_mic,
+            "Micrófono no elegido",
+        )
+        self._save_recording_settings()
+        self.sync_recording_controls()
+
+    def _fill_audio_combo(
+        self,
+        combo,
+        devices: list[str],
+        selected: str,
+        empty_label: str,
+    ) -> None:
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(empty_label, "")
+
+        for device in devices:
+            combo.addItem(device, device)
+
+        self.set_combo_value(combo, selected or "")
+        combo.blockSignals(False)
+
+    def choose_recordings_folder(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        current = str(self.settings.get("recording_output_dir") or "")
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Carpeta de grabaciones",
+            current or str(self.recording_library.directory),
+        )
+
+        if not chosen:
+            return
+
+        self.settings["recording_output_dir"] = chosen
+        self.recording_dir_input.setText(chosen)
+        self._save_recording_settings()
+        self.sync_recording_controls()
+
+        if hasattr(self, "recordings_page"):
+            self.recordings_page.refresh()
+
+    def open_recordings_folder(self, _directory: str = "") -> None:
+        from app.ui.recordings_page import RecordingsPage
+
+        directory = str(self.settings.get("recording_output_dir") or "")
+
+        if not directory:
+            return
+
+        self.recording_library.ensure_directory()
+        RecordingsPage.open_in_explorer(directory)
+
+    # -- ventana independiente de repaso --------------------------------
+
+    def open_replay_window_for_video(self, video_path: str) -> None:
+        """Abre la ventana de repaso para una grabación concreta."""
+        self.open_replay_window(video_path=video_path)
+
+    def open_replay_window(
+        self,
+        session: dict | None = None,
+        video_path: str = "",
+        session_id: str = "",
+    ) -> None:
+        """Abre (o reutiliza) la ventana independiente de repaso.
+
+        El desglose se construye con la telemetría local de la sesión y el
+        vídeo se busca en la carpeta de grabaciones por ``session_id``.
+        """
+        if session_id and not isinstance(session, dict):
+            session = self.find_saved_session(session_id)
+
+        if not video_path and isinstance(session, dict):
+            video_path = self.find_recording_for_session(session)
+
+        window = self.replay_window
+        reusable = False
+
+        if window is not None:
+            try:
+                window.isVisible()
+                reusable = True
+            except RuntimeError:
+                self.replay_window = None
+
+        if not reusable:
+            # Si se abre en caliente durante la partida, se usa la sesión
+            # viva del diálogo LIVE (la más fresca) antes que la copia que
+            # llegue por parámetro o la de disco.
+            live_session = getattr(
+                self.live_analysis_dialog, "session", None
+            )
+            live_id = ""
+            wanted_id = ""
+            if isinstance(live_session, dict):
+                live_id = str(live_session.get("session_id") or "")
+            if isinstance(session, dict):
+                wanted_id = str(session.get("session_id") or "")
+            if (
+                isinstance(live_session, dict)
+                and live_id
+                and (not wanted_id or wanted_id == live_id)
+            ):
+                session = live_session
+            window = PostgameReplayWindow(
+                session=session if isinstance(session, dict) else None,
+                video_path=video_path or None,
+                library=self.recording_library,
+                tracker=self.live_match_tracker,
+                service=self.recording_service,
+                assets=self.data_dragon_assets,
+                item_catalog=self.item_catalog,
+            )
+            window.closed.connect(self.clear_replay_window)
+            self.replay_window = window
+        else:
+            if isinstance(session, dict):
+                window.set_session(session)
+
+            if video_path:
+                window.load_video(video_path)
+
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+    def clear_replay_window(self) -> None:
+        """Suelta la referencia al cerrarse la ventana de repaso."""
+        self.replay_window = None
+
+    def find_saved_session(self, session_id: str) -> dict | None:
+        """Sesión guardada por id (telemetría local del tracker)."""
+        wanted = str(session_id or "")
+
+        if not wanted:
+            return None
+
+        for session in self.live_match_tracker.load_saved_sessions():
+            if str(session.get("session_id") or "") == wanted:
+                return session
+
+        return None
+
+    def find_recording_for_session(self, session: dict) -> str:
+        """Vídeo de la carpeta de grabaciones que corresponde a la sesión.
+
+        Por ``session_id`` del sidecar y, si ningún sidecar lo declara
+        (sidecars antiguos), por ventana temporal entre el inicio del vídeo
+        y ``started_at``/``ended_at`` de la sesión.
+        """
+        found = find_video_for_session(
+            self.recording_library.video_files(),
+            session,
+            self.recording_library.load_metadata,
+        )
+
+        return str(found) if found is not None else ""
+
+    def sync_recording_controls(self) -> None:
+        """Refleja el estado real de la grabación en Ajustes."""
+        if not hasattr(self, "recording_status"):
+            return
+
+        service = self.recording_service
+        config = self.recording_config
+
+        widgets = (
+            self.recording_auto_checkbox,
+            self.recording_quality_combo,
+            self.recording_bitrate_combo,
+            self.recording_game_audio_combo,
+            self.recording_mic_checkbox,
+            self.recording_mic_combo,
+            self.recording_devices_button,
+            self.recording_dir_button,
+        )
+
+        for widget in widgets:
+            widget.blockSignals(True)
+
+        self.recording_auto_checkbox.setChecked(config.enabled)
+        self.set_combo_value(
+            self.recording_quality_combo, config.quality
+        )
+        self.set_combo_value(
+            self.recording_bitrate_combo, config.video_bitrate
+        )
+        self.set_combo_value(
+            self.recording_game_audio_combo, config.game_audio_device
+        )
+        self.recording_mic_checkbox.setChecked(config.mic_enabled)
+        self.set_combo_value(
+            self.recording_mic_combo, config.mic_device
+        )
+        self.recording_limit_slider.setValue(int(config.size_limit_gb))
+        self.recording_limit_value.setText(
+            f"{int(config.size_limit_gb)} GB"
+        )
+        self.recording_dir_input.setText(
+            str(self.settings.get("recording_output_dir", ""))
+        )
+
+        self.recording_mic_combo.setEnabled(config.mic_enabled)
+
+        pieces = []
+
+        if service.ffmpeg_available:
+            pieces.append("ffmpeg listo")
+        else:
+            pieces.append(
+                service.ffmpeg_hint or "ffmpeg no encontrado"
+            )
+
+        if config.game_audio_device:
+            pieces.append(
+                f"Sonido del juego: {config.game_audio_device}"
+            )
+        else:
+            pieces.append("Sin sonido del juego (solo vídeo)")
+
+        if config.mic_enabled:
+            pieces.append(
+                f"Micrófono: {config.mic_device or 'automático'}"
+            )
+
+        total = self.recording_library.total_size_bytes()
+        pieces.append(
+            f"Carpeta: {format_size(total)} de "
+            f"{int(config.size_limit_gb)} GB"
+        )
+
+        if service.is_recording:
+            elapsed = service.elapsed_seconds()
+            minutes, seconds = divmod(int(elapsed), 60)
+            pieces.append(f"● Grabando ({minutes:02d}:{seconds:02d})")
+
+        self.recording_status.setText(" · ".join(pieces))
+
+        for widget in widgets:
+            widget.blockSignals(False)
+
+        if hasattr(self, "recordings_page"):
+            self.recordings_page.sync_recording_state()
+
+    # -- grabación automática de la partida -----------------------------
+
+    def start_match_recording(self, snapshot: dict) -> None:
+        """Arranca la grabación al empezar la partida (si está activada)."""
+        if self.recording_service.is_recording:
+            return
+
+        local_player = snapshot.get("local_player", {})
+
+        if not isinstance(local_player, dict):
+            local_player = {}
+
+        champion = str(
+            local_player.get("championName", "Desconocido")
+        )
+        game_mode = str(snapshot.get("game_mode", "UNKNOWN"))
+
+        try:
+            game_time = float(snapshot.get("game_time", 0))
+        except (TypeError, ValueError):
+            game_time = 0.0
+
+        self.recording_service.start(
+            self.recording_config,
+            game_time=game_time,
+            champion=champion,
+            game_mode=game_mode,
+        )
+        self.sync_recording_controls()
+
+    def stop_match_recording(
+        self, reason: str, session: dict | None = None
+    ) -> None:
+        """Para la grabación al terminar la partida."""
+        if not self.recording_service.is_recording:
+            return
+
+        self.recording_service.stop(reason=reason, session=session)
+
+    def stop_recording_manually(self) -> None:
+        """Para la grabación desde el botón «Detener grabación».
+
+        La parada manual no significa que la partida haya terminado: la
+        sesión del tracker sigue viva para que, si el juego continúa, los
+        datos de la partida sigan acumulándose. La sesión se pasa al motor
+        para que los marcadores queden guardados en la grabación.
+        """
+        if not self.recording_service.is_recording:
+            return
+
+        session = self.live_match_tracker.get_live_session()
+        self.stop_match_recording(
+            "manual", session if isinstance(session, dict) else None
+        )
+        self.sync_recording_controls()
+    def _on_recording_failed(self, message: str) -> None:
+        if hasattr(self, "recording_status"):
+            current = self.recording_status.text()
+            self.recording_status.setText(
+                f"{message} {current}".strip()
+            )
+
+        if hasattr(self, "recordings_page"):
+            self.recordings_page.refresh()
+
+    def _on_recording_finished(self, _path: str) -> None:
+        self.sync_recording_controls()
+
+        if hasattr(self, "recordings_page"):
+            self.recordings_page.refresh()
+
+    def _sync_overlay_recording(self, _state: str = "") -> None:
+        """Refleja si se está grabando en el overlay de alertas."""
+        if not hasattr(self, "overlay"):
+            return
+
+        active = self.recording_service.is_recording
+        elapsed = (
+            self.recording_service.elapsed_seconds() if active else 0.0
+        )
+        self.overlay.set_recording(active, elapsed)
 
     def _settings_overlay_card(self) -> QWidget:
         card, card_layout = self._settings_card("Overlay en partida")
@@ -2190,6 +2948,10 @@ class MainWindow(QMainWindow):
 
         self.live_data_worker.read_failed.connect(
             self.show_read_error
+        )
+
+        self.live_data_worker.game_ended.connect(
+            self.handle_game_ended
         )
         self.worker_thread.start()
 
@@ -2810,6 +3572,78 @@ class MainWindow(QMainWindow):
         self.live_button.setEnabled(False)
         self.is_refreshing = False
 
+        self.count_lost_snapshot()
+
+    @Slot()
+    def handle_game_ended(self) -> None:
+        """La API local dejó de responder: la partida ha terminado.
+
+        El worker emite ``game_ended`` solo si antes había partida, así que
+        aquí se cierra la sesión LIVE (y con ella la grabación) y se deja la
+        interfaz en el estado de espera.
+        """
+        if not self.was_in_game:
+            return
+
+        self.finish_live_session("game_end")
+        self.show_no_game()
+
+    def finish_live_session(self, reason: str = "game_end") -> None:
+        """Cierra la sesión LIVE: para la grabación y programa la sincronización.
+
+        Se llama desde todos los caminos en los que la partida deja de estar
+        activa (la API deja de responder, se cierra la ventana...). Es
+        idempotente: si la sesión ya estaba cerrada y no hay grabación en
+        curso, no hace nada.
+        """
+        if self.live_session_finished and not self.recording_service.is_recording:
+            return
+
+        completed_session = None
+
+        if self.live_match_tracker.is_tracking:
+            completed_session = self.live_match_tracker.finish()
+
+        self.live_session_finished = True
+        self.live_snapshots_lost = 0
+
+        self.stop_match_recording(
+            reason,
+            completed_session if isinstance(completed_session, dict) else None,
+        )
+
+        if isinstance(completed_session, dict):
+            self.schedule_postgame_sync(completed_session)
+
+        if hasattr(self, "saved_games_layout"):
+            self.refresh_saved_games()
+
+    def count_lost_snapshot(self) -> None:
+        """Cuenta los sondeos seguidos sin respuesta estando en partida.
+
+        Si se encadenan demasiados sin que llegue la señal de fin (por ejemplo
+        porque el hilo de lectura se ha quedado atascado), la grabación se
+        cierra igualmente para no dejar el vídeo abierto.
+        """
+        if not self.was_in_game:
+            self.live_snapshots_lost = 0
+
+            return
+
+        self.live_snapshots_lost = min(
+            self.live_snapshots_lost + 1,
+            self.LIVE_LOST_POLLS_BEFORE_STOP + 1,
+        )
+
+        if not self.recording_service.is_recording:
+            return
+
+        if self.live_snapshots_lost < self.LIVE_LOST_POLLS_BEFORE_STOP:
+            return
+
+        self.finish_live_session("game_end_lost")
+        self.show_no_game()
+
     def show_no_game(self) -> None:
         self.connection_label.setText(
             "League abierto · sin partida"
@@ -2840,31 +3674,21 @@ class MainWindow(QMainWindow):
             self.live_analysis_dialog.close()
             self.live_analysis_dialog = None
 
+        if self.replay_window is not None:
+            try:
+                self.replay_window.close()
+            except RuntimeError:
+                pass
+
+            self.replay_window = None
+
         self.current_live_session = None
         self.live_status.setText("No hay una partida activa.")
         self.live_time_label.setText("—")
         self.set_live_badge("idle", "EN ESPERA")
 
         self.overlay.clear()
-
-        if (
-            self.was_in_game
-            and self.live_match_tracker.is_tracking
-            and not self.live_session_finished
-        ):
-            completed_session = (
-                self.live_match_tracker.finish()
-            )
-
-            self.live_session_finished = True
-
-            if isinstance(completed_session, dict):
-                self.schedule_postgame_sync(
-                    completed_session
-                )
-
-            if hasattr(self, "saved_games_layout"):
-                self.refresh_saved_games()
+        self.finish_live_session("game_end")
 
         if self.was_in_game:
             self.clear_cards()
@@ -2983,10 +3807,12 @@ class MainWindow(QMainWindow):
         if not self.live_match_tracker.is_tracking:
             self.live_match_tracker.start(snapshot)
             self.live_session_finished = False
+            self.start_match_recording(snapshot)
         else:
             self.live_match_tracker.update(snapshot)
 
         self.was_in_game = True
+        self.live_snapshots_lost = 0
 
         if not self.cards_built:
             self.cards_built = True
@@ -3020,13 +3846,30 @@ class MainWindow(QMainWindow):
 
         dialog = self.live_analysis_dialog
 
-        if dialog is None:
-            return
+        if dialog is not None:
+            try:
+                dialog.update_session(session)
+            except RuntimeError:
+                self.live_analysis_dialog = None
+                dialog = None
 
-        try:
-            dialog.update_session(session)
-        except RuntimeError:
-            self.live_analysis_dialog = None
+        replay = getattr(self, "replay_window", None)
+
+        if replay is not None:
+            try:
+                current = getattr(replay, "session", None)
+                live_id = str(session.get("session_id") or "")
+                replay_id = (
+                    str(current.get("session_id") or "")
+                    if isinstance(current, dict)
+                    else ""
+                )
+                # Solo se propaga si es la misma partida que el repaso
+                # tiene abierta (o si el repaso aún no tiene sesión).
+                if not replay_id or not live_id or replay_id == live_id:
+                    replay.update_session(session)
+            except RuntimeError:
+                self.replay_window = None
 
 
     def open_live_analysis(self) -> None:
@@ -3064,6 +3907,11 @@ class MainWindow(QMainWindow):
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+        try:
+            dialog.update_session(session)
+        except RuntimeError:
+            self.live_analysis_dialog = None
 
 
     def clear_live_analysis_dialog(self, *args) -> None:
@@ -3236,6 +4084,21 @@ class MainWindow(QMainWindow):
             self.refresh_saved_games()
 
         self.pending_postgame_session_id = ""
+
+        replay = getattr(self, "replay_window", None)
+
+        if replay is not None and isinstance(updated_session, dict):
+            try:
+                current = getattr(replay, "session", None)
+                replay_id = (
+                    str(current.get("session_id") or "")
+                    if isinstance(current, dict)
+                    else ""
+                )
+                if not replay_id or replay_id == session_id:
+                    replay.update_session(updated_session)
+            except RuntimeError:
+                self.replay_window = None
 
 
     @Slot(str)
@@ -3789,6 +4652,18 @@ class MainWindow(QMainWindow):
         self.poll_timer.stop()
         self.tab_hotkey.stop()
         self.overlay.close()
+
+        if self.recording_service.is_recording:
+            live_session = self.live_match_tracker.get_live_session()
+            self.recording_service.stop(
+                reason="app_close",
+                session=live_session,
+            )
+            self.recording_service.wait_for_stop(4000)
+
+            if self.recording_service.is_recording:
+                self.recording_service.abort()
+                self.recording_service.wait_for_stop(3000)
 
         if hasattr(self, "champ_select_worker") and self.champ_select_worker.isRunning():
             self.champ_select_worker.stop()
