@@ -20,8 +20,16 @@ import math
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPointF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtCore import QPointF, QThread, Qt, Signal
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -54,6 +62,7 @@ from data_dragon import get_champion_icon_path, get_item_icon_path
 #: Etiqueta legible de cada tipo de suceso del tracker local.
 EVENT_KIND_LABELS: dict[str, str] = {
     "kill": "Asesinato",
+    "teamfight": "Teamfight",
     "death": "Muerte",
     "assist": "Asistencia",
     "dragon": "Dragón",
@@ -75,6 +84,7 @@ EVENT_KIND_LABELS: dict[str, str] = {
 #: vistazo sin depender de la columna de texto.
 EVENT_KIND_GLYPHS: dict[str, str] = {
     "kill": "⚔️",
+    "teamfight": "💥",
     "death": "💀",
     "assist": "🤝",
     "dragon": "🐉",
@@ -146,6 +156,7 @@ EVALUATION_STYLES: dict[int, dict[str, str]] = {
 #: Color de la barra lateral de cada tipo de suceso.
 EVENT_KIND_COLORS: dict[str, str] = {
     "kill": "#4adea0",
+    "teamfight": "#fbbf24",
     "death": "#f07d8a",
     "assist": "#57cafa",
     "dragon": "#fb923c",
@@ -165,12 +176,25 @@ EVENT_KIND_COLORS: dict[str, str] = {
 ALLY_TEAMS = {"ORDER", "BLUE", "100", "1", "ALLY", "TEAM"}
 ENEMY_TEAMS = {"CHAOS", "RED", "200", "2", "ENEMY"}
 
+#: Agrupación de peleas: las bajas (asesinatos/muertes) separadas como máximo
+#: ``TEAMFIGHT_WINDOW`` segundos se consideran la misma pelea; cuando hay
+#: ``TEAMFIGHT_MIN_KILLS`` o más bajas se colapsan en UNA sola tarjeta e
+#: indicador "Teamfight", cuyo ganador es el bando con más asesinatos.
+TEAMFIGHT_WINDOW = 12.0
+TEAMFIGHT_MIN_KILLS = 3
+#: Ventana (segundos) para enlazar una kill con el objetivo que el mismo
+#: bando consigue justo después: "Esta kill favoreció a conseguir Torre".
+OBJECTIVE_LINK_WINDOW = 30.0
+#: Margen para no contar dos veces la misma baja: kill_exact y death_exact
+#: describen el mismo asesinato y comparten marca de tiempo.
+TEAMFIGHT_DEDUPE_WINDOW = 2.0
+
 #: Orden canónico de roles para el marcador (TOP→JUNGLA→MEDIO→TIRADOR→APOYO).
 ROLE_ORDER = ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY", "UNKNOWN")
 
 #: Etiqueta legible de cada rol (para identificar al dueño del suceso).
 ROLE_LABELS_ES: dict[str, str] = {
-    "TOP": "Cima",
+    "TOP": "Top",
     "JUNGLE": "Jungla",
     "MIDDLE": "Medio",
     "BOTTOM": "Tirador",
@@ -312,6 +336,81 @@ def team_side(session: dict[str, Any], team: Any) -> str:
     return ""
 
 
+def player_side(session: dict[str, Any], key: Any) -> str:
+    """Bando (``"ally"``/``"enemy"``) de un jugador de la sesión."""
+    metadata = session_players(session).get(str(key or ""))
+
+    if not isinstance(metadata, dict):
+        return ""
+
+    return team_side(session, metadata.get("team"))
+
+
+#: Tinte del fondo de la tarjeta según a quién favorece el suceso:
+#: - Verde (BUENO) para tu equipo: asesinatos, asistencias, teamfights y
+#:   objetivos que favorecen a tu bando.
+#: - Rojo (MALO) para tu equipo: tus propias muertes (favorecen al rival).
+#:   Las muertes de aliados también reciben tinte rojo porque ese suceso es
+#:   negativo para tu equipo.
+#: El degradado parte del borde izquierdo (donde está la barra de color) y se
+#: funde con el fondo normal de la tarjeta, así se identifica el bando de un
+#: vistazo sin quitar legibilidad al texto.
+CARD_TINT_STOPS: dict[str, tuple[str, str]] = {
+    "ally": ("rgba(74, 222, 128, 46)", "rgba(74, 222, 128, 12)"),
+    "enemy": ("rgba(240, 125, 138, 46)", "rgba(240, 125, 138, 12)"),
+}
+
+
+def event_polarity(kind: str, side: str) -> str:
+    """``"ally"``/``"enemy"`` según a quién favorece el suceso (o ``""``)."""
+    if side not in ("ally", "enemy"):
+        return ""
+
+    if kind == "death":
+        # Verde = BUENO para tu equipo, rojo = MALO para tu equipo: la muerte
+        # de un aliado es mala para ti -> polaridad "enemy" (fondo rojo), y la
+        # muerte de un rival es buena para ti -> "ally" (fondo verde).
+        return "enemy" if side == "ally" else "ally"
+
+    if (
+        kind in ("kill", "assist", "teamfight")
+        or kind in OBJECTIVE_KINDS
+        or kind == "objective"
+    ):
+        return side
+
+    return ""
+
+
+def card_tint_style(polarity: str) -> str:
+    """QSS del degradado de fondo para la polaridad dada (``""`` = sin tinte).
+
+    El degradado se declara también para ``:hover``: sin esta regla, el
+    estilo global de ``styles.py`` pintaría el fondo neutro al pasar el
+    ratón y el tinte (verde/rojo) se perdería justo en esa tarjeta.
+    """
+    stops = CARD_TINT_STOPS.get(str(polarity or ""))
+
+    if not stops:
+        return ""
+
+    strong, soft = stops
+
+    return (
+        "QFrame#postgameEventRow { "
+        "border: 1px solid rgba(97, 148, 211, 45); "
+        "border-radius: 9px; "
+        "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+        f"stop:0 {strong}, stop:0.55 {soft}, "
+        "stop:1 rgba(14, 26, 44, 190)); } "
+        "QFrame#postgameEventRow:hover { "
+        "border-color: rgba(217, 174, 79, 150); "
+        "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+        f"stop:0 {strong}, stop:0.55 {soft}, "
+        "stop:1 rgba(21, 39, 64, 210)); }"
+    )
+
+
 def local_player_key(session: dict[str, Any]) -> str:
     return str(session.get("local_player_key") or "")
 
@@ -372,6 +471,20 @@ def player_final_stats(
     deaths = _int(point.get("deaths"))
     assists = _int(point.get("assists"))
     cs = _int(point.get("cs"))
+    # CS oficial de la Riot API: cuando la partida está sincronizada, el
+    # diálogo LIVE muestra el CS oficial (``final.cs_total``) porque el
+    # contador de la Live Client API se queda corto. El repaso usa la misma
+    # fuente para que marcador, radar y resumen cuadren con lo oficial.
+    final_sync = session.get("final_sync")
+    official = player.get("final")
+    official = official if isinstance(official, dict) else {}
+
+    if isinstance(final_sync, dict) and final_sync.get("status") == "synced":
+        try:
+            cs = int(float(official.get("cs_total")))
+        except (TypeError, ValueError):
+            pass  # CS oficial ausente o inválido: se queda el local
+
     gold = _int(point.get("estimated_gold"))
     level = _int(point.get("level"), 1)
     stats = point.get("stats")
@@ -490,6 +603,13 @@ def _evaluation_for(kind: str, side: str) -> int:
             return -1
         return 0
 
+    if kind == "teamfight":
+        if side == "ally":
+            return 1
+        if side == "enemy":
+            return -1
+        return 0
+
     if kind == "kill":
         return 1 if side == "ally" else -1
 
@@ -533,6 +653,22 @@ def build_review_events(
         for key, player in session_players(session).items()
         if isinstance(player, dict)
     }
+    # Muertes que ya son evento propio (death_exact, en sesiones locales):
+    # sirven para NO derivar una muerte duplicada desde la kill_exact, que
+    # describe el mismo asesinato con la misma marca de tiempo.
+    death_exact_times: list[tuple[str, float]] = [
+        (
+            str(
+                (event or {}).get("victim_key")
+                or (event or {}).get("player_key")
+                or ""
+            ),
+            _number((event or {}).get("time")),
+        )
+        for event in events
+        if isinstance(event, dict)
+        and str(event.get("type") or "") == "death_exact"
+    ]
     result: list[dict[str, Any]] = []
 
     for order, event in enumerate(events):
@@ -544,17 +680,70 @@ def build_review_events(
         side = team_side(session, event.get("team"))
         assisters = _assister_keys(event)
         kind = ""
+        # Dueño real de la fila: puede diferir del evento (asistencia de X,
+        # víctima de la kill_exact) y define el campeón/rol mostrados.
+        row_owner = owner
+        row_team = str(event.get("team") or "")
+        detail_override = ""
 
         if event_type in {"kill_exact", "kill"}:
             if event_type == "kill" and has_exact:
                 continue
 
             killer = str(event.get("killer_key") or owner)
+            victim = str(event.get("victim_key") or "")
 
             if not wanted or killer == wanted:
                 kind = "kill"
+                row_owner = killer
+                # El bando del asesinato es el del verdugo: si el evento no
+                # traía equipo se deduce del jugador (permite colorear las
+                # tarjetas por bando y contar las peleas).
+                side = side or player_side(session, killer)
             elif wanted in assisters:
                 kind = "assist"
+                # La asistencia es DEL asistente: la tarjeta muestra su
+                # campeón, no el del verdugo. El bando sigue siendo el de la
+                # kill (participar en la kill del rival es malo).
+                row_owner = wanted
+                side = side or player_side(session, owner)
+            elif wanted and victim == wanted:
+                # Muerte derivada de la kill_exact: las sesiones sincronizadas
+                # con Riot solo guardan el asesinato (sin death_exact), así
+                # que sin esto el campeón filtrado nunca aparecía al morir.
+                if any(
+                    known == wanted
+                    and abs(moment - _number(event.get("time")))
+                    <= TEAMFIGHT_DEDUPE_WINDOW
+                    for known, moment in death_exact_times
+                ):
+                    continue
+
+                kind = "death"
+                row_owner = wanted
+                # El bando de la MUERTE es el de la víctima (no el del evento
+                # original, que trae el equipo del verdugo): así su evaluación
+                # sale -1 y su fondo, en rojo.
+                victim_side = player_side(session, wanted)
+
+                if victim_side:
+                    side = victim_side
+                    row_team = str(
+                        (session_players(session).get(wanted) or {}).get("team")
+                        or row_team
+                    )
+                else:
+                    row_team = str(
+                        (session_players(session).get(wanted) or {}).get("team")
+                        or row_team
+                    )
+                killer_label = champions.get(killer, "")
+                detail_override = (
+                    f"Murió a manos de {killer_label}"
+                    if killer_label
+                    else "Murió a manos de un enemigo"
+                )
+                side = side or player_side(session, wanted)
             else:
                 continue
 
@@ -568,12 +757,15 @@ def build_review_events(
                 continue
 
             kind = "death"
+            row_owner = victim
+            side = side or player_side(session, victim)
 
         elif event_type == "assist_exact":
             if wanted and wanted not in {owner, *assisters}:
                 continue
 
             kind = "assist"
+            side = side or player_side(session, owner)
 
         elif event_type == "objective":
             kind = _objective_kind(event)
@@ -604,8 +796,17 @@ def build_review_events(
             detail = objective_detail(kind, side, event)
             row_label = kind_label(kind)
         else:
-            detail = label or kind_label(kind)
+            detail = detail_override or label or kind_label(kind)
             row_label = kind_label(kind)
+
+        if row_owner and row_owner != owner:
+            # La fila pertenece a otro jugador (asistente o víctima): su rol
+            # sale de SU ficha, no del evento del verdugo.
+            row_role = str(
+                (session_players(session).get(row_owner) or {}).get("role") or ""
+            )
+        else:
+            row_role = str(event.get("role") or "")
 
         result.append(
             {
@@ -615,22 +816,26 @@ def build_review_events(
                 "label": row_label,
                 "detail": detail,
                 "glyph": kind_glyph(kind),
-                "team": str(
-                    event.get("team")
-                    or event.get("objective_team")
+                "team": row_team
+                or str(
+                    event.get("objective_team")
                     or event.get("owner_team")
                     or ""
                 ),
                 "side": side,
-                "role": str(event.get("role") or ""),
-                "player_key": owner or None,
-                "player_name": champions.get(owner, ""),
+                "role": row_role,
+                "player_key": row_owner or None,
+                "player_name": champions.get(row_owner, ""),
                 "evaluation": _evaluation_for(kind, side),
                 "feedback": review_feedback(kind, event, session),
             }
         )
 
     result.sort(key=lambda item: (item["time"], item["order"]))
+    # Las peleas (3+ bajas seguidas) se colapsan en una tarjeta única y las
+    # kills/peleas se anotan con el objetivo que ayudaron a conseguir.
+    result = group_teamfights(result)
+    link_objective_notes(result)
 
     return result
 
@@ -684,6 +889,221 @@ def review_feedback(
         return f"Vendido: {label}" if label else "Objeto vendido."
 
     return label or kind_label(kind)
+
+
+def _teamfight_row(
+    rows: list[dict[str, Any]], cluster: list[int]
+) -> dict[str, Any]:
+    """Fila "Teamfight" a partir de las bajas agrupadas de una pelea."""
+    first = rows[cluster[0]]
+    last = rows[cluster[-1]]
+    start = _number(first.get("time"))
+    end = _number(last.get("time"))
+
+    # Cada baja puntúa para el bando que la consiguió. Las filas "kill" ya
+    # traen el bando del verdugo; las "death" sumarían para el bando contrario
+    # de la víctima, PERO kill_exact y death_exact describen la misma baja
+    # (misma marca de tiempo): solo cuentan si no hay una kill coincidente.
+    kill_times: dict[str, list[float]] = {"ally": [], "enemy": []}
+
+    for index in cluster:
+        row = rows[index]
+
+        if str(row.get("kind") or "") == "kill":
+            side = str(row.get("side") or "")
+
+            if side in kill_times:
+                kill_times[side].append(_number(row.get("time")))
+
+    for index in cluster:
+        row = rows[index]
+
+        if str(row.get("kind") or "") != "death":
+            continue
+
+        victim_side = str(row.get("side") or "")
+        scorer = (
+            "enemy"
+            if victim_side == "ally"
+            else "ally" if victim_side == "enemy" else ""
+        )
+
+        if not scorer:
+            continue
+
+        moment = _number(row.get("time"))
+
+        if any(
+            abs(moment - other) <= TEAMFIGHT_DEDUPE_WINDOW
+            for other in kill_times[scorer]
+        ):
+            continue
+
+        kill_times[scorer].append(moment)
+
+    ally_kills = len(kill_times["ally"])
+    enemy_kills = len(kill_times["enemy"])
+    winner = (
+        "ally"
+        if ally_kills > enemy_kills
+        else "enemy" if enemy_kills > ally_kills else ""
+    )
+
+    participants: list[str] = []
+
+    for index in cluster:
+        name = str(rows[index].get("player_name") or "").strip()
+
+        if name and name not in participants:
+            participants.append(name)
+
+    roster = ", ".join(participants[:4])
+
+    if len(participants) > 4:
+        roster = f"{roster} +{len(participants) - 4}"
+
+    detail = f"Tu equipo {ally_kills} · {enemy_kills} Equipo enemigo"
+
+    if winner == "ally":
+        detail += " — ganó tu equipo"
+    elif winner == "enemy":
+        detail += " — ganó el equipo enemigo"
+    else:
+        detail += " — empate"
+
+    if roster:
+        detail = f"{detail} ({roster})"
+
+    return {
+        "time": start,
+        "end": end,
+        "order": _int(first.get("order"), cluster[0]),
+        "kind": "teamfight",
+        "label": kind_label("teamfight"),
+        "detail": detail,
+        "glyph": kind_glyph("teamfight"),
+        "team": "",
+        "side": winner,
+        "role": "",
+        "player_key": None,
+        "player_name": roster,
+        "evaluation": _evaluation_for("teamfight", winner),
+        "feedback": (
+            f"{len(cluster)} bajas en {max(0, int(round(end - start)))} s"
+        ),
+    }
+
+
+def group_teamfights(
+    rows: list[dict[str, Any]],
+    gap: float = TEAMFIGHT_WINDOW,
+    min_kills: int = TEAMFIGHT_MIN_KILLS,
+) -> list[dict[str, Any]]:
+    """Colapsa las peleas (``min_kills``+ bajas seguidas) en una sola fila.
+
+    Dos bajas separadas más de ``gap`` segundos abren pelea distinta; los
+    sucesos que no son bajas (objetivos, compras...) no rompen la cadena
+    temporal, solo rellenan el hueco entre medias.
+    """
+    if len(rows) < min_kills:
+        return rows
+
+    clusters: list[list[int]] = []
+    current: list[int] = []
+    last_time = -10.0**9
+
+    for index, row in enumerate(rows):
+        if str(row.get("kind") or "") not in ("kill", "death"):
+            continue
+
+        moment = _number(row.get("time"))
+
+        if current and moment - last_time > gap:
+            clusters.append(current)
+            current = []
+
+        current.append(index)
+        last_time = moment
+
+    if current:
+        clusters.append(current)
+
+    big = [cluster for cluster in clusters if len(cluster) >= min_kills]
+
+    if not big:
+        return rows
+
+    skipped: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+
+    for cluster in big:
+        skipped.update(cluster[1:])
+        replacements[cluster[0]] = _teamfight_row(rows, cluster)
+
+    merged: list[dict[str, Any]] = []
+
+    for index, row in enumerate(rows):
+        if index in replacements:
+            merged.append(replacements[index])
+        elif index not in skipped:
+            merged.append(row)
+
+    return merged
+
+
+def link_objective_notes(
+    rows: list[dict[str, Any]], window: float = OBJECTIVE_LINK_WINDOW
+) -> None:
+    """Anota las kills/peleas que abrieron paso a un objetivo del bando.
+
+    Si tras una kill (o al terminar una pelea) el MISMO bando consigue un
+    objetivo dentro de la ventana siguiente, la tarjeta lo señala: "Esta
+    kill favoreció a conseguir Torre".
+    """
+    objectives = [
+        (
+            _number(row.get("time")),
+            str(row.get("side") or ""),
+            kind_label(str(row.get("kind") or "")),
+        )
+        for row in rows
+        if str(row.get("kind") or "") in OBJECTIVE_KINDS
+    ]
+
+    for row in rows:
+        kind = str(row.get("kind") or "")
+
+        if kind not in ("kill", "teamfight"):
+            continue
+
+        side = str(row.get("side") or "")
+
+        if side not in ("ally", "enemy"):
+            continue
+
+        # En las peleas se mira desde que TERMINAN: el objetivo llega después
+        # de la última baja, no de la primera.
+        start = _number(
+            row.get("end") if kind == "teamfight" else row.get("time")
+        )
+        best: tuple[float, str] | None = None
+
+        for moment, objective_side, label in objectives:
+            if objective_side != side:
+                continue
+
+            if moment < start - 0.01:
+                continue
+
+            if moment > start + window:
+                break
+
+            if best is None or moment < best[0]:
+                best = (moment, label)
+
+        if best is not None:
+            actor = "Esta pelea" if kind == "teamfight" else "Esta kill"
+            row["objective_note"] = f"{actor} favoreció a conseguir {best[1]}"
 
 
 def evaluation_style(value: Any) -> dict[str, str]:
@@ -826,6 +1246,69 @@ class RadarChartWidget(QWidget):
         painter.drawText(QPointF(-radius, radius + 48), f"● {self.enemy_label}")
 
 
+class IconWarmupThread(QThread):
+    """Descarga en segundo plano los iconos que falten en la caché local.
+
+    El marcador pinta primero con lo que ya hay en disco (instantáneo) y
+    este hilo completa campeones y objetos desde Data Dragon sin bloquear
+    la interfaz. Al terminar, el sidebar se repinta una sola vez.
+    """
+
+    warmup_finished = Signal()
+
+    def __init__(
+        self,
+        item_ids: list[int],
+        champion_names: list[str],
+        catalog: dict[str, Any],
+        version: str,
+        parent: Any = None,
+    ) -> None:
+        super().__init__(parent)
+        self._item_ids = list(dict.fromkeys(item_ids))
+        self._champion_names = list(dict.fromkeys(champion_names))
+        self._catalog = catalog
+        self._version = version
+
+    def run(self) -> None:  # pragma: no cover - hilo con red
+        for item_id in self._item_ids:
+            try:
+                get_item_icon_path(
+                    item_id, self._catalog, self._version, download=True
+                )
+            except (OSError, ValueError, RuntimeError):
+                continue
+
+        for champion in self._champion_names:
+            try:
+                get_champion_icon_path(champion, self._version, download=True)
+            except (OSError, ValueError, RuntimeError):
+                continue
+
+        self.warmup_finished.emit()
+
+
+class PlayerCard(QFrame):
+    """Tarjeta del marcador; clicable para elegir la comparativa del radar.
+
+    El clic la emite con la clave del jugador: aliado → pasa a analizarlo,
+    rival → se convierte en el oponente del radar.
+    """
+
+    clicked = Signal(str)
+
+    def __init__(self, player_key: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._player_key = str(player_key)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self._player_key)
+
+        super().mousePressEvent(event)
+
+
 # ---------------------------------------------------------------------------
 # Filas de la timeline de revisión
 # ---------------------------------------------------------------------------
@@ -846,6 +1329,14 @@ class EventRow(QFrame):
         self.data = event
         kind = str(event.get("kind") or "default")
         style = evaluation_style(event.get("evaluation"))
+        # Tinte del fondo según a quién favorece el suceso (verde = tu
+        # equipo, rojo = el rival); "" = neutro, sin tinte.
+        self.polarity = event_polarity(kind, str(event.get("side") or ""))
+        tint = card_tint_style(self.polarity)
+
+        if tint:
+            self.setStyleSheet(tint)
+
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         player_name = str(event.get("player_name") or "").strip()
         self.setToolTip(
@@ -895,6 +1386,16 @@ class EventRow(QFrame):
             note.setObjectName("postgameEventFeedback")
             note.setWordWrap(True)
             texts.addWidget(note)
+
+        # Nota "Esta kill favoreció a conseguir Torre/Dragón...": enlaza la
+        # baja con el objetivo que el mismo bando consiguió justo después.
+        objective_note = str(event.get("objective_note") or "").strip()
+
+        if objective_note:
+            link_label = QLabel(f"🎯 {objective_note}")
+            link_label.setObjectName("postgameEventNote")
+            link_label.setWordWrap(True)
+            texts.addWidget(link_label)
 
         layout.addLayout(texts, 1)
 
@@ -952,9 +1453,16 @@ class PostgameSidebar(QWidget):
         self.setObjectName("postgameSidebar")
         self.session: dict[str, Any] = session if isinstance(session, dict) else {}
         self.player_key: str = local_player_key(self.session)
+        # Rival elegido a mano (clic en una tarjeta enemiga) para el radar;
+        # vacío = enfrentamiento directo por rol / lane_matchups.
+        self.rival_key: str = ""
         self.scope: str = self.SCOPE_PLAYER
         self.review_events: list[dict[str, Any]] = []
         self.event_rows: list[EventRow] = []
+        # Iconos: se pinta primero con la caché local y un hilo completa en
+        # segundo plano lo que falte (sin repetir intentos ni bloquear la UI).
+        self._icon_warmup: IconWarmupThread | None = None
+        self._warmed_keys: set[tuple[str, str]] = set()
         self._build_ui()
         self.refresh()
 
@@ -988,7 +1496,26 @@ class PostgameSidebar(QWidget):
     def _build_overview_tab(self) -> QWidget:
         page = QWidget()
         page.setObjectName("postgameTabPage")
-        layout = QVBoxLayout(page)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Las tarjetas del marcador son altas (retrato, KDA, chips y build):
+        # con scroll el panel nunca recorta filas cuando la ventana es baja.
+        scroll = QScrollArea()
+        scroll.setObjectName("postgameOverviewScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        content = QWidget()
+        content.setObjectName("postgameOverviewContent")
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(10)
         layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
@@ -1065,6 +1592,9 @@ class PostgameSidebar(QWidget):
         )
         layout.addWidget(self.stats_label)
 
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+
         return page
 
     def _build_review_tab(self) -> QWidget:
@@ -1133,6 +1663,7 @@ class PostgameSidebar(QWidget):
         """Cambia la sesión mostrada (la del vídeo o la partida guardada)."""
         self.session = session if isinstance(session, dict) else {}
         self.player_key = local_player_key(self.session)
+        self.rival_key = ""
         self.refresh()
 
     def set_player(self, player_key: str) -> None:
@@ -1142,7 +1673,14 @@ class PostgameSidebar(QWidget):
             return
 
         self.player_key = key
+        # Con otro jugador analizado, la elección manual del rival pierde el
+        # sentido: se fija el enfrentamiento directo (mismo rol al otro bando)
+        # como ``rival_key`` para que el radar y el estado queden en sync.
+        self.rival_key = self._partner_for(
+            key, player_final_stats(self.session, key).get("role")
+        )
         self._sync_player_combo()
+        self._fill_scoreboard()
         self._refresh_stats()
         self._rebuild_timeline()
 
@@ -1197,8 +1735,10 @@ class PostgameSidebar(QWidget):
 
     def _fill_scoreboard(self) -> None:
         # Marcador "MI EQUIPO vs EQUIPO ENEMIGO" en dos columnas paralelas:
-        # imagen, KDA, CS, oro, visión y build de cada jugador, con el jugador
-        # local primero y ordenados por rol (TOP→JUNGLA→MEDIO→TIRADOR→APOYO).
+        # imagen, KDA, CS, oro, visión y build de cada jugador. Ambas columnas
+        # se ordenan por rol (TOP→JUNGLA→MEDIO→TIRADOR→APOYO) para que cada
+        # jugador quede ENFRENTADO a su homólogo del otro bando: el local no
+        # se fuerza arriba, va en la fila de su rol.
         players = session_players(self.session)
         version = str(self.session.get("game_version") or "").strip()
         dd_version = ""
@@ -1223,7 +1763,6 @@ class PostgameSidebar(QWidget):
         for values in by_side.values():
             values.sort(
                 key=lambda value: (
-                    value != local_key,
                     ROLE_ORDER.index(
                         str(
                             (players.get(value) or {}).get("role") or "UNKNOWN"
@@ -1296,6 +1835,71 @@ class PostgameSidebar(QWidget):
         except Exception:
             pass
 
+        # La caché local puede no tener todos los PNG (primera partida con un
+        # campeón u objeto nuevos): se completan en segundo plano y se repinta.
+        self._warm_icons()
+
+    def _warm_icons(self) -> None:
+        """Pide en segundo plano los iconos que falten de la caché local.
+
+        El marcador ya se ha pintado con lo que había en disco; este hilo
+        solo rellena los huecos (retratos u objetos sin PNG) y, al acabar,
+        reconstruye las tarjetas una única vez.
+        """
+        if self._icon_warmup is not None:
+            return
+
+        version = self._assets_version()
+        catalog = self._catalog()
+        players = session_players(self.session)
+        missing_items: list[int] = []
+        missing_champions: list[str] = []
+
+        for key in ordered_player_keys(self.session):
+            player = players.get(key)
+            player = player if isinstance(player, dict) else {}
+            champion = str(player.get("champion_name") or "").strip()
+            champion_token = ("champ", champion.casefold())
+
+            if (
+                champion
+                and champion_token not in self._warmed_keys
+                and _cached_champion_icon(champion, version) is None
+            ):
+                self._warmed_keys.add(champion_token)
+                missing_champions.append(champion)
+
+            for item_id in player_build_items(self.session, key)[:6]:
+                item_token = ("item", str(item_id))
+
+                if item_token in self._warmed_keys or (
+                    _cached_item_icon(item_id, catalog, version) is not None
+                ):
+                    continue
+
+                self._warmed_keys.add(item_token)
+                missing_items.append(item_id)
+
+        if not missing_items and not missing_champions:
+            return
+
+        thread = IconWarmupThread(
+            missing_items, missing_champions, catalog, version, self
+        )
+        thread.warmup_finished.connect(self._on_icons_warmed)
+        thread.finished.connect(thread.deleteLater)
+        self._icon_warmup = thread
+        thread.start()
+
+    def _on_icons_warmed(self) -> None:
+        self._icon_warmup = None
+
+        try:
+            self._fill_scoreboard()
+        except RuntimeError:
+            # El sidebar se destruyó mientras el hilo seguía trabajando.
+            return
+
     def _catalog(self) -> dict[str, Any]:
         """Catálogo de objetos (para el build), tomado del window padre."""
         try:
@@ -1320,88 +1924,151 @@ class PostgameSidebar(QWidget):
         version: str,
         is_local: bool = False,
     ) -> QFrame:
-        card = QFrame()
+        card = PlayerCard(key)
         card.setObjectName("postgamePlayerCard")
-        card.setMinimumWidth(132)
+        card.setMinimumWidth(176)
         side = team_side(self.session, player.get("team"))
         accent = "#4a96ff" if side == "ally" else "#f06076"
+        # Selección para el radar: borde grueso en el jugador analizado y
+        # borde dorado en el rival elegido con un clic sobre su tarjeta.
+        focus_key = self.player_key or local_player_key(self.session)
+        is_focus = key == focus_key
+        is_rival = bool(self.rival_key) and key == self.rival_key
+
+        if is_rival:
+            border = "1px solid #fbbf24"
+            left_colour = "#fbbf24"
+            left_width = 5
+        elif is_focus:
+            border = f"1px solid {accent}"
+            left_colour = accent
+            left_width = 5
+        else:
+            border = f"1px solid {accent}66"
+            left_colour = accent
+            left_width = 4
+
+        # El borde tiene el mismo grosor en todas las tarjetas (un borde de
+        # foco más grueso descuadraría las alturas entre filas del VS).
         card.setStyleSheet(
             "QFrame#postgamePlayerCard { "
-            f"border: 1px solid {accent}; "
+            f"border: {border}; "
+            f"border-left: {left_width}px solid {left_colour}; "
             "border-radius: 10px; "
-            "background: rgba(12, 22, 40, 215); }"
+            "min-height: 158px; "
+            "background: rgba(12, 22, 40, 225); } "
+            "QFrame#postgamePlayerCard:hover { "
+            "background: rgba(22, 40, 68, 240); }"
         )
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(3)
-        layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.setContentsMargins(8, 7, 8, 7)
+        layout.setSpacing(6)
 
         champion_name = str(player.get("champion_name") or "").strip()
         role = str(player.get("role") or "").upper()
         stats = player_final_stats(self.session, key)
 
-        header = QHBoxLayout()
-        header.setSpacing(6)
+        # -- cabecera: retrato + nombre/KDA + rol y nivel con contexto -----
+        header_row = QHBoxLayout()
+        header_row.setSpacing(8)
 
         icon = QLabel()
         icon.setObjectName("postgameChampionIcon")
-        icon.setFixedSize(38, 38)
+        icon.setFixedSize(44, 44)
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pixmap = _champion_icon(champion_name, version, 36)
+        portrait = _champion_icon(champion_name, version, 40)
 
-        if not pixmap.isNull():
-            icon.setPixmap(pixmap)
+        if not portrait.isNull():
+            icon.setPixmap(_rounded_pixmap(portrait, 7.0))
         else:
             icon.setText(champion_name[:2].upper())
-            icon.setStyleSheet(
-                "color:#eef4ff; font-size:13px; font-weight:800; "
-                "background:rgba(40,58,85,220); border-radius:6px;"
-            )
 
         icon.setToolTip(champion_name or "Campeón")
-        header.addWidget(icon)
+        header_row.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
 
-        texts = QVBoxLayout()
-        texts.setSpacing(1)
+        info = QVBoxLayout()
+        info.setSpacing(3)
+        info.setContentsMargins(0, 0, 0, 0)
+
+        name_row = QHBoxLayout()
+        name_row.setSpacing(6)
 
         name = QLabel(champion_name or "Desconocido")
         name.setObjectName("postgameChampionName")
-        name.setStyleSheet(
-            "color:#eef4ff; font-size:11px; font-weight:800; border:none;"
-        )
         name.setToolTip(champion_name or "")
-        texts.addWidget(name)
+        name_row.addWidget(name, 1)
 
-        badge = QLabel(
-            ROLE_LABELS_ES.get(role, role or "—")
-            + (" · TÚ" if is_local else "")
-        )
-        badge.setObjectName("postgameRoleBadge")
-        badge.setStyleSheet(
-            "color:#d9ae4f; font-size:9px; font-weight:800; border:none;"
-        )
-        badge.setToolTip("Tu jugador" if is_local else (role or "Rol"))
-        texts.addWidget(badge)
+        # Resultado: solo cuando la sesión lo conoce de verdad.
+        outcome = stats.get("win")
 
-        header.addLayout(texts, 1)
-        layout.addLayout(header)
+        if isinstance(outcome, bool):
+            flag = QLabel("V" if outcome else "D")
+            flag.setObjectName("postgameResultFlag")
+            flag.setProperty("result", "win" if outcome else "loss")
+            flag.setToolTip("Victoria" if outcome else "Derrota")
+            name_row.addWidget(flag, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        info.addLayout(name_row)
+
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(6)
+
+        role_chip = QLabel(
+            "ROL · "
+            + (ROLE_LABELS_ES.get(role, role or "SIN DATO") or "SIN DATO").upper()
+        )
+        role_chip.setObjectName("postgameRoleBadge")
+        role_chip.setToolTip(
+            "Tu jugador" if is_local else f"Rol: {role or 'sin dato'}"
+        )
+        meta_row.addWidget(role_chip)
+
+        level_chip = QLabel(
+            f"NIVEL · {stats['level']}" + (" · TÚ" if is_local else "")
+        )
+        level_chip.setObjectName("postgameLevelBadge")
+        level_chip.setToolTip(
+            f"Nivel final {stats['level']}"
+            + (" · es tu jugador" if is_local else "")
+        )
+        meta_row.addWidget(level_chip)
+
+        meta_row.addStretch(1)
+        info.addLayout(meta_row)
+
+        header_row.addLayout(info, 1)
+
+        kda_frame = QFrame()
+        kda_frame.setObjectName("postgameKdaPill")
+        kda_box = QVBoxLayout(kda_frame)
+        kda_box.setContentsMargins(7, 3, 7, 3)
+        kda_box.setSpacing(0)
+
+        kda_caption = QLabel("KDA")
+        kda_caption.setObjectName("postgameKdaCaption")
+        kda_caption.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        kda_box.addWidget(kda_caption)
 
         kda = QLabel(
             f"{stats['kills']} / {stats['deaths']} / {stats['assists']}"
         )
         kda.setObjectName("postgameStatKda")
-        kda.setStyleSheet(
-            "color:#eef4ff; font-size:12px; font-weight:800; border:none;"
-        )
+        kda.setStyleSheet(f"color:{_kda_colour(stats['kda'])};")
         kda.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         kda.setToolTip(
             f"KDA {stats['kda']:.2f} · asesinatos / muertes / asistencias"
         )
-        layout.addWidget(kda)
+        kda_box.addWidget(kda)
 
+        header_row.addWidget(kda_frame, 0, Qt.AlignmentFlag.AlignTop)
+
+        layout.addLayout(header_row)
+        layout.addWidget(_divider())
+
+        # -- métricas clave en chips con fondo (lectura inmediata) ---------
         numbers = QHBoxLayout()
-        numbers.setSpacing(4)
+        numbers.setSpacing(5)
 
         for caption, value, tooltip, object_name, colour in (
             (
@@ -1409,66 +2076,106 @@ class PostgameSidebar(QWidget):
                 str(stats["cs"]),
                 f"{stats['cspm']:.1f} CS/min",
                 "postgameStatCs",
-                "#38bdf8",
+                "#7cc7ff",
             ),
             (
                 "ORO",
                 _format_gold(stats["gold"]),
                 f"{stats['gpm']:.0f} oro/min",
                 "postgameStatGold",
-                "#d9ae4f",
+                "#f0cc70",
             ),
             (
-                "VIS",
+                "VISIÓN",
                 str(stats["vision"]),
-                "Puntuación de visión",
+                "Puntuación de visión acumulada",
                 "postgameStatVision",
                 "#7ee7a6",
             ),
         ):
-            block = QVBoxLayout()
-            block.setSpacing(0)
+            chip = QFrame()
+            chip.setObjectName("postgameStatChip")
+            chip.setToolTip(tooltip)
+            chip_layout = QVBoxLayout(chip)
+            chip_layout.setContentsMargins(4, 3, 4, 3)
+            chip_layout.setSpacing(0)
+
             label = QLabel(caption)
             label.setObjectName("postgameStatCaption")
-            label.setStyleSheet(
-                "color:#8fa2bd; font-size:9px; font-weight:700; border:none;"
-            )
             label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            chip_layout.addWidget(label)
+
             amount = QLabel(value)
             amount.setObjectName(object_name)
-            amount.setStyleSheet(
-                f"color:{colour}; font-size:12px; font-weight:800; border:none;"
-            )
+            amount.setStyleSheet(f"color:{colour};")
             amount.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             amount.setToolTip(tooltip)
-            block.addWidget(label)
-            block.addWidget(amount)
-            numbers.addLayout(block)
+            chip_layout.addWidget(amount)
+
+            numbers.addWidget(chip, 1)
 
         layout.addLayout(numbers)
 
+        # -- build: seis huecos siempre visibles ---------------------------
+        build_header = QHBoxLayout()
+        build_header.setSpacing(6)
+
+        build_caption = QLabel("BUILD")
+        build_caption.setObjectName("postgameBuildCaption")
+        build_header.addWidget(build_caption)
+        build_header.addStretch(1)
+
+        items = player_build_items(self.session, key)
+        build_count = QLabel(f"{len(items[:6])}/6")
+        build_count.setObjectName("postgameBuildCount")
+        build_count.setToolTip("Objetos finales registrados")
+        build_header.addWidget(build_count)
+
+        layout.addLayout(build_header)
+
         build = QHBoxLayout()
-        build.setSpacing(2)
+        build.setSpacing(3)
         build.setContentsMargins(0, 0, 0, 0)
         catalog = self._catalog()
 
-        for item_id in player_build_items(self.session, key):
+        for index in range(6):
+            item_id = items[index] if index < len(items) else None
             slot = QLabel()
             slot.setObjectName("postgameItemIcon")
-            slot.setFixedSize(20, 20)
+            slot.setProperty("filled", "1" if item_id is not None else "0")
+            slot.setFixedSize(24, 24)
             slot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            item_pixmap = _item_icon(item_id, catalog, version, 18)
+            item_pixmap = (
+                _item_icon(item_id, catalog, version, 22)
+                if item_id is not None
+                else QPixmap()
+            )
 
             if not item_pixmap.isNull():
-                slot.setPixmap(item_pixmap)
+                slot.setPixmap(_rounded_pixmap(item_pixmap, 4.0))
+                slot.setToolTip(_item_tooltip(item_id, catalog))
+            elif item_id is not None:
+                slot.setText(str(item_id)[:3])
+                slot.setToolTip(
+                    _item_tooltip(item_id, catalog)
+                    + "\n(Sin icono en la caché local)"
+                )
+            else:
+                slot.setText("+")
+                slot.setToolTip("Hueco de objeto vacío")
 
-            slot.setToolTip(_item_name(item_id, catalog))
             build.addWidget(slot)
 
-        if build.count():
-            layout.addLayout(build)
-
+        build.addStretch(1)
+        layout.addLayout(build)
         layout.addStretch(1)
+
+        if side == "ally":
+            card.setToolTip("Clic: analizar este jugador (radar y revisión).")
+        else:
+            card.setToolTip("Clic: comparar en el radar contra este campeón.")
+
+        card.clicked.connect(self._on_card_clicked)
 
         return card
 
@@ -1503,41 +2210,110 @@ class PostgameSidebar(QWidget):
             button.setChecked(scope == self.scope)
             button.blockSignals(False)
 
-    def _partner_by_role(self, role: Any) -> str:
-        """Jugador del mismo rol en el bando contrario.
+    def _partner_for(self, player_key: str, role: Any = None) -> str:
+        """Rival directo de ``player_key`` para el radar.
 
-        Sirve para el radar: si el jugador elegido es del equipo rival, su
-        pareja es el jugador aliado de ese mismo rol.
+        Primero el ``lane_matchups`` de la sesión (en ambas direcciones) y,
+        si no existe, el jugador del mismo rol del bando contrario (o el
+        primero de ese bando si los roles se desconocen).
         """
-        wanted = str(role or "").upper()
         players = session_players(self.session)
-        own = players.get(self.player_key)
+        matchups = self.session.get("lane_matchups")
+
+        if isinstance(matchups, dict):
+            for matchup in matchups.values():
+                if not isinstance(matchup, dict):
+                    continue
+
+                if matchup.get("ally_key") == player_key:
+                    return str(matchup.get("enemy_key") or "")
+
+                if matchup.get("enemy_key") == player_key:
+                    return str(matchup.get("ally_key") or "")
+
+        wanted = str(role or "").upper()
+        if wanted == "UNKNOWN":
+            wanted = ""
+        own = players.get(player_key)
         own = own if isinstance(own, dict) else {}
         side = team_side(self.session, own.get("team"))
         target = "ally" if side == "enemy" else "enemy"
 
-        for key in ordered_player_keys(self.session):
-            if key == self.player_key:
-                continue
+        candidates = [
+            key
+            for key in ordered_player_keys(self.session)
+            if key != player_key
+            and team_side(
+                self.session, (players.get(key) or {}).get("team")
+            )
+            == target
+        ]
 
+        for key in candidates:
             player = players.get(key)
             player = player if isinstance(player, dict) else {}
 
-            if team_side(self.session, player.get("team")) != target:
-                continue
-
-            if str(player.get("role") or "").upper() == wanted:
+            if wanted and str(player.get("role") or "").upper() == wanted:
                 return key
 
-        return ""
+        # Sin rol coincidente (roles desconocidos o incompletos): el primero
+        # del otro bando, para que el radar siempre tenga oponente.
+        return candidates[0] if candidates else ""
+
+    def _on_card_clicked(self, player_key: str) -> None:
+        """Clic en una tarjeta del marcador: elige la comparativa del radar.
+
+        - ALIADO: pasa a analizarse (radar verde + revisión y combo).
+        - RIVAL: se convierte en el oponente del radar sin cambiar el jugador
+          analizado, para poder comparar contra cualquiera.
+        """
+        key = str(player_key or "")
+        players = session_players(self.session)
+        player = players.get(key)
+
+        if not isinstance(player, dict):
+            return
+
+        focus = players.get(self.player_key or local_player_key(self.session))
+        focus = focus if isinstance(focus, dict) else {}
+        focus_side = team_side(self.session, focus.get("team"))
+
+        if team_side(self.session, player.get("team")) == "enemy" and (
+            focus_side != "enemy"
+        ):
+            self.rival_key = key
+            self._fill_scoreboard()
+            self._refresh_stats()
+            return
+
+        self.set_player(key)
 
     def _refresh_stats(self) -> None:
         # Radar y resumen del jugador SELECCIONADO (por defecto, el local).
+        # El rival del radar es el marcado con un clic (``rival_key``); si no
+        # hay elección válida se usa el enfrentamiento directo por rol.
         key = self.player_key or local_player_key(self.session)
         stats = player_final_stats(self.session, key)
-        partner = matchup_partner(self.session, key) or self._partner_by_role(
-            stats.get("role")
-        )
+        players = session_players(self.session)
+        partner = self.rival_key
+
+        if partner == key or not isinstance(players.get(partner), dict):
+            partner = ""
+
+        if partner:
+            focus_side = team_side(
+                self.session, (players.get(key) or {}).get("team")
+            )
+            rival_side = team_side(
+                self.session, (players.get(partner) or {}).get("team")
+            )
+
+            if focus_side and rival_side and focus_side == rival_side:
+                partner = ""
+
+        if not partner:
+            partner = self._partner_for(key, stats.get("role"))
+
         rival = player_final_stats(self.session, partner) if partner else {}
 
         self.radar.set_data(
@@ -1575,6 +2351,7 @@ class PostgameSidebar(QWidget):
 
         order = (
             "kill",
+            "teamfight",
             "death",
             "assist",
             "dragon",
@@ -1622,6 +2399,7 @@ class PostgameSidebar(QWidget):
     #: Tipos de suceso que aparecen como indicadores en la barra de duración.
     MARKER_KINDS = {
         "kill",
+        "teamfight",
         "death",
         "assist",
         "dragon",
@@ -1664,6 +2442,11 @@ class PostgameSidebar(QWidget):
 
             label = str(event.get("label") or kind_label(kind))
             detail = str(event.get("detail") or label)
+            note = str(event.get("objective_note") or "").strip()
+
+            if note and note.casefold() not in detail.casefold():
+                detail = f"{detail} · {note}"
+
             owner = str(event.get("player_name") or "").strip()
 
             if owner and owner.casefold() not in detail.casefold():
@@ -1682,6 +2465,9 @@ class PostgameSidebar(QWidget):
                         or event.get("owner_team")
                         or ""
                     ),
+                    # Bando que se beneficia del suceso: la barra lo usa para
+                    # pintar el indicador en verde (tu equipo) o rojo (rival).
+                    "side": str(event.get("side") or ""),
                     "order": _int(event.get("order"), order),
                 }
             )
@@ -1758,6 +2544,79 @@ def _scaled_local_pixmap(path: Any, size: int) -> QPixmap:
     )
 
 
+def _rounded_pixmap(pixmap: QPixmap, radius: float) -> QPixmap:
+    """Copia del pixmap con las esquinas redondeadas (recorte real).
+
+    QSS no recorta el contenido de un ``QLabel``, así que el redondeo se
+    aplica dibujando el pixmap dentro de un ``QPainterPath`` recortado.
+    """
+    if pixmap.isNull():
+        return pixmap
+
+    size = pixmap.size()
+
+    if size.isEmpty():
+        return pixmap
+
+    result = QPixmap(size)
+    result.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(result)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+    path = QPainterPath()
+    path.addRoundedRect(
+        0.0, 0.0, float(size.width()), float(size.height()), radius, radius
+    )
+    painter.setClipPath(path)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+
+    return result
+
+
+#: Color del texto del KDA según el rendimiento del jugador. Es una lectura
+#: de rendimiento individual (no confundir con la ruta verde/rojo de bando
+#: que usan las tarjetas de sucesos).
+def _kda_colour(kda: float) -> str:
+    try:
+        value = float(kda)
+    except (TypeError, ValueError):
+        return "#eef4ff"
+
+    if value >= 4.0:
+        return "#7ee7a6"
+    if value >= 2.0:
+        return "#eef4ff"
+    if value >= 1.0:
+        return "#f0cc70"
+    return "#ff9ca7"
+
+
+def _cached_item_icon(
+    item_id: Any,
+    catalog: dict[str, Any],
+    version: str,
+) -> Any:
+    """Ruta del icono del objeto si ya está en disco (no descarga)."""
+    try:
+        return get_item_icon_path(item_id, catalog, version, download=False)
+    except (OSError, ValueError):
+        return None
+
+
+def _cached_champion_icon(champion_name: str, version: str) -> Any:
+    """Ruta del retrato si ya está en disco (no descarga)."""
+    if not champion_name:
+        return None
+
+    try:
+        return get_champion_icon_path(champion_name, version, download=False)
+    except (OSError, ValueError):
+        return None
+
+
 def _format_gold(value: Any) -> str:
     """Oro abreviado: 12.5k a partir de mil, número exacto por debajo."""
     try:
@@ -1786,6 +2645,48 @@ def _item_name(item_id: Any, catalog: dict[str, Any]) -> str:
             return name
 
     return f"Objeto {item_id}"
+
+
+def _item_tooltip(item_id: Any, catalog: dict[str, Any]) -> str:
+    """Nombre, precio y efecto corto del objeto, para el tooltip del hueco."""
+    data = catalog
+
+    if isinstance(data, dict) and isinstance(data.get("items"), dict):
+        data = data["items"]
+
+    entry = data.get(str(item_id)) if isinstance(data, dict) else None
+    name = _item_name(item_id, catalog)
+
+    if not isinstance(entry, dict):
+        return name
+
+    parts = [name]
+    gold = entry.get("gold")
+
+    if isinstance(gold, dict):
+        try:
+            total = int(float(gold.get("total")))
+        except (TypeError, ValueError):
+            total = 0
+
+        if total > 0:
+            parts.append(f"{total:,} g".replace(",", "."))
+
+    text = str(entry.get("plaintext") or "").strip()
+
+    if text:
+        parts.append(text)
+
+    return "\n".join(parts)
+
+
+def _divider() -> QFrame:
+    """Línea fina que separa los bloques internos de la tarjeta."""
+    line = QFrame()
+    line.setObjectName("postgameCardDivider")
+    line.setFixedHeight(1)
+
+    return line
 
 
 def _item_ids(values: Any) -> list[int]:

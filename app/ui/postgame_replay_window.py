@@ -48,6 +48,20 @@ from app.ui.styles import CONTROL_WINDOW_STYLE
 SEEK_SECONDS = 10
 
 
+class ReplayVideoWidget(QVideoWidget):
+    """Vídeo que alterna la pantalla completa con doble clic."""
+
+    double_clicked = Signal()
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.double_clicked.emit()
+            event.accept()
+            return
+
+        super().mouseDoubleClickEvent(event)
+
+
 class PostgameMarkerSlider(MarkerSlider):
     """Barra de progreso con los indicadores de la partida.
 
@@ -59,7 +73,7 @@ class PostgameMarkerSlider(MarkerSlider):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("postgameMarkerSlider")
-        self.setMinimumHeight(28)
+        self.setMinimumHeight(48)
         self.set_show_marker_glyphs(True)
 
 
@@ -105,6 +119,12 @@ class PostgameReplayWindow(QMainWindow):
         self._pending_seek_ms = 0
         self.live_view: Any | None = None
         self._live_tab_index = -1
+        # Ventana dedicada para la pantalla completa del vídeo (con la barra
+        # de reproducción dentro); se crea la primera vez que se pide.
+        self._fs_window: QWidget | None = None
+        self._fs_video_host: QWidget | None = None
+        self._fs_bar_layout: QVBoxLayout | None = None
+        self._card_layout: QVBoxLayout | None = None
 
         self._build_ui()
         self._build_player()
@@ -141,7 +161,7 @@ class PostgameReplayWindow(QMainWindow):
         splitter.setObjectName("postgameSplitter")
         splitter.addWidget(self._build_video_column())
         self.sidebar = PostgameSidebar(self.session or None)
-        self.sidebar.setMinimumWidth(370)
+        self.sidebar.setMinimumWidth(430)
         self.sidebar.event_activated.connect(self.jump_to_game_time)
         try:
             self.sidebar.events_changed.connect(self._refresh_markers)
@@ -150,7 +170,7 @@ class PostgameReplayWindow(QMainWindow):
         splitter.addWidget(self.sidebar)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
-        splitter.setSizes([1000, 480])
+        splitter.setSizes([960, 580])
         layout.addWidget(splitter, 1)
 
         self.status_label = QLabel("Selecciona una grabación para verla.")
@@ -268,13 +288,15 @@ class PostgameReplayWindow(QMainWindow):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(8)
+        self._card_layout = layout
 
-        self.video_widget = QVideoWidget()
+        self.video_widget = ReplayVideoWidget()
         self.video_widget.setObjectName("postgameVideo")
         self.video_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         self.video_widget.setMinimumHeight(320)
+        self.video_widget.double_clicked.connect(self.toggle_fullscreen)
         layout.addWidget(self.video_widget, 1)
 
         self.marker_slider = PostgameMarkerSlider()
@@ -284,7 +306,13 @@ class PostgameReplayWindow(QMainWindow):
         self.marker_slider.seek_requested.connect(self.seek_to_ms)
         layout.addWidget(self.marker_slider)
 
-        layout.addLayout(self._build_transport())
+        # Fila de transporte envuelta en un widget para poder moverla (con
+        # todos sus controles) a la ventana de pantalla completa.
+        self.transport_row = QWidget()
+        self.transport_row.setObjectName("postgameTransportRow")
+        self.transport_row.setLayout(self._build_transport())
+        layout.addWidget(self.transport_row)
+
         return card
 
     def _build_transport(self) -> QHBoxLayout:
@@ -402,17 +430,70 @@ class PostgameReplayWindow(QMainWindow):
         )
 
     def toggle_fullscreen(self) -> None:
-        if self.video_widget.isFullScreen():
+        if self._fs_window is not None and self._fs_window.isVisible():
             self.exit_fullscreen()
         else:
-            # Solo el vídeo pasa a pantalla completa: la ventana principal
-            # (pestañas, desglose, controles) se queda como estaba.
-            self.video_widget.setFullScreen(True)
-            self.fullscreen_button.setText("⛶ Salir de pantalla completa")
+            self._enter_video_fullscreen()
+
+    def _enter_video_fullscreen(self) -> None:
+        """Pantalla completa del vídeo CON la barra de reproducción visible.
+
+        El vídeo, la barra de marcadores y la fila de transporte se mueven a
+        una ventana dedicada sin bordes. Como son los mismos widgets, los
+        indicadores, el tiempo y el estado de reproducción se conservan: se
+        puede mover por el vídeo igual que en la ventana normal (con F, Esc,
+        doble clic o el botón «Salir de pantalla completa»).
+        """
+        window = self._ensure_fullscreen_window()
+        self._fs_video_host.layout().addWidget(self.video_widget)
+        self._fs_bar_layout.addWidget(self.marker_slider)
+        self._fs_bar_layout.addWidget(self.transport_row)
+        window.showFullScreen()
+        window.activateWindow()
+        self.fullscreen_button.setText("⛶ Salir de pantalla completa")
+
+    def _ensure_fullscreen_window(self) -> QWidget:
+        """Crea (una sola vez) la ventana de pantalla completa del vídeo."""
+        if self._fs_window is not None:
+            return self._fs_window
+
+        window = QWidget(
+            None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+        )
+        window.setObjectName("postgameFullscreenWindow")
+        window.setWindowTitle("Repaso de partida · pantalla completa")
+        window.setStyleSheet(CONTROL_WINDOW_STYLE)
+
+        layout = QVBoxLayout(window)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        host = QWidget()
+        host.setObjectName("postgameFullscreenVideoHost")
+        host_layout = QVBoxLayout(host)
+        host_layout.setContentsMargins(0, 0, 0, 0)
+        host_layout.setSpacing(0)
+        layout.addWidget(host, 1)
+
+        bar = QFrame()
+        bar.setObjectName("postgameFullscreenBar")
+        bar_layout = QVBoxLayout(bar)
+        bar_layout.setContentsMargins(18, 10, 18, 12)
+        bar_layout.setSpacing(6)
+        layout.addWidget(bar)
+
+        self._fs_window = window
+        self._fs_video_host = host
+        self._fs_bar_layout = bar_layout
+
+        return window
 
     def exit_fullscreen(self) -> None:
-        if self.video_widget.isFullScreen():
-            self.video_widget.setFullScreen(False)
+        if self._fs_window is not None and self._fs_window.isVisible():
+            self._fs_window.hide()
+            self._card_layout.insertWidget(0, self.video_widget, 1)
+            self._card_layout.addWidget(self.marker_slider)
+            self._card_layout.addWidget(self.transport_row)
             self.fullscreen_button.setText("⛶ Pantalla completa")
         elif self.isFullScreen():
             self.showNormal()
@@ -1025,6 +1106,20 @@ class PostgameReplayWindow(QMainWindow):
             self.exit_fullscreen()
         except RuntimeError:
             pass
+
+        fs_window = self._fs_window
+
+        if fs_window is not None:
+            if fs_window.isVisible() and self._card_layout is not None:
+                # Salvavidas: devuelve el vídeo a la tarjeta antes de cerrar.
+                fs_window.hide()
+                self._card_layout.addWidget(self.video_widget)
+
+            fs_window.close()
+            self._fs_window = None
+            self._fs_video_host = None
+            self._fs_bar_layout = None
+
         try:
             self.player.stop()
             self.player.setSource(QUrl())

@@ -13,8 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -42,9 +42,13 @@ from app.services.recording_service import (
 
 SEEK_SECONDS = 10
 
+#: Ancho común para los botones de acción de cada fila de grabación.
+RECORDING_ROW_BUTTON_WIDTH = 100
+
 #: Estilo de cada tipo de marcador en la barra y en la lista.
 MARKER_STYLES: dict[str, dict[str, str]] = {
     "kill": {"color": "#4adea0", "glyph": "⚔️"},
+    "teamfight": {"color": "#fbbf24", "glyph": "💥"},
     "death": {"color": "#f07d8a", "glyph": "💀"},
     "assist": {"color": "#57cafa", "glyph": "🤝"},
     "dragon": {"color": "#fb923c", "glyph": "🐉"},
@@ -59,6 +63,27 @@ MARKER_STYLES: dict[str, dict[str, str]] = {
 
 def marker_style(kind: str) -> dict[str, str]:
     return MARKER_STYLES.get(kind, {"color": "#94a3b8", "glyph": "•"})
+
+
+#: Prioridad de cada tipo cuando varios sucesos caen en el mismo punto de la
+#: barra: el chip agrupado muestra el icono del más importante de la pila.
+KIND_PRIORITY: dict[str, int] = {
+    "teamfight": 10,
+    "baron": 9,
+    "dragon": 8,
+    "herald": 7,
+    "kill": 6,
+    "death": 5,
+    "assist": 4,
+    "tower": 3,
+    "inhibitor": 2,
+    "horde": 2,
+    "objective": 1,
+}
+
+
+def kind_priority(kind: str) -> int:
+    return KIND_PRIORITY.get(kind, 0)
 
 
 class MarkerSlider(QSlider):
@@ -77,6 +102,7 @@ class MarkerSlider(QSlider):
         self.markers: list[dict[str, Any]] = []
         self.duration_ms: int = 0
         self.show_marker_glyphs: bool = False
+        self._hover_x: float | None = None
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -117,11 +143,15 @@ class MarkerSlider(QSlider):
                         marker.get("glyph")
                         or marker_style(str(marker.get("kind") or ""))["glyph"]
                     ),
+                    # Bando beneficiado ("ally"/"enemy"): pinta el punto de
+                    # la barra en verde o rojo cuando se conoce.
+                    "side": str(marker.get("side") or ""),
                 }
             )
 
         self.markers = sorted(cleaned, key=lambda item: item["time"])
         self.duration_ms = max(0, int(duration_ms or 0))
+        self._hover_x = None
         self.update()
 
     # -- dibujo ---------------------------------------------------------
@@ -135,42 +165,182 @@ class MarkerSlider(QSlider):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        top = 2
-        bottom = max(top + 4, self.height() - 2)
-        glyph_baseline = 0
+        groove = self.style().subControlRect(
+            QStyle.ComplexControl.CC_Slider,
+            self.getStyleOption(),
+            QStyle.SubControl.SC_SliderGroove,
+            self,
+        )
+        if groove.height() > 0:
+            groove_top = float(groove.top())
+            groove_bottom = float(groove.bottom())
+            center_y = groove_top + groove.height() / 2.0
+        else:
+            groove_top = 0.0
+            groove_bottom = float(self.height())
+            center_y = self.height() / 2.0
 
-        if self.show_marker_glyphs:
-            from PySide6.QtGui import QFont
-
-            font = QFont()
-            font.setPixelSize(max(9, min(13, self.height() - 12)))
-            painter.setFont(font)
-            glyph_baseline = top + font.pixelSize() + 2
-            top = glyph_baseline + 2
-            bottom = max(top + 2, self.height() - 2)
-
-        last_glyph_x = -10**9
+        # Cada marcador: rayita de color + punto sobre la barra. El punto se
+        # pinta del color del BANDO cuando se conoce (verde = tu equipo,
+        # rojo = el rival) y del color del tipo en caso contrario.
+        plotted: list[tuple[float, dict[str, Any], dict[str, str]]] = []
 
         for marker in self.markers:
             x = self._x_for_seconds(marker["time"])
 
-            if x is None:
-                continue
+            if x is not None:
+                plotted.append(
+                    (float(x), marker, marker_style(marker["kind"]))
+                )
 
-            style = marker_style(marker["kind"])
-            pen = QPen(QColor(style["color"]))
-            pen.setWidth(3)
-            painter.setPen(pen)
-            painter.drawLine(x, top, x, bottom)
+        # Línea-guía vertical bajo el chip apuntado por el ratón: conecta el
+        # icono con su momento exacto de la barra.
+        if self._hover_x is not None:
+            guide_pen = QPen(QColor(217, 174, 79, 130), 2)
+            painter.setPen(guide_pen)
+            painter.drawLine(
+                QPointF(self._hover_x, max(0.0, groove_top - 3.0)),
+                QPointF(
+                    self._hover_x,
+                    min(float(self.height()), groove_bottom + 3.0),
+                ),
+            )
 
-            # Icono del suceso sobre la rayita (espada, torre, calavera...):
-            # se omite si está pegado al anterior para no solaparlos.
-            if self.show_marker_glyphs and x - last_glyph_x >= 16:
+        # Rayitas de color cruzando la barra de lado a lado (una por suceso,
+        # más visibles que antes) y punto central con el color del bando; el
+        # suceso apuntado por el ratón crece y se resalta.
+        pin_radius = 4.5
+
+        for x, _marker, style in plotted:
+            color = QColor(style["color"])
+            tick_pen = QPen(color)
+            tick_pen.setWidth(2)
+            tick_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(tick_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawLine(
+                QPointF(x, groove_top + 1.0),
+                QPointF(x, groove_bottom - 1.0),
+            )
+
+        for x, _marker, style in plotted:
+            side = str(_marker.get("side") or "")
+
+            if side == "ally":
+                pin_color = QColor("#4ade80")
+            elif side == "enemy":
+                pin_color = QColor("#f07d8a")
+            else:
+                pin_color = QColor(style["color"])
+
+            hovered = (
+                self._hover_x is not None and abs(x - self._hover_x) <= 0.6
+            )
+            radius = pin_radius + (2.0 if hovered else 0.0)
+            ring = QColor("#f0cc70") if hovered else QColor("#0b1423")
+            painter.setPen(QPen(ring, 1.6))
+            painter.setBrush(QBrush(pin_color))
+            painter.drawEllipse(QPointF(x, center_y), radius, radius)
+
+        # Fila de iconos (chips) sobre la barra: solo si el slider es lo
+        # bastante alto y la pestaña los activa. Los sucesos muy juntos se
+        # agrupan en un solo chip con insignia «×n» para que nada quede
+        # ilegible; el tooltip detalla todos los sucesos apilados.
+        chip_height = 0.0
+        font: QFont | None = None
+
+        if self.show_marker_glyphs and self.height() >= 26:
+            chip_height = float(max(12, min(18, self.height() - 24)))
+            font = QFont()
+            font.setPixelSize(int(max(9, chip_height - 5)))
+            font.setBold(True)
+
+        if font is not None and chip_height > 0:
+            painter.setFont(font)
+
+            for cluster in self._cluster_plotted(plotted):
+                x = cluster["x"]
+                marker = cluster["marker"]
+                style = cluster["style"]
                 glyph = str(marker.get("glyph") or style["glyph"])
-                painter.drawText(x - 8, top - 4, 16, 14, Qt.AlignCenter, glyph)
-                last_glyph_x = x
+                color = QColor(style["color"])
+                hovered = (
+                    self._hover_x is not None and abs(x - self._hover_x) <= 0.6
+                )
+                rect = QRectF(x - 10.0, 1.0, 20.0, chip_height)
+                painter.setPen(QPen(color, 1.6 if hovered else 1.0))
+                painter.setBrush(
+                    QBrush(
+                        QColor(
+                            color.red(),
+                            color.green(),
+                            color.blue(),
+                            150 if hovered else 70,
+                        )
+                    )
+                )
+                painter.drawRoundedRect(rect, 5.0, 5.0)
+                painter.setPen(QPen(QColor("#eef4ff")))
+                painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
+
+                if cluster["count"] > 1:
+                    # Insignia con cuántos sucesos hay apilados en ese punto.
+                    badge = QRectF(
+                        rect.right() - 6.0,
+                        rect.bottom() - 2.0,
+                        11.0,
+                        11.0,
+                    )
+                    badge.moveRight(min(badge.right(), self.width() - 1.0))
+                    badge_font = QFont(font)
+                    badge_font.setPixelSize(max(7, font.pixelSize() - 3))
+                    painter.setFont(badge_font)
+                    painter.setPen(QPen(color, 1.0))
+                    painter.setBrush(QBrush(QColor("#0b1423")))
+                    painter.drawEllipse(badge)
+                    painter.setPen(QPen(QColor("#eef4ff")))
+                    painter.drawText(
+                        badge,
+                        Qt.AlignmentFlag.AlignCenter,
+                        str(cluster["count"]),
+                    )
+                    painter.setFont(font)
 
         painter.end()
+
+    def _cluster_plotted(
+        self,
+        plotted: list[tuple[float, dict[str, Any], dict[str, str]]],
+        min_gap_px: float = 14.0,
+    ) -> list[dict[str, Any]]:
+        """Junta los sucesos cuya x casi coincide en un único chip visible.
+
+        El chip representa el suceso más importante de la pila (teamfight >
+        barón > dragón > kill...); el tooltip de la barra lista todos los
+        sucesos agrupados, así que no se pierde información.
+        """
+        clusters: list[dict[str, Any]] = []
+
+        for x, marker, style in plotted:
+            kind = str(marker.get("kind") or "")
+
+            if clusters and abs(x - clusters[-1]["x"]) <= min_gap_px:
+                cluster = clusters[-1]
+                cluster["count"] += 1
+
+                if kind_priority(kind) > kind_priority(
+                    str(cluster["marker"].get("kind") or "")
+                ):
+                    cluster["marker"] = marker
+                    cluster["style"] = style
+
+                continue
+
+            clusters.append(
+                {"x": x, "marker": marker, "style": style, "count": 1}
+            )
+
+        return clusters
 
     def _x_for_seconds(self, seconds: float) -> int | None:
         duration = self.duration_ms / 1000.0
@@ -223,37 +393,56 @@ class MarkerSlider(QSlider):
 
         super().mousePressEvent(event)
 
+    def leaveEvent(self, event) -> None:  # noqa: N802 - firma de Qt
+        if self._hover_x is not None:
+            self._hover_x = None
+            self.update()
+
+        super().leaveEvent(event)
+
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - firma de Qt
         seconds = self._seconds_at(int(event.position().x()))
-        hit = self._marker_at(seconds, tolerance=8.0)
+        hits = self._markers_at(seconds, tolerance=8.0)
+        hover_x: float | None = None
 
-        if hit is not None:
-            self.setToolTip(
+        if hits:
+            # El tooltip lista TODOS los sucesos del momento: en un mismo
+            # punto pueden caer una muerte, dos asistencias y una torre.
+            nearest = min(hits, key=lambda item: abs(item["time"] - seconds))
+            hover_x = self._x_for_seconds(nearest["time"])
+            lines = [
                 f"{marker_style(hit['kind'])['glyph']} "
-                f"{format_duration(hit['time'])} · "
-                f"{hit['label']} — {hit['detail']}"
-            )
-        else:
-            self.setToolTip(
-                f"Saltar a {format_duration(seconds)} del vídeo"
-            )
+                f"{format_duration(hit['time'])} · {hit['label']} — "
+                f"{hit['detail']}"
+                for hit in hits
+            ]
+            tooltip = "\n".join(lines)
 
+            if len(hits) > 1:
+                tooltip = f"{len(hits)} sucesos en este momento:\n{tooltip}"
+        else:
+            tooltip = f"Saltar a {format_duration(seconds)} del vídeo"
+
+        new_hover = float(hover_x) if hover_x is not None else None
+
+        if new_hover != self._hover_x:
+            self._hover_x = new_hover
+            self.update()
+
+        self.setToolTip(tooltip)
         super().mouseMoveEvent(event)
 
-    def _marker_at(
+    def _markers_at(
         self, seconds: float, tolerance: float
-    ) -> dict[str, Any] | None:
-        best: dict[str, Any] | None = None
-        best_distance = tolerance
+    ) -> list[dict[str, Any]]:
+        """Todos los sucesos cercanos (tolerancia en segundos), por orden."""
+        hits = [
+            marker
+            for marker in self.markers
+            if abs(float(marker["time"]) - seconds) <= tolerance
+        ]
 
-        for marker in self.markers:
-            distance = abs(float(marker["time"]) - seconds)
-
-            if distance <= best_distance:
-                best = marker
-                best_distance = distance
-
-        return best
+        return sorted(hits, key=lambda marker: float(marker["time"]))
 
 
 class RecordingsPage(QWidget):
@@ -264,6 +453,8 @@ class RecordingsPage(QWidget):
     stop_recording_requested = Signal()
     #: El usuario quiere ver la grabación en la ventana de repaso aparte.
     open_window_requested = Signal(str)
+    #: La biblioteca de grabaciones cambió (nueva lista, borrado, …).
+    recordings_changed = Signal()
 
     def __init__(
         self,
@@ -401,6 +592,11 @@ class RecordingsPage(QWidget):
         self.player_title.setWordWrap(True)
         layout.addWidget(self.player_title)
 
+        top_row = QHBoxLayout()
+        top_row.addStretch(1)
+        top_row.addWidget(self._build_kda_card())
+        layout.addLayout(top_row)
+
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumHeight(320)
         self.video_widget.setSizePolicy(
@@ -479,6 +675,54 @@ class RecordingsPage(QWidget):
 
         return card
 
+    def _build_kda_card(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("recordingKdaCard")
+        card.setFixedWidth(120)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
+
+        title = QLabel("ESTADÍSTICAS")
+        title.setObjectName("recordingKdaEyebrow")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+
+        self.kda_value = QLabel("")
+        self.kda_value.setObjectName("recordingKdaValue")
+        self.kda_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.kda_value.setWordWrap(False)
+        layout.addWidget(self.kda_value)
+
+        return card
+
+    def _update_kda_card(self) -> None:
+        kills = deaths = assists = 0
+        markers = (
+            self.position_slider.markers
+            if hasattr(self, "position_slider")
+            else []
+        )
+        for marker in markers or []:
+            if not isinstance(marker, dict):
+                continue
+            kind = str(marker.get("kind") or "")
+            count = 1
+            if kind == "kill":
+                kills += count
+            elif kind == "death":
+                deaths += count
+            elif kind == "assist":
+                assists += count
+
+        if kills or deaths or assists:
+            self.kda_value.setText(
+                f"⚔ {kills}    ✖ {deaths}    ✚ {assists}"
+            )
+        else:
+            self.kda_value.setText("")
+
     def _build_player(self) -> None:
         self.player = QMediaPlayer(self)
         self.audio_output = QAudioOutput(self)
@@ -536,6 +780,10 @@ class RecordingsPage(QWidget):
         self.list_layout.addStretch(1)
         self._sync_recording_status()
 
+        # La biblioteca cambió: la pestaña «Partidas guardadas» debe
+        # reconstruirse para mostrar/ocultar «Repaso con vídeo» según
+        # exista la grabación asociada a cada partida.
+        self.recordings_changed.emit()
 
     def _build_entry_row(self, entry: dict[str, Any]) -> QWidget:
         path = entry.get("path")
@@ -595,7 +843,7 @@ class RecordingsPage(QWidget):
 
         play = QPushButton("▶ Ver")
         play.setObjectName("secondaryButton")
-        play.setFixedWidth(80)
+        play.setFixedWidth(RECORDING_ROW_BUTTON_WIDTH)
         play.clicked.connect(
             lambda _checked=False, value=path: self.play_entry(value)
         )
@@ -603,7 +851,7 @@ class RecordingsPage(QWidget):
 
         window_button = QPushButton("🗔 Ventana")
         window_button.setObjectName("secondaryButton")
-        window_button.setFixedWidth(100)
+        window_button.setFixedWidth(RECORDING_ROW_BUTTON_WIDTH)
         window_button.setToolTip(
             "Abrir la partida en la ventana de repaso (vídeo + desglose)"
         )
@@ -616,7 +864,7 @@ class RecordingsPage(QWidget):
 
         remove = QPushButton("Eliminar")
         remove.setObjectName("dangerButton")
-        remove.setFixedWidth(90)
+        remove.setFixedWidth(RECORDING_ROW_BUTTON_WIDTH)
         remove.clicked.connect(
             lambda _checked=False, value=path: self.delete_entry(value)
         )
@@ -784,6 +1032,7 @@ class RecordingsPage(QWidget):
         self.position_slider.set_markers(markers, 0)
         self.position_slider.setRange(0, 0)
         self._rebuild_marker_list(markers)
+        self._update_kda_card()
 
         champion = str(metadata.get("champion") or video.stem)
         self.player_title.setText(f"▶ {champion} — {video.name}")

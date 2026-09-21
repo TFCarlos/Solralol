@@ -97,9 +97,12 @@ un fondo degradado propio (`Backdrop`, dibujado a mano con
 
 - **Ventana independiente de repaso (app/ui/postgame_replay_window.py +
   postgame_sidebar.py)**: una ventana aparte con el vídeo a lo grande
-  (pantalla completa con F), la barra inferior con **indicadores de
-  colores** (asesinatos, muertes, asistencias, dragones, barones, heraldos,
-  torres e inhibidores) y los controles clásicos (retroceder 10 s,
+  (pantalla completa con F o doble clic, y la barra de reproducción y los
+  controles **siguen visibles** para poder moverse por el vídeo), la barra
+  inferior con **indicadores de colores** (asesinatos, muertes, asistencias,
+  dragones, barones, heraldos, torres e inhibidores; los sucesos solapados
+  se agrupan en un chip con insignia «×n» y el tooltip lista todos los
+  sucesos de ese momento) y los controles clásicos (retroceder 10 s,
   play/pausa, avanzar 10 s), junto a un lateral con dos pestañas:
   **Marcador** (los diez jugadores con K/D/A, CS, oro, visión y resultado,
   más un gráfico de radar del enfrentamiento: CS/min, oro/min, visión, KDA

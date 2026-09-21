@@ -929,6 +929,7 @@ OBJECTIVE_MARKERS: dict[str, str] = {
 
 MARKER_LABELS: dict[str, str] = {
     "kill": "Asesinato",
+    "teamfight": "Teamfight",
     "death": "Muerte",
     "assist": "Asistencia",
     "dragon": "Dragón",

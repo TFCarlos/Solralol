@@ -1259,16 +1259,26 @@ QLabel#recordingMarkerLegend {
 }
 
 QSlider#recordingSlider::groove:horizontal {
-    height: 9px;
-    border-radius: 4px;
-    background: #29476a;
+    height: 11px;
+    border-radius: 5px;
+    background: #22385a;
+    border: 1px solid rgba(97, 148, 211, 45);
+}
+
+QSlider#recordingSlider::sub-page:horizontal {
+    height: 11px;
+    border-radius: 5px;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #8a6420, stop: 1 #e7b84a
+    );
 }
 
 QSlider#recordingSlider::handle:horizontal {
-    width: 15px;
-    margin: -4px 0;
-    border: 1px solid #f0cc70;
-    border-radius: 7px;
+    width: 16px;
+    margin: -5px 0;
+    border: 2px solid #f6e3a1;
+    border-radius: 8px;
     background: #d9ae4f;
 }
 
@@ -2159,17 +2169,39 @@ QVideoWidget#postgameVideo {
     background: #05090f;
 }
 
+/* Ventana dedicada de pantalla completa: vídeo arriba y, abajo, la MISMA
+   barra de marcadores + fila de transporte movidas desde la tarjeta. */
+QWidget#postgameFullscreenWindow,
+QWidget#postgameFullscreenVideoHost {
+    background: #000000;
+}
+
+QFrame#postgameFullscreenBar {
+    background: rgba(9, 16, 30, 242);
+    border-top: 1px solid rgba(97, 148, 211, 80);
+}
+
 QSlider#postgameMarkerSlider::groove:horizontal {
-    height: 9px;
-    border-radius: 4px;
-    background: #29476a;
+    height: 12px;
+    border-radius: 6px;
+    background: #22385a;
+    border: 1px solid rgba(97, 148, 211, 45);
+}
+
+QSlider#postgameMarkerSlider::sub-page:horizontal {
+    height: 12px;
+    border-radius: 6px;
+    background: qlineargradient(
+        x1: 0, y1: 0, x2: 1, y2: 0,
+        stop: 0 #8a6420, stop: 1 #e7b84a
+    );
 }
 
 QSlider#postgameMarkerSlider::handle:horizontal {
-    width: 15px;
-    margin: -4px 0;
-    border: 1px solid #f0cc70;
-    border-radius: 7px;
+    width: 16px;
+    margin: -5px 0;
+    border: 2px solid #f6e3a1;
+    border-radius: 8px;
     background: #d9ae4f;
 }
 
@@ -2317,6 +2349,12 @@ QLabel#postgameEventFeedback {
     font-size: 10px;
 }
 
+QLabel#postgameEventNote {
+    color: #f0cc70;
+    font-size: 10px;
+    font-weight: 700;
+}
+
 QLabel#postgameEventPlayer {
     color: #d9ae4f;
     font-size: 10px;
@@ -2349,5 +2387,178 @@ QPushButton#postgameScopeButton:checked {
     font-weight: 800;
 }
 
+
+QScrollArea#postgameOverviewScroll,
+QWidget#postgameOverviewContent {
+    border: none;
+    background: transparent;
+}
+
+QScrollArea#postgameOverviewScroll QScrollBar:vertical {
+    background: rgba(8, 17, 31, 160);
+    width: 10px;
+    margin: 0px;
+    border: none;
+    border-radius: 5px;
+}
+
+QScrollArea#postgameOverviewScroll QScrollBar::handle:vertical {
+    background: rgba(97, 148, 211, 120);
+    min-height: 28px;
+    border-radius: 5px;
+}
+
+QScrollArea#postgameOverviewScroll QScrollBar::handle:vertical:hover {
+    background: rgba(217, 174, 79, 180);
+}
+
+QScrollArea#postgameOverviewScroll QScrollBar::add-line:vertical,
+QScrollArea#postgameOverviewScroll QScrollBar::sub-line:vertical,
+QScrollArea#postgameOverviewScroll QScrollBar::add-page:vertical,
+QScrollArea#postgameOverviewScroll QScrollBar::sub-page:vertical {
+    background: transparent;
+    height: 0px;
+    border: none;
+}
+
+QFrame#postgamePlayerCard {
+    background: rgba(12, 22, 40, 225);
+}
+
+QFrame#postgamePlayerCard:hover {
+    background: rgba(20, 36, 62, 235);
+}
+
+QLabel#postgameChampionIcon {
+    border: none;
+    background: transparent;
+    color: #eef4ff;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+QLabel#postgameChampionName {
+    color: #f2f7ff;
+    font-size: 12px;
+    font-weight: 800;
+    border: none;
+}
+
+QLabel#postgameResultFlag {
+    border: none;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 900;
+    padding: 0px 4px;
+    min-width: 12px;
+}
+
+QLabel#postgameResultFlag[result="win"] {
+    color: #06251a;
+    background: #4ade80;
+}
+
+QLabel#postgameResultFlag[result="loss"] {
+    color: #2a0b0f;
+    background: #f07d8a;
+}
+
+QLabel#postgameRoleBadge {
+    color: #d9ae4f;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    min-height: 14px;
+    border: none;
+    background: transparent;
+}
+
+QLabel#postgameLevelBadge {
+    color: #9fb4d4;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    min-height: 14px;
+    border: none;
+    background: transparent;
+}
+
+QFrame#postgameKdaPill {
+    border: 1px solid rgba(97, 148, 211, 90);
+    border-radius: 7px;
+    background: rgba(8, 17, 31, 205);
+}
+
+QLabel#postgameKdaCaption {
+    color: #7f93b1;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    border: none;
+}
+
+QLabel#postgameStatKda {
+    font-size: 12px;
+    font-weight: 900;
+    border: none;
+}
+
+QFrame#postgameCardDivider {
+    border: none;
+    background: rgba(97, 148, 211, 60);
+    max-height: 1px;
+}
+
+QFrame#postgameStatChip {
+    border: 1px solid rgba(97, 148, 211, 60);
+    border-radius: 7px;
+    background: rgba(16, 32, 54, 200);
+}
+
+QLabel#postgameStatCaption {
+    color: #8fa2bd;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    border: none;
+}
+
+QLabel#postgameStatCs,
+QLabel#postgameStatGold,
+QLabel#postgameStatVision {
+    font-size: 12px;
+    font-weight: 900;
+    border: none;
+}
+
+QLabel#postgameBuildCaption {
+    color: #7f93b1;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    border: none;
+}
+
+QLabel#postgameBuildCount {
+    color: #6f83a1;
+    font-size: 8px;
+    font-weight: 800;
+    border: none;
+}
+
+QLabel#postgameItemIcon {
+    border: 1px solid rgba(97, 148, 211, 70);
+    border-radius: 5px;
+    background: rgba(10, 20, 34, 230);
+    color: #9fb4d4;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+QLabel#postgameItemIcon[filled="0"] {
+    border: 1px dashed rgba(97, 148, 211, 55);
+    background: rgba(10, 20, 34, 140);
+    color: rgba(120, 140, 170, 140);
+}
 
 """

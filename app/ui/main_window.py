@@ -1,7 +1,9 @@
 from __future__ import annotations
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import (
+    QUrl,
     Qt,
     QThread,
     QTimer,
@@ -91,6 +93,9 @@ from app.ui.styles import CONTROL_WINDOW_STYLE
 from app.ui.champ_select_worker import ChampSelectWorker
 from app.ui.draft_tool_dialog import DraftToolDialog
 
+#: Ancho común para todos los botones de acción de una fila de
+#: «Partidas guardadas»: así los cuatro ocupan exactamente lo mismo.
+ROW_BUTTON_WIDTH = 145
 
 
 class Backdrop(QWidget):
@@ -353,6 +358,9 @@ class MainWindow(QMainWindow):
         )
         self.recordings_page.open_window_requested.connect(
             self.open_replay_window_for_video
+        )
+        self.recordings_page.recordings_changed.connect(
+            self.refresh_saved_games
         )
         self.pages.addWidget(self.recordings_page)
         self.pages.addWidget(
@@ -1192,8 +1200,53 @@ class MainWindow(QMainWindow):
     def delete_saved_game_session(self, session_id: str) -> None:
         if not session_id:
             return
+
+        # La grabación asociada se localiza antes de borrar la sesión:
+        # después ya no se podría resolver su vídeo.
+        session = self.find_saved_session(session_id)
+        video_path = ""
+
+        if isinstance(session, dict):
+            video_path = self.find_recording_for_session(session)
+
         self.live_match_tracker.delete_saved_session(session_id)
+
+        if video_path:
+            self.delete_recording_file(video_path)
+
         self.refresh_saved_games()
+
+    def delete_recording_file(self, video_path: str) -> bool:
+        """Borra un vídeo (y su sidecar) soltando antes los reproductores.
+
+        Se usa tanto al eliminar una partida guardada (que arrastra su
+        vídeo) como punto único para liberar la ventana de repaso y el
+        reproductor de la pestaña Grabaciones si están con ese fichero.
+        """
+        video = Path(video_path)
+
+        replay = getattr(self, "replay_window", None)
+
+        if replay is not None:
+            try:
+                replay_path = getattr(replay, "video_path", None)
+
+                if replay_path is not None and Path(replay_path) == video:
+                    replay.player.stop()
+                    replay.player.setSource(QUrl())
+                    replay.video_path = None
+            except RuntimeError:
+                pass
+
+        if hasattr(self, "recordings_page"):
+            self.recordings_page._release_media(video)
+
+        deleted = self.recording_library.delete(video)
+
+        if hasattr(self, "recordings_page"):
+            self.recordings_page.refresh()
+
+        return deleted
 
     def create_saved_game_row(
         self,
@@ -1347,7 +1400,7 @@ class MainWindow(QMainWindow):
                 resync_button.setObjectName(
                     "secondaryButton"
                 )
-                resync_button.setFixedWidth(125)
+                resync_button.setFixedWidth(ROW_BUTTON_WIDTH)
                 resync_button.setFixedHeight(36)
                 resync_button.setEnabled(
                     not self.postgame_sync_in_progress
@@ -1394,7 +1447,7 @@ class MainWindow(QMainWindow):
                             "Puedes reintentar si crees que ya fue procesada por Riot."
                         )
 
-                sync_button.setFixedWidth(125)
+                sync_button.setFixedWidth(ROW_BUTTON_WIDTH)
                 sync_button.setFixedHeight(36)
                 sync_button.setEnabled(
                     not self.postgame_sync_in_progress and not _is_local_only
@@ -1405,13 +1458,40 @@ class MainWindow(QMainWindow):
                 )
                 actions.addWidget(sync_button, 1, 0)
 
+        # El repaso con vídeo solo se ofrece cuando la partida tiene una
+        # grabación asociada: sin vídeo, el botón no aparece.
+        has_recording = False
+        find_recording = getattr(
+            self,
+            "find_recording_for_session",
+            None,
+        )
+
+        if callable(find_recording) and isinstance(session, dict):
+            has_recording = bool(find_recording(session))
+
+        if has_recording:
+            replay_button = QPushButton("Repaso con vídeo")
+            replay_button.setObjectName("primaryButton")
+            replay_button.setFixedWidth(ROW_BUTTON_WIDTH)
+            replay_button.setFixedHeight(36)
+            replay_button.setToolTip(
+                "Abre la ventana independiente de repaso: grabación de la "
+                "partida y desglose construido con la telemetría local."
+            )
+            replay_button.clicked.connect(
+                lambda checked=False, value=session:
+                self.open_replay_window(session=value)
+            )
+            actions.addWidget(replay_button, 0, 0, Qt.AlignmentFlag.AlignRight)
+
         open_button = QPushButton(
             "Abrir análisis"
         )
         open_button.setObjectName(
             "primaryButton"
         )
-        open_button.setFixedWidth(125)
+        open_button.setFixedWidth(ROW_BUTTON_WIDTH)
         open_button.setFixedHeight(36)
         open_button.clicked.connect(
             lambda checked=False, value=session:
@@ -1421,23 +1501,9 @@ class MainWindow(QMainWindow):
         )
         actions.addWidget(open_button, 0, 1, Qt.AlignmentFlag.AlignRight)
 
-        replay_button = QPushButton("Repaso con vídeo")
-        replay_button.setObjectName("primaryButton")
-        replay_button.setFixedWidth(145)
-        replay_button.setFixedHeight(36)
-        replay_button.setToolTip(
-            "Abre la ventana independiente de repaso: grabación de la "
-            "partida y desglose construido con la telemetría local."
-        )
-        replay_button.clicked.connect(
-            lambda checked=False, value=session:
-            self.open_replay_window(session=value)
-        )
-        actions.addWidget(replay_button, 0, 0, Qt.AlignmentFlag.AlignRight)
-
         delete_button = QPushButton("Eliminar")
         delete_button.setObjectName("dangerButton")
-        delete_button.setFixedWidth(90)
+        delete_button.setFixedWidth(ROW_BUTTON_WIDTH)
         delete_button.setFixedHeight(36)
         if session_id:
             delete_button.clicked.connect(

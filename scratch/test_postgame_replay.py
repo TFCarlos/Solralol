@@ -36,8 +36,12 @@ from app.services.recording_service import (  # noqa: E402
     parse_iso_timestamp,
     session_matches_video_metadata,
 )
-from app.ui.postgame_replay_window import PostgameReplayWindow  # noqa: E402
+from app.ui.postgame_replay_window import (  # noqa: E402
+    PostgameMarkerSlider,
+    PostgameReplayWindow,
+)
 from app.ui.postgame_sidebar import (  # noqa: E402
+    EventRow,
     PostgameSidebar,
     build_review_events,
     kind_glyph,
@@ -46,6 +50,7 @@ from app.ui.postgame_sidebar import (  # noqa: E402
     player_final_stats,
     radar_values,
 )
+from app.ui.recordings_page import MarkerSlider  # noqa: E402
 
 
 def local_session() -> dict:
@@ -299,6 +304,51 @@ class SidebarTests(unittest.TestCase):
         self.assertEqual(sorted(ally_names), ["Ahri", "Briar"])
         self.assertEqual(sorted(enemy_names), ["Ahri", "Lee Sin"])
 
+    def test_scoreboard_orders_both_teams_by_role_facing(self):
+        session = sample_session()
+        # Aliado extra en TOP: el local (JUNGLA) NO puede irse arriba; cada
+        # columna se ordena por rol para que queden enfrentadas.
+        session["players"]["top_ally"] = {
+            "champion_name": "Garen",
+            "role": "TOP",
+            "team": "ORDER",
+            "win": True,
+        }
+        sidebar = self.track(PostgameSidebar(session))
+
+        def column_names(column):
+            return [
+                label.text()
+                for card in column.findChildren(QFrame, "postgamePlayerCard")
+                for label in card.findChildren(QLabel, "postgameChampionName")
+            ]
+
+        self.assertEqual(
+            column_names(sidebar.ally_column), ["Garen", "Briar", "Ahri"]
+        )
+        self.assertEqual(
+            column_names(sidebar.enemy_column), ["Lee Sin", "Ahri"]
+        )
+
+    def test_clicking_enemy_card_compares_against_it(self):
+        sidebar = self.track(PostgameSidebar(sample_session()))
+        sidebar._on_card_clicked("enemy2")
+
+        self.assertEqual(sidebar.rival_key, "enemy2")
+        self.assertEqual(sidebar.player_key, "local")
+        self.assertEqual(sidebar.radar.player_label, "Briar")
+        self.assertEqual(sidebar.radar.enemy_label, "Ahri")
+
+    def test_clicking_ally_card_switches_the_radar_focus(self):
+        sidebar = self.track(PostgameSidebar(sample_session()))
+        sidebar._on_card_clicked("ally")
+
+        self.assertEqual(sidebar.player_key, "ally")
+        self.assertEqual(sidebar.radar.player_label, "Ahri")
+        # Rival directo del aliado: mismo rol (MIDDLE) al otro bando.
+        self.assertEqual(sidebar.rival_key, "enemy2")
+        self.assertEqual(sidebar.radar.enemy_label, "Ahri")
+
     def test_review_markers_mirror_the_current_filter(self):
         sidebar = self.track(PostgameSidebar(sample_session()))
         markers = sidebar.review_markers(30.0)
@@ -350,8 +400,10 @@ class SidebarTests(unittest.TestCase):
         self.assertEqual(sidebar.radar.player_label, "Lee Sin")
         self.assertEqual(sidebar.radar.enemy_label, "Briar")
         kinds = [event["kind"] for event in sidebar.review_events]
+        # La kill_exact que lo mata (600 s) genera también su muerte al
+        # filtrar por este campeón.
         self.assertEqual(
-            kinds, ["kill", "dragon", "baron", "rift_herald"]
+            kinds, ["death", "kill", "dragon", "baron", "rift_herald"]
         )
         self.assertTrue(
             all(
@@ -460,6 +512,80 @@ class LocalTelemetryTests(unittest.TestCase):
         # Esa asistencia es del jugador local en una kill del rival: mala.
         self.assertEqual(by_kind["assist"]["evaluation"], -1)
         self.assertTrue(by_kind["kill"]["feedback"])
+
+    def test_player_stats_use_official_cs_when_synced(self):
+        session = sample_session()
+        session["players"]["local"]["final"] = {"cs_total": 213}
+
+        stats = player_final_stats(session, "local")
+
+        # El CS mostrado (tarjeta, radar y resumen) es el oficial de Riot,
+        # el mismo que muestra el diálogo LIVE, no el de la API LIVE.
+        self.assertEqual(stats["cs"], 213)
+        self.assertAlmostEqual(stats["cspm"], 213 / 30.0, places=3)
+
+    def test_player_stats_keep_local_cs_without_riot_sync(self):
+        session = sample_session()
+        session["final_sync"] = {"status": "pending"}
+        session["players"]["local"]["final"] = {"cs_total": 213}
+
+        self.assertEqual(player_final_stats(session, "local")["cs"], 150)
+
+    def test_champion_filter_shows_deaths_derived_from_kill_exact(self):
+        # Las sesiones sincronizadas con Riot solo guardan kill_exact (sin
+        # death_exact): al filtrar por la víctima, su muerte debe salir igual.
+        session = sample_session()
+        session["events"] = [
+            event
+            for event in session["events"]
+            if event.get("type") != "death_exact"
+        ]
+
+        events = build_review_events(session, "enemy")
+        kinds = [(event["kind"], event["time"]) for event in events]
+
+        self.assertIn(("death", 600.0), kinds)
+        self.assertIn(("kill", 700.0), kinds)
+
+        death = next(event for event in events if event["kind"] == "death")
+
+        self.assertEqual(death["player_key"], "enemy")
+        self.assertEqual(death["player_name"], "Lee Sin")
+        self.assertEqual(death["detail"], "Murió a manos de Briar")
+
+    def test_death_exact_is_not_duplicated_for_the_victim(self):
+        session = sample_session()
+        session["events"] = [
+            {
+                "time": 500.0,
+                "order": 1,
+                "type": "kill_exact",
+                "player_key": "enemy",
+                "killer_key": "enemy",
+                "victim_key": "local",
+                "assister_keys": [],
+                "team": "CHAOS",
+                "label": "Lee Sin asesinó a Briar",
+            },
+            {
+                "time": 500.0,
+                "order": 2,
+                "type": "death_exact",
+                "player_key": "local",
+                "killer_key": "enemy",
+                "victim_key": "local",
+                "team": "ORDER",
+                "label": "Briar murió a manos de Lee Sin",
+            },
+        ]
+
+        events = build_review_events(session, "local")
+        deaths = [event for event in events if event["kind"] == "death"]
+
+        # kill_exact y death_exact describen la misma baja: una sola tarjeta.
+        self.assertEqual(len(deaths), 1)
+        self.assertEqual(deaths[0]["time"], 500.0)
+        self.assertEqual(deaths[0]["detail"], "Briar murió a manos de Lee Sin")
 
     def test_all_scope_keeps_every_kill_and_drops_purchases(self):
         events = build_review_events(sample_session())
@@ -1066,6 +1192,36 @@ class WindowTests(unittest.TestCase):
 
         self.assertIn("No se encontró el vídeo", window.status_label.text())
 
+    def test_fullscreen_keeps_the_marker_bar_and_controls(self):
+        # En pantalla completa NO se pierde la barra: el vídeo, la barra de
+        # marcadores y la fila de transporte viajan juntos a la ventana
+        # dedicada (son los mismos widgets, así que el estado se conserva).
+        library, video = self.make_library()
+        window = self.build_window(
+            session=sample_session(), library=library, video=video
+        )
+
+        window.toggle_fullscreen()
+
+        fs_window = window._fs_window
+        self.assertIsNotNone(fs_window)
+        self.assertTrue(fs_window.isVisible())
+        self.assertIs(window.video_widget.parent(), window._fs_video_host)
+        self.assertIs(window.marker_slider.window(), fs_window)
+        self.assertIs(window.transport_row.window(), fs_window)
+        self.assertIn("Salir", window.fullscreen_button.text())
+
+        window.toggle_fullscreen()
+
+        self.assertFalse(fs_window.isVisible())
+        self.assertIs(window.marker_slider.window(), window)
+        self.assertIn("Pantalla completa", window.fullscreen_button.text())
+
+        layout = window._card_layout
+        self.assertIs(layout.itemAt(0).widget(), window.video_widget)
+        self.assertIs(layout.itemAt(1).widget(), window.marker_slider)
+        self.assertIs(layout.itemAt(2).widget(), window.transport_row)
+
     def test_setting_a_new_session_refreshes_the_sidebar(self):
         library, video = self.make_library()
         window = self.build_window(library=library, video=video)
@@ -1159,6 +1315,8 @@ class MainWindowReplayTests(unittest.TestCase):
             open_saved_game_analysis=Mock(),
             delete_saved_game_session=Mock(),
             open_replay_window=Mock(),
+            # El botón de repaso aparece solo si hay grabación asociada.
+            find_recording_for_session=lambda session: "grabacion.mp4",
         )
         session = sample_session()
         row = self.MainWindow.create_saved_game_row(host, session)
@@ -1173,6 +1331,86 @@ class MainWindowReplayTests(unittest.TestCase):
         row.close()
         row.deleteLater()
         self.app.processEvents()
+
+    def test_saved_game_row_without_recording_hides_the_replay_button(self):
+        host = SimpleNamespace(
+            postgame_sync_in_progress=False,
+            format_match_duration=self.MainWindow.format_match_duration,
+            format_saved_session_date=lambda value: "19/09/2026 12:00",
+            request_saved_session_sync=Mock(),
+            request_resync_session=Mock(),
+            open_saved_game_analysis=Mock(),
+            delete_saved_game_session=Mock(),
+            open_replay_window=Mock(),
+            find_recording_for_session=lambda session: "",
+        )
+        row = self.MainWindow.create_saved_game_row(host, sample_session())
+
+        self.assertFalse(
+            [
+                button
+                for button in row.findChildren(QPushButton)
+                if button.text() == "Repaso con vídeo"
+            ]
+        )
+
+        # Sin botón de repaso, el resto de botones siguen operativos.
+        self.assertTrue(
+            row.findChild(QPushButton, None) is not None
+            or row.findChildren(QPushButton)
+        )
+        row.close()
+        row.deleteLater()
+        self.app.processEvents()
+
+    def test_row_action_buttons_share_the_same_size(self):
+        host = SimpleNamespace(
+            postgame_sync_in_progress=False,
+            format_match_duration=self.MainWindow.format_match_duration,
+            format_saved_session_date=lambda value: "19/09/2026 12:00",
+            request_saved_session_sync=Mock(),
+            request_resync_session=Mock(),
+            open_saved_game_analysis=Mock(),
+            delete_saved_game_session=Mock(),
+            open_replay_window=Mock(),
+            find_recording_for_session=lambda session: "grabacion.mp4",
+        )
+        row = self.MainWindow.create_saved_game_row(host, sample_session())
+        buttons = row.findChildren(QPushButton)
+
+        self.assertGreaterEqual(len(buttons), 3)
+        sizes = {
+            (button.minimumWidth(), button.maximumWidth())
+            for button in buttons
+        }
+        self.assertEqual(sizes, {(145, 145)}, sizes)
+        heights = {
+            (button.minimumHeight(), button.maximumHeight())
+            for button in buttons
+        }
+        self.assertEqual(heights, {(36, 36)}, heights)
+
+        row.close()
+        row.deleteLater()
+        self.app.processEvents()
+
+    def test_deleting_a_saved_game_removes_its_video(self):
+        video = self.write_recording(session_id="sesion-local-1")
+        self.window.live_match_tracker._save_sessions(
+            [sample_session()]
+        )
+
+        self.assertTrue(video.is_file())
+        self.window.delete_saved_game_session("sesion-local-1")
+
+        self.assertFalse(video.is_file())
+        self.assertFalse(
+            self.window.recording_library.metadata_path(video).is_file()
+        )
+        self.assertEqual(
+            self.window.live_match_tracker.load_saved_sessions(),
+            [],
+        )
 
     def test_open_replay_window_matches_the_video_and_is_reused(self):
         video = self.write_recording()
@@ -1219,6 +1457,288 @@ class MainWindowReplayTests(unittest.TestCase):
         self.assertEqual(
             self.window.find_recording_for_session(sample_session()), ""
         )
+
+
+def fight_session(events: list[dict]) -> dict:
+    """Sesión local con eventos a medida (peleas, notas, tintes)."""
+    session = local_session()
+    session["events"] = events
+    return session
+
+
+class TeamfightTests(unittest.TestCase):
+    """Peleas agrupadas, notas kill→objetivo, tinte de tarjetas y barra."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def tearDown(self):
+        for widget in getattr(self, "_widgets", []):
+            widget.close()
+            widget.deleteLater()
+
+        self.app.processEvents()
+
+    def track(self, widget):
+        self._widgets = getattr(self, "_widgets", [])
+        self._widgets.append(widget)
+        return widget
+
+    # -- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def kill(time, killer, victim, team="ORDER"):
+        return {
+            "time": time,
+            "type": "kill_exact",
+            "player_key": killer,
+            "killer_key": killer,
+            "victim_key": victim,
+            "assister_keys": [],
+            "team": team,
+        }
+
+    @staticmethod
+    def death(time, victim, killer, team="ORDER"):
+        return {
+            "time": time,
+            "type": "death_exact",
+            "player_key": victim,
+            "killer_key": killer,
+            "victim_key": victim,
+            "team": team,
+        }
+
+    @staticmethod
+    def objective(time, kind, team="ORDER"):
+        return {
+            "time": time,
+            "type": "objective",
+            "player_key": None,
+            "team": team,
+            "objective": kind,
+        }
+
+    # -- teamfights ------------------------------------------------------
+
+    def test_consecutive_kills_group_into_one_teamfight(self):
+        session = fight_session(
+            [
+                self.kill(300.0, "local", "enemy"),
+                self.kill(306.0, "ally", "enemy2"),
+                self.kill(312.0, "local", "enemy"),
+                self.objective(900.0, "dragon"),
+            ]
+        )
+        events = build_review_events(session, None)
+        fights = [e for e in events if e["kind"] == "teamfight"]
+
+        self.assertEqual(len(fights), 1)
+
+        fight = fights[0]
+        self.assertEqual(fight["time"], 300.0)
+        self.assertEqual(fight["end"], 312.0)
+        self.assertEqual(fight["side"], "ally")
+        self.assertEqual(fight["evaluation"], 1)
+        self.assertEqual(fight["glyph"], kind_glyph("teamfight"))
+        self.assertIn("Tu equipo 3 · 0", fight["detail"])
+        self.assertIn("ganó tu equipo", fight["detail"])
+        self.assertIn("Briar", fight["player_name"])
+
+        # Las tres bajas ya no aparecen como tarjetas individuales.
+        leftovers = [
+            event
+            for event in events
+            if event["kind"] == "kill" and 295.0 <= event["time"] <= 315.0
+        ]
+        self.assertEqual(leftovers, [])
+
+    def test_teamfight_winner_is_the_side_with_more_kills(self):
+        session = fight_session(
+            [
+                self.kill(500.0, "enemy", "local", team="CHAOS"),
+                self.death(500.0, "local", "enemy", team="ORDER"),
+                self.kill(506.0, "enemy", "ally", team="CHAOS"),
+                self.kill(512.0, "enemy2", "local", team="CHAOS"),
+            ]
+        )
+        events = build_review_events(session, None)
+        fights = [e for e in events if e["kind"] == "teamfight"]
+
+        self.assertEqual(len(fights), 1)
+
+        fight = fights[0]
+        # La death_exact de las 500.0 repite la kill_exact del rival (misma
+        # baja): no debe contarla dos veces → 0 · 3.
+        self.assertEqual(fight["side"], "enemy")
+        self.assertEqual(fight["evaluation"], -1)
+        self.assertIn("Tu equipo 0 · 3", fight["detail"])
+        self.assertIn("ganó el equipo enemigo", fight["detail"])
+
+    def test_scattered_kills_stay_individual(self):
+        session = fight_session(
+            [
+                self.kill(100.0, "local", "enemy"),
+                self.kill(180.0, "local", "enemy"),
+                self.kill(260.0, "local", "enemy"),
+            ]
+        )
+        events = build_review_events(session, None)
+
+        self.assertEqual([e["kind"] for e in events].count("kill"), 3)
+        self.assertNotIn("teamfight", {e["kind"] for e in events})
+
+
+    # -- nota kill → objetivo --------------------------------------------
+
+    def test_kill_note_links_to_following_objective(self):
+        session = fight_session(
+            [
+                self.kill(100.0, "local", "enemy"),
+                self.objective(103.0, "dragon", team="CHAOS"),
+                self.objective(115.0, "tower", team="ORDER"),
+                self.kill(200.0, "local", "enemy"),
+            ]
+        )
+        events = build_review_events(session, None)
+        by_time = {event["time"]: event for event in events}
+
+        self.assertEqual(
+            by_time[100.0].get("objective_note"),
+            "Esta kill favoreció a conseguir Torre",
+        )
+        # El dragón fue del rival: no se enlaza con la kill aliada, y la
+        # kill de las 200.0 no lleva a ningún objetivo.
+        self.assertNotIn("objective_note", by_time[200.0])
+
+    def test_teamfight_note_uses_the_fight_end(self):
+        session = fight_session(
+            [
+                self.kill(300.0, "local", "enemy"),
+                self.kill(306.0, "ally", "enemy2"),
+                self.kill(312.0, "local", "enemy"),
+                self.objective(330.0, "dragon", team="ORDER"),
+            ]
+        )
+        events = build_review_events(session, None)
+        fight = next(e for e in events if e["kind"] == "teamfight")
+
+        self.assertEqual(
+            fight.get("objective_note"),
+            "Esta pelea favoreció a conseguir Dragón",
+        )
+
+    # -- tinte de las tarjetas -------------------------------------------
+
+    def test_event_row_background_is_tinted_by_beneficiary(self):
+        ally_tower = self.track(
+            EventRow(
+                {
+                    "time": 115.0,
+                    "kind": "tower",
+                    "side": "ally",
+                    "label": "Torre",
+                    "detail": "Tu equipo consiguió Torre",
+                    "evaluation": 1,
+                }
+            )
+        )
+        self.assertEqual(ally_tower.polarity, "ally")
+        self.assertIn("qlineargradient", ally_tower.styleSheet())
+        self.assertIn("rgba(74, 222, 128", ally_tower.styleSheet())
+
+        ally_death = self.track(
+            EventRow(
+                {
+                    "time": 200.0,
+                    "kind": "death",
+                    "side": "ally",
+                    "label": "Muerte",
+                    "detail": "Has muerto",
+                    "evaluation": -1,
+                }
+            )
+        )
+        # Morir favorece al rival → tinte rojo.
+        self.assertEqual(ally_death.polarity, "enemy")
+        self.assertIn("rgba(240, 125, 138", ally_death.styleSheet())
+
+        neutral = self.track(
+            EventRow(
+                {
+                    "time": 250.0,
+                    "kind": "item_purchase",
+                    "side": "",
+                    "label": "Compra",
+                    "detail": "Filo de la infinito",
+                    "evaluation": 0,
+                }
+            )
+        )
+        self.assertEqual(neutral.polarity, "")
+        self.assertEqual(neutral.styleSheet(), "")
+
+    def test_review_markers_carry_side_and_the_objective_note(self):
+        session = fight_session(
+            [
+                self.kill(100.0, "local", "enemy"),
+                self.objective(115.0, "tower", team="ORDER"),
+            ]
+        )
+        sidebar = self.track(PostgameSidebar(session))
+        markers = {m["kind"]: m for m in sidebar.review_markers(0.0)}
+
+        self.assertEqual(markers["tower"]["side"], "ally")
+        self.assertIn("favoreció a conseguir Torre", markers["kill"]["detail"])
+
+    # -- pintado de la barra ---------------------------------------------
+
+    def test_marker_slider_paints_pins_and_glyph_chips(self):
+        slider = self.track(MarkerSlider())
+        slider.resize(900, 38)
+        slider.set_show_marker_glyphs(True)
+        slider.set_markers(
+            [
+                {
+                    "time": 30.0,
+                    "kind": "kill",
+                    "label": "Asesinato",
+                    "detail": "x",
+                    "side": "ally",
+                },
+                {
+                    "time": 90.0,
+                    "kind": "teamfight",
+                    "label": "Teamfight",
+                    "detail": "Tu equipo 3 · 1",
+                    "side": "ally",
+                },
+                {
+                    "time": 150.0,
+                    "kind": "tower",
+                    "label": "Torre",
+                    "detail": "x",
+                    "side": "enemy",
+                },
+                {
+                    "time": 210.0,
+                    "kind": "dragon",
+                    "label": "Dragón",
+                    "detail": "x",
+                },
+            ],
+            300_000,
+        )
+        self.assertEqual(len(slider.markers), 4)
+        self.assertEqual(slider.markers[0]["side"], "ally")
+        self.assertEqual(slider.markers[2]["side"], "enemy")
+        self.assertFalse(slider.grab().isNull())
+
+        replay_slider = self.track(PostgameMarkerSlider())
+        replay_slider.resize(900, 38)
+        replay_slider.set_markers(slider.markers, 300_000)
+        self.assertFalse(replay_slider.grab().isNull())
 
 
 if __name__ == "__main__":

@@ -130,20 +130,33 @@ sidebar.close()
 sidebar.deleteLater()
 app.processEvents()
 
-# --- 1) Pantalla completa: el VÍDEO, no la pestaña -------------------
+# --- 1) Pantalla completa: el vídeo conserva la barra de reproducción --
 window = PostgameReplayWindow(session=session)
-calls: list = []
-window.video_widget.setFullScreen = lambda value: calls.append(("video", value))
-window.showFullScreen = lambda: calls.append(("window", True))
 
 window.toggle_fullscreen()
-print("FULLSCREEN:", calls, "| boton:", window.fullscreen_button.text())
-assert calls == [("video", True)], "la pantalla completa debe ser del vídeo"
+fs_window = window._fs_window
+assert fs_window is not None, "debe crearse la ventana de pantalla completa"
+assert fs_window.isVisible(), "el vídeo debe pasar a pantalla completa"
+assert window.video_widget.parent() is window._fs_video_host, (
+    "el vídeo debe vivir en la ventana de pantalla completa"
+)
+assert window.marker_slider.window() is fs_window, (
+    "la barra de reproducción debe acompañar al vídeo en pantalla completa"
+)
+assert window.transport_row.window() is fs_window, (
+    "los controles (play/pausa, saltos, tiempo) deben seguir visibles"
+)
+assert "Salir" in window.fullscreen_button.text()
+print("PANTALLA COMPLETA:", window.fullscreen_button.text())
 
-window.video_widget.isFullScreen = lambda: True
 window.toggle_fullscreen()
-assert calls[-1] == ("video", False), "debe poder salir de pantalla completa"
-print("PANTALLA COMPLETA DEL VIDEO OK")
+assert not fs_window.isVisible(), "se debe poder salir de pantalla completa"
+assert window.marker_slider.window() is window, "la barra vuelve a la tarjeta"
+layout = window._card_layout
+assert layout.itemAt(0).widget() is window.video_widget
+assert layout.itemAt(1).widget() is window.marker_slider
+assert layout.itemAt(2).widget() is window.transport_row
+print("PANTALLA COMPLETA CON BARRA VISIBLE OK")
 
 window.close()
 window.deleteLater()
