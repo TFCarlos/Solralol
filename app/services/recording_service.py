@@ -329,7 +329,10 @@ class RecordingConfig:
     game_audio_device: str = ""
     mic_capture_enabled: bool = False
     mic_capture_device: str = ""
-    mic_capture_enabled: bool = False
+    #: Tercer insumo («Todo el resto: Discord, YouTube…»). La UI moderna lo
+    #: guarda en ``recording_system_audio_device``; se conserva
+    #: ``mic_capture_device`` por compatibilidad con ajustes antiguos.
+    system_audio_device: str = ""
     size_limit_gb: float = float(LIMIT_DEFAULT_GB)
     ffmpeg_path: str = ""
     capture_mode: str = DEFAULT_CAPTURE_MODE
@@ -358,6 +361,23 @@ class RecordingConfig:
 
         return int(gigabytes * 1024**3)
 
+    @property
+    def effective_system_audio_device(self) -> str:
+        """Tercer insumo efectivo (nuevo campo o el antiguo por compatibilidad)."""
+        return str(self.system_audio_device or self.mic_capture_device or "")
+
+    @property
+    def effective_system_enabled(self) -> bool:
+        """Si hay que capturar «Todo el resto» en este config.
+
+        Vale para «all» y para «full» (el nombre nuevo del mismo modo).
+        """
+        mode = normalize_audio_mode(self.audio_mode)
+        return bool(
+            audio_mode_uses_system(mode)
+            and (self.mic_capture_enabled or self.effective_system_audio_device)
+        )
+
     @classmethod
     def from_settings(cls, settings: dict | None) -> RecordingConfig:
         data = settings if isinstance(settings, dict) else {}
@@ -371,9 +391,25 @@ class RecordingConfig:
             limit_value = float(LIMIT_DEFAULT_GB)
 
         mic_enabled = bool(data.get("recording_mic_enabled", False))
+        # Compatibilidad: el tercer insumo se guardó con dos nombres
+        # distintos a lo largo del tiempo (clave antigua
+        # ``recording_mic_capture_device`` y clave de la UI actual
+        # ``recording_system_audio_device``). Se aceptan ambas y gana la
+        # moderna si trae valor.
+        system_audio_device = str(
+            data.get("recording_system_audio_device")
+            or data.get("recording_mic_capture_device")
+            or ""
+        )
         mic_capture_enabled = bool(
             data.get("recording_mic_capture_enabled", False)
         )
+        # Los modos nuevos ("all"/"full" y el futuro "system") ya implican
+        # captura del sistema aunque el flag antiguo no exista en ajustes
+        # viejos: se deriva aquí para que el arranque no pierda el insumo.
+        _raw_audio_mode = str(data.get("recording_audio_mode") or "").strip()
+        if _raw_audio_mode in ("all", "full", "system"):
+            mic_capture_enabled = True
         game_audio_device = str(
             data.get("recording_game_audio_device") or ""
         )
@@ -401,7 +437,8 @@ class RecordingConfig:
             ),
             mic_enabled=mic_enabled,
             mic_capture_enabled=mic_capture_enabled,
-            mic_capture_device=str(data.get("recording_mic_capture_device") or ""),
+            mic_capture_device=system_audio_device,
+            system_audio_device=system_audio_device,
             mic_device=str(data.get("recording_mic_device") or ""),
             game_audio_device=game_audio_device,
             size_limit_gb=limit_value,
@@ -431,6 +468,7 @@ def recording_settings_defaults() -> dict[str, Any]:
         "recording_mic_enabled": False,
         "recording_mic_capture_enabled": False,
         "recording_mic_capture_device": "",
+        "recording_system_audio_device": "",
         "recording_mic_device": "",
         "recording_game_audio_device": "",
         "recording_output_dir": str(default_recordings_dir()),
@@ -1822,6 +1860,9 @@ class RecordingService(QObject):
         # añade además un capturador de la mezcla del sistema distinto del
         # ya usado (si el juego ya se captura con Stereo Mix, ese mismo ya
         # incluye Discord/YouTube y no se añade un segundo).
+        # Fallback: si el dispositivo guardado ya no existe (desconectado o
+        # renombrado) se cae al mejor candidato disponible para no grabar
+        # en silencio; si no hay ningún dispositivo, se sigue con vídeo.
         mode = normalize_audio_mode(config.audio_mode)
         game_device = ""
         mic_device = ""
@@ -1829,24 +1870,58 @@ class RecordingService(QObject):
 
         if mode != "none":
             available = list_audio_devices(self.ffmpeg_path)
+            available_set = {name for name in available if name}
+
+            def _resolve(saved: str, picker) -> str:
+                name = str(saved or "").strip()
+                if name and name in available_set:
+                    return name
+                if name and available_set:
+                    # Guardado pero ya no visible: mejor candidato.
+                    fallback = picker(list(available))
+                    if fallback:
+                        return str(fallback)
+                if not name:
+                    return str(picker(list(available)) or "")
+                # Sin lista de dispositivos (ffmpeg no los enumeró): se
+                # intenta igualmente con el nombre guardado; dshow dirá si
+                # falla y el watcher degradará a vídeo.
+                return name
 
             if audio_mode_uses_game(mode):
-                game_device = (
-                    config.game_audio_device
-                    or pick_game_audio_device(available)
+                game_device = _resolve(
+                    config.game_audio_device,
+                    pick_game_audio_device,
                 )
 
             if audio_mode_uses_mic(mode):
-                mic_device = (
-                    config.mic_device
-                    or pick_microphone_device(available)
+                mic_device = _resolve(
+                    config.mic_device,
+                    lambda devs: pick_microphone_device(
+                        devs, exclude={game_device}
+                    ),
                 )
 
             if audio_mode_uses_system(mode):
-                system_device = pick_system_audio_device(
-                    available,
-                    exclude={game_device, mic_device},
-                )
+                # El dispositivo elegido en «Todo el resto» manda: si el
+                # guardado sigue existiendo se respeta tal cual (no se
+                # sustituye por otro «mejor»). Solo si está vacío o ya no
+                # existe se busca otro capturador distinto de los ya usados
+                # (juego/micrófono). Sin lista disponible pero con
+                # preferencia guardada se intenta de todos modos (mejor
+                # intentarlo que silenciar).
+                preferred = config.effective_system_audio_device
+                if preferred and preferred in available_set:
+                    candidate = preferred
+                elif preferred and not available_set:
+                    candidate = preferred
+                else:
+                    candidate = pick_system_audio_device(
+                        available,
+                        exclude={game_device, mic_device},
+                    )
+                if candidate and candidate not in {game_device, mic_device}:
+                    system_device = candidate
 
         command = build_ffmpeg_command(
             ffmpeg_path=self.ffmpeg_path,

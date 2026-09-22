@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -346,6 +347,22 @@ class PostgameReplayWindow(QMainWindow):
         self.time_label.setObjectName("postgameTime")
         row.addWidget(self.time_label)
 
+        self.volume_button = QPushButton("\U0001F50A")
+        self.volume_button.setObjectName("recordingPlayButton")
+        self.volume_button.setFixedWidth(44)
+        self.volume_button.setToolTip("Silenciar / activar audio (M)")
+        self.volume_button.clicked.connect(self.toggle_muted)
+        row.addWidget(self.volume_button)
+
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setObjectName("postgameVolume")
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(80)
+        self.volume_slider.setFixedWidth(120)
+        self.volume_slider.setToolTip("Volumen del reproductor")
+        self.volume_slider.valueChanged.connect(self.set_volume)
+        row.addWidget(self.volume_slider)
+
         row.addStretch(1)
 
         self.marker_summary = QLabel("Sin marcadores")
@@ -370,12 +387,17 @@ class PostgameReplayWindow(QMainWindow):
         self.player.durationChanged.connect(self._on_duration)
         self.player.playbackStateChanged.connect(self._on_state)
         self.player.errorOccurred.connect(self._on_error)
+        try:
+            self._sync_volume_button()
+        except RuntimeError:
+            pass
 
     def _install_shortcuts(self) -> None:
         shortcuts = (
             ("Space", self.toggle_play),
             ("Left", lambda: self.seek_relative(-SEEK_SECONDS)),
             ("Right", lambda: self.seek_relative(SEEK_SECONDS)),
+            ("M", self.toggle_muted),
             ("F", self.toggle_fullscreen),
             ("Esc", self.exit_fullscreen),
             ("Ctrl+R", self.reload_breakdown),
@@ -389,6 +411,23 @@ class PostgameReplayWindow(QMainWindow):
             # no llegan, así que se duplican sobre el propio widget.
             mirror = QShortcut(QKeySequence(sequence), self.video_widget)
             mirror.activated.connect(slot)
+
+    def set_volume(self, value: int) -> None:
+        clamped = max(0, min(100, int(value)))
+        self.audio.setVolume(clamped / 100.0)
+        if clamped > 0 and self.audio.isMuted():
+            self.audio.setMuted(False)
+        self._sync_volume_button()
+
+    def toggle_muted(self) -> None:
+        self.audio.setMuted(not self.audio.isMuted())
+        self._sync_volume_button()
+
+    def _sync_volume_button(self) -> None:
+        muted = self.audio.isMuted() or self.audio.volume() <= 0.0
+        self.volume_button.setText("\U0001F507" if muted else "\U0001F50A")
+        tip = "Activar audio (M)" if muted else "Silenciar (M)"
+        self.volume_button.setToolTip(tip)
 
     # -- reproducción ---------------------------------------------------
 

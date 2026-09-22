@@ -88,6 +88,17 @@ def kind_priority(kind: str) -> int:
     return KIND_PRIORITY.get(kind, 0)
 
 
+#: Tipos cuyos chips van ARRIBA de la barra (combate: asesinatos/muertes
+#: y sucesos ligados a ellos). Todo lo demás (objetivos, torres, dragones,
+#: heraldo, barón/nashor, inhibidores, glóbulos/grumos...) va ABAJO.
+TOP_ROW_KINDS = frozenset({"kill", "death", "assist", "teamfight"})
+
+
+def chip_above(kind: str) -> bool:
+    """Fila del chip según el tipo de suceso: combate arriba, resto abajo."""
+    return str(kind or "").casefold() in TOP_ROW_KINDS
+
+
 #: Tipos de marcador que cuentan como objetivo en la tarjeta ESTADÍSTICAS
 #: (asesinatos, muertes y asistencias van aparte).
 OBJECTIVE_MARKER_KINDS = frozenset(
@@ -120,8 +131,10 @@ class MarkerSlider(QSlider):
         self.duration_ms: int = 0
         self.show_marker_glyphs: bool = False
         self._hover_x: float | None = None
+        self._scrubbing: bool = False
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMinimumHeight(48)
 
     # -- datos ----------------------------------------------------------
 
@@ -259,10 +272,12 @@ class MarkerSlider(QSlider):
             painter.setBrush(QBrush(pin_color))
             painter.drawEllipse(QPointF(x, center_y), radius, radius)
 
-        # Fila de iconos (chips) sobre la barra: solo si el slider es lo
-        # bastante alto y la pestaña los activa. Los sucesos muy juntos se
-        # agrupan en un solo chip con insignia «×n» para que nada quede
-        # ilegible; el tooltip detalla todos los sucesos apilados.
+        # Fila de iconos (chips) por TIPO de suceso: combate (asesinatos,
+        # muertes, asistencias, peleas) ARRIBA de la barra; objetivos
+        # (torres, dragones, heraldo, barón/nashor, inhibidores, glóbulos/
+        # grumos...) ABAJO. Cada chip lleva su línea conectora hasta su
+        # punto exacto de la barra. Los sucesos muy juntos se agrupan en
+        # un solo chip con insignia «×n»; el tooltip detalla los apilados.
         chip_height = 0.0
         font: QFont | None = None
 
@@ -275,7 +290,11 @@ class MarkerSlider(QSlider):
         if font is not None and chip_height > 0:
             painter.setFont(font)
 
-            for cluster in self._cluster_plotted(plotted):
+            clusters = self._cluster_plotted(plotted)
+            for cluster in clusters:
+                # Fila por tipo: combate arriba, objetivos abajo. En un
+                # cluster mezclado manda el tipo del marcador representante.
+                above = chip_above(str(cluster["marker"].get("kind") or ""))
                 x = cluster["x"]
                 marker = cluster["marker"]
                 style = cluster["style"]
@@ -284,7 +303,29 @@ class MarkerSlider(QSlider):
                 hovered = (
                     self._hover_x is not None and abs(x - self._hover_x) <= 0.6
                 )
-                rect = QRectF(x - 10.0, 1.0, 20.0, chip_height)
+                if above:
+                    rect = QRectF(x - 10.0, 1.0, 20.0, chip_height)
+                    # Conector del borde inferior del chip al punto de la barra.
+                    stem_from = QPointF(x, rect.bottom())
+                    stem_to = QPointF(x, max(groove_top - 1.0, rect.bottom()))
+                else:
+                    rect = QRectF(
+                        x - 10.0,
+                        float(self.height()) - chip_height - 1.0,
+                        20.0,
+                        chip_height,
+                    )
+                    # Conector del borde superior del chip al punto de la barra.
+                    stem_from = QPointF(x, rect.top())
+                    stem_to = QPointF(
+                        x, min(groove_bottom + 1.0, rect.top())
+                    )
+                stem_pen = QPen(color)
+                stem_pen.setWidth(2 if hovered else 1)
+                stem_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                painter.setPen(stem_pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawLine(stem_from, stem_to)
                 painter.setPen(QPen(color, 1.6 if hovered else 1.0))
                 painter.setBrush(
                     QBrush(
@@ -402,6 +443,7 @@ class MarkerSlider(QSlider):
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - firma de Qt
         if event.button() == Qt.MouseButton.LeftButton:
+            self._scrubbing = True
             seconds = self._seconds_at(int(event.position().x()))
             self.seek_requested.emit(int(seconds * 1000))
             event.accept()
@@ -410,6 +452,20 @@ class MarkerSlider(QSlider):
 
         super().mousePressEvent(event)
 
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - firma de Qt
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._scrubbing
+        ):
+            self._scrubbing = False
+            seconds = self._seconds_at(int(event.position().x()))
+            self.seek_requested.emit(int(seconds * 1000))
+            event.accept()
+
+            return
+
+        super().mouseReleaseEvent(event)
+
     def leaveEvent(self, event) -> None:  # noqa: N802 - firma de Qt
         if self._hover_x is not None:
             self._hover_x = None
@@ -417,7 +473,13 @@ class MarkerSlider(QSlider):
 
         super().leaveEvent(event)
 
+    def _emit_scrub(self, x: int) -> None:
+        seconds = self._seconds_at(int(x))
+        self.seek_requested.emit(int(seconds * 1000))
+
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - firma de Qt
+        if self._scrubbing:
+            self._emit_scrub(int(event.position().x()))
         seconds = self._seconds_at(int(event.position().x()))
         hits = self._markers_at(seconds, tolerance=8.0)
         hover_x: float | None = None

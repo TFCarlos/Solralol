@@ -2592,7 +2592,24 @@ class MainWindow(QMainWindow):
             # Se persiste en cuanto se elige: así la próxima lectura de
             # RecordingConfig no tiene que deducirlo de las claves viejas.
             self.settings["recording_audio_mode"] = str(value)
+            # El tercer insumo («Todo el resto») solo tiene sentido en los
+            # modos que mezclan el sistema: se marca aquí para que
+            # RecordingConfig.from_settings no lo pierda y el arranque lo
+            # resuelva (con fallback si el dispositivo ya no existe).
+            # En el resto de modos se desmarca para no arrastrar un insumo
+            # fantasma de un modo anterior.
+            self.settings["recording_mic_capture_enabled"] = bool(
+                audio_mode_uses_system(normalize_audio_mode(str(value)))
+            )
             self._save_recording_settings()
+
+        # Al entrar en un modo con sistema se repuebla el combo del tercer
+        # insumo (puede estar vacío si nunca se abrió); al salir no hace
+        # falta sondear nada.
+        if audio_mode_uses_system(
+            normalize_audio_mode(self.settings.get("recording_audio_mode", ""))
+        ):
+            self.refresh_system_audio_devices()
 
         self.sync_recording_controls()
 
@@ -2730,14 +2747,28 @@ class MainWindow(QMainWindow):
             return
 
         saved_system = str(
-            self.settings.get("recording_system_audio_device") or ""
+            self.settings.get("recording_system_audio_device")
+            or self.settings.get("recording_mic_capture_device")
+            or ""
         )
+
+        # Si lo guardado ya no existe (dispositivo desconectado) se reelige
+        # para no arrancar con un dshow que falla; si sigue sin haber nada
+        # se deja en automático y el arranque aplicará el fallback.
+        if saved_system and saved_system not in set(devices):
+            saved_system = pick_system_audio_device(devices) or ""
 
         if not saved_system:
             saved_system = pick_system_audio_device(devices)
 
             if saved_system:
                 self.settings["recording_system_audio_device"] = saved_system
+
+        # Migrar la clave antigua a la moderna para no arrastrar dos fuentes
+        # de verdad distintas.
+        if saved_system:
+            self.settings["recording_system_audio_device"] = saved_system
+            self.settings["recording_mic_capture_device"] = saved_system
 
         self._fill_audio_combo(
             combo,
@@ -2746,7 +2777,7 @@ class MainWindow(QMainWindow):
             "Automático (mejor capturador de sistema disponible)",
         )
 
-        if audio_mode_uses_full_system(
+        if audio_mode_uses_system(
             normalize_audio_mode(
                 self.settings.get("recording_audio_mode", "")
             )
@@ -3081,6 +3112,8 @@ class MainWindow(QMainWindow):
 
         # Los dispositivos solo tienen sentido en los modos que los usan:
         # se ocultan en vez de deshabilitarse para no marear con opciones.
+        # «all» y «full» comparten el tercer insumo («Todo el resto»): la
+        # única diferencia es histórica (full es el nombre nuevo de all).
         mode = normalize_audio_mode(config.audio_mode)
         show_game = audio_mode_uses_game(mode)
         show_mic = audio_mode_uses_mic(mode)
@@ -3090,23 +3123,26 @@ class MainWindow(QMainWindow):
         self.recording_mic_caption.setVisible(show_mic)
         self.recording_mic_combo.setVisible(show_mic)
 
-        # El tercer insumo (mezcla del sistema) solo tiene sentido en modo
-        # "full". Se habilita junto con su botón de búsqueda cuando se elige
-        # ese modo.
-        show_system = audio_mode_uses_full_system(mode)
+        # El tercer insumo (mezcla del sistema) tiene sentido en «all» y en
+        # «full». Se habilita junto con su botón de búsqueda cuando se elige
+        # cualquiera de esos modos.
+        show_system = audio_mode_uses_system(mode)
         self.recording_system_audio_caption.setVisible(show_system)
         self.recording_system_audio_combo.setVisible(show_system)
         self.recording_system_audio_button.setVisible(show_system)
         self.recording_system_audio_combo.setDisabled(not show_system)
         self.recording_system_audio_button.setDisabled(not show_system)
 
-        # Sincronizar el checkbox de captura de sistema y el dispositivo
-        # elegido, pero solo si el modo lo permite (modo full).
+        # Sincronizar el dispositivo elegido del tercer insumo. La UI guarda
+        # la clave moderna ``recording_system_audio_device``; por
+        # compatibilidad también se acepta la antigua
+        # ``recording_mic_capture_device``.
         if show_system:
-            self.recording_system_audio_combo.setCurrentIndex(
-                self.recording_system_audio_combo.findData(
-                    config.mic_capture_device
-                )
+            system_value = (
+                config.system_audio_device or config.mic_capture_device or ""
+            )
+            self.set_combo_value(
+                self.recording_system_audio_combo, system_value
             )
 
         pieces = []
@@ -3140,12 +3176,10 @@ class MainWindow(QMainWindow):
             )
 
         if show_system:
-            if config.mic_capture_enabled:
-                pieces.append(
-                    f"Ref system: {config.mic_capture_device or 'automático'}"
-                )
-            else:
-                pieces.append("Ref system: deshabilitado")
+            system_value = (
+                config.system_audio_device or config.mic_capture_device or ""
+            )
+            pieces.append(f"Resto: {system_value or 'automático'}")
 
         total = self.recording_folder_size()
         pieces.append(
