@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -85,6 +86,7 @@ from app.services.recording_service import (
     audio_mode_uses_full_system,
     audio_mode_label,
     bitrate_label,
+    find_ffmpeg,
     find_video_for_session,
     format_size,
     list_audio_devices,
@@ -95,6 +97,7 @@ from app.services.recording_service import (
     quality_label,
     recording_settings_defaults,
 )
+from app.ui.async_task import AsyncTask, run_async
 from app.ui.champion_card import ChampionCard
 from app.ui.recordings_page import RecordingsPage  # noqa: E402
 from app.ui.postgame_replay_window import PostgameReplayWindow  # noqa: E402
@@ -198,6 +201,10 @@ class MainWindow(QMainWindow):
         # una vez por fila en cada refresco de la lista.
         self._recording_videos_cache: list[Path] | None = None
         self._recording_videos_cache_stamp: int | None = None
+        # Peso de la carpeta (iterdir+stat de todo): se relee como mucho cada
+        # pocos segundos para que los refrescos seguidos de Ajustes no lo
+        # vuelvan a recorrer entero.
+        self._recording_size_cache: tuple[float, int] | None = None
         self.settings_service = SettingsService()
         self.settings = self.settings_service.load()
         self.riot_api_key = self.settings.get(
@@ -259,9 +266,14 @@ class MainWindow(QMainWindow):
             self.recording_library,
             self,
         )
-        self.recording_service.refresh_ffmpeg(
-            self.recording_config.ffmpeg_path
-        )
+        # La búsqueda de ffmpeg recorre el PATH y comprueba candidatos en
+        # disco, y el sondeo de dispositivos de audio lanza ffmpeg: ambos se
+        # hacen en workers para que la ventana aparezca sin esperar.
+        self._ffmpeg_ready = False
+        self._refresh_ffmpeg_task: AsyncTask | None = None
+        self._devices_task: AsyncTask | None = None
+        self._system_devices_task: AsyncTask | None = None
+        self._start_background_ffmpeg_check()
         self.recording_service.failed.connect(
             self._on_recording_failed
         )
@@ -285,7 +297,8 @@ class MainWindow(QMainWindow):
         self.panel_refresh_counter = 0
         self.panel_refresh_every_seconds = 10
         self.live_match_tracker = LiveMatchTracker(
-            item_catalog
+            item_catalog,
+            game_version=self.version,
         )
         self.saved_live_sessions: list[dict] = []
         self.live_session_finished = False
@@ -294,6 +307,12 @@ class MainWindow(QMainWindow):
 
         self.postgame_sync_in_progress = False
         self.pending_postgame_session_id = ""
+        #: Hay una lectura de «Partidas guardadas» en curso en un worker.
+        self.saved_games_refreshing = False
+        #: Mientras el worker trabaja, otra petición de refresco queda en cola.
+        self.saved_games_pending = False
+        #: ``session_id`` → vídeo de la grabación (resuelto en el worker).
+        self.session_recordings: dict[str, str] = {}
 
         self.current_live_session: dict | None = None
         self.live_analysis_dialog: LiveMatchAnalysisDialog | None = None
@@ -1174,10 +1193,109 @@ class MainWindow(QMainWindow):
         return page
 
     def refresh_saved_games(self) -> None:
-        self.saved_live_sessions = (
-            self.live_match_tracker.load_saved_sessions()
-        )
+        """Pide en segundo plano las partidas guardadas y pinta al llegar.
 
+        ``load_saved_sessions`` puede tener que analizar un JSON de cientos de
+        MB y el emparejamiento vídeo↔sesión recorre la carpeta de grabaciones
+        leyendo un sidecar por vídeo: las dos cosas se hacen en un worker, y
+        la interfaz solo construye las filas cuando llega el resultado. Se
+        avisa al usuario con «Cargando…» de inmediato.
+
+        Mientras hay una lectura en curso, cualquier petición nueva (la propia
+        reconstrucción avisa a la pestaña Grabaciones, que al refrescarse
+        vuelve a pedir este refresco) no se encola en paralelo: se marca como
+        pendiente y se repite una sola vez al terminar.
+        """
+        if self.saved_games_refreshing:
+            self.saved_games_pending = True
+
+            return
+
+        self.saved_games_refreshing = True
+
+        if hasattr(self, "saved_games_status"):
+            self.saved_games_status.setText("Cargando partidas guardadas…")
+
+        library = self.recording_library
+        tracker = self.live_match_tracker
+
+        def collect() -> tuple:
+            """Lee sesiones, vídeos y sidecars (todo I/O) fuera del hilo GUI."""
+            sessions = tracker.load_saved_sessions()
+            videos = library.video_files()
+            sidecars: dict[str, tuple[int, dict]] = {}
+
+            for video in videos:
+                try:
+                    stamp = video.with_suffix(".json").stat().st_mtime_ns
+                except OSError:
+                    stamp = 0
+
+                sidecars[str(video)] = (stamp, library.load_metadata(video))
+
+            recordings: dict[str, str] = {}
+
+            for session in sessions:
+                if not isinstance(session, dict):
+                    continue
+
+                found = find_video_for_session(
+                    videos, session, lambda path: sidecars.get(str(path), (0, {}))[1]
+                )
+
+                if found is not None:
+                    recordings[str(session.get("session_id") or "")] = str(found)
+
+            return sessions, videos, sidecars, recordings
+
+        run_async(collect, on_finished=self._apply_saved_games_data)
+
+    def _apply_saved_games_data(self, _token, result, error) -> None:
+        """Publica en el hilo de la GUI lo que leyó el worker."""
+        try:
+            if error:
+                # Nunca se deja la pestaña en «Cargando»: se avisa del error y
+                # se conserva lo que ya se estuviera mostrando.
+                if hasattr(self, "saved_games_status"):
+                    self.saved_games_status.setText(
+                        f"No se pudieron leer las partidas guardadas: {error}"
+                    )
+
+                return
+
+            sessions, videos, sidecars, recordings = result
+
+            self._adopt_recording_caches(videos, sidecars)
+            self.session_recordings = recordings
+            self.saved_live_sessions = sessions
+            self._rebuild_saved_games()
+        finally:
+            self.saved_games_refreshing = False
+
+            if self.saved_games_pending:
+                self.saved_games_pending = False
+                self.refresh_saved_games()
+
+    def _adopt_recording_caches(
+        self,
+        videos: list[Path],
+        sidecars: dict[str, tuple[int, dict]],
+    ) -> None:
+        """Adopta en la GUI los datos que leyó el worker de grabaciones.
+
+        Con las cachés pobladas, resolver el vídeo de una sesión (lo que hace
+        cada fila y el botón «Repaso con vídeo») es una consulta en memoria.
+        """
+        try:
+            stamp = self.recording_library.directory.stat().st_mtime_ns
+        except OSError:
+            stamp = None
+
+        self._recording_videos_cache = list(videos)
+        self._recording_videos_cache_stamp = stamp
+        self._recording_metadata_cache = dict(sidecars)
+
+    def _rebuild_saved_games(self) -> None:
         while self.saved_games_layout.count():
             item = self.saved_games_layout.takeAt(0)
             widget = item.widget()
@@ -1213,8 +1331,17 @@ class MainWindow(QMainWindow):
         for session in reversed(
             self.saved_live_sessions
         ):
+            # El vídeo de cada sesión ya viene resuelto del worker: construir
+            # la fila no vuelve a tocar el disco.
+            session_id = str(
+                session.get("session_id") or ""
+            ) if isinstance(session, dict) else ""
+
             self.saved_games_layout.addWidget(
-                self.create_saved_game_row(session)
+                self.create_saved_game_row(
+                    session,
+                    recording=self.session_recordings.get(session_id, ""),
+                )
             )
 
         self.saved_games_layout.addStretch(1)
@@ -1224,11 +1351,13 @@ class MainWindow(QMainWindow):
             return
 
         # La grabación asociada se localiza antes de borrar la sesión:
-        # después ya no se podría resolver su vídeo.
+        # después ya no se podría resolver su vídeo. Se prefiere el vídeo que
+        # ya resolvió el worker del refresco (sin tocar el disco) y se cae al
+        # barrido con cachés si esta sesión aún no se ha listado.
         session = self.find_saved_session(session_id)
-        video_path = ""
+        video_path = self.session_recordings.get(str(session_id))
 
-        if isinstance(session, dict):
+        if not video_path and isinstance(session, dict):
             video_path = self.find_recording_for_session(session)
 
         self.live_match_tracker.delete_saved_session(session_id)
@@ -1236,17 +1365,40 @@ class MainWindow(QMainWindow):
         if video_path:
             self.delete_recording_file(video_path)
 
-        # El borrado del vídeo ya reconstruye las dos listas (la señal
-        # recordings_changed refresca las partidas guardadas); aquí basta
-        # con la invalidación de la caché de sidecars.
+        # La lista cambió (y puede que la carpeta): se reconstruyen las dos
+        # pestañas. El borrado del vídeo ya dispara ``recordings_changed``, que
+        # refresca las partidas guardadas; aquí basta con pedir la otra.
         self.invalidate_recording_metadata_cache()
         self.refresh_saved_games()
+
+        if video_path and hasattr(self, "recordings_page"):
+            self.recordings_page.refresh()
 
     def invalidate_recording_metadata_cache(self) -> None:
         """Olvida sidecars y listado de vídeos (tras borrar o grabar)."""
         self._recording_metadata_cache.clear()
         self._recording_videos_cache = None
         self._recording_videos_cache_stamp = None
+        self._recording_size_cache = None
+
+    def recording_folder_size(self) -> int:
+        """Peso de la carpeta de grabaciones, releído como mucho cada 5 s.
+
+        ``sync_recording_controls`` lo consulta en cada cambio de Ajustes y
+        ``total_size_bytes`` recorre la carpeta entera: con la caché los
+        refrescos seguidos son gratis y el valor sigue actualizándose al
+        grabar o al borrar (que invalidan la caché).
+        """
+        now = time.monotonic()
+        cached = self._recording_size_cache
+
+        if cached is not None and now - cached[0] < 5.0:
+            return cached[1]
+
+        size = self.recording_library.total_size_bytes()
+        self._recording_size_cache = (now, size)
+
+        return size
 
     def recording_videos_cached(self) -> list[Path]:
         """Listado de vídeos de la carpeta, releído solo si cambió.
@@ -1335,7 +1487,14 @@ class MainWindow(QMainWindow):
     def create_saved_game_row(
         self,
         session: dict,
+        recording: str | None = None,
     ) -> QWidget:
+        """Fila de una partida guardada.
+
+        *recording* es el vídeo asociado ya resuelto (lo calcula el worker del
+        refresco) y evita que pintar la fila toque el disco; ``None`` hace que
+        se resuelva aquí mismo, para quien construya una fila suelta.
+        """
         row = QFrame()
         row.setObjectName("savedGameRow")
         row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -1544,15 +1703,18 @@ class MainWindow(QMainWindow):
 
         # El repaso con vídeo solo se ofrece cuando la partida tiene una
         # grabación asociada: sin vídeo, el botón no aparece.
-        has_recording = False
-        find_recording = getattr(
-            self,
-            "find_recording_for_session",
-            None,
-        )
+        if recording is not None:
+            has_recording = bool(recording)
+        else:
+            has_recording = False
+            find_recording = getattr(
+                self,
+                "find_recording_for_session",
+                None,
+            )
 
-        if callable(find_recording) and isinstance(session, dict):
-            has_recording = bool(find_recording(session))
+            if callable(find_recording) and isinstance(session, dict):
+                has_recording = bool(find_recording(session))
 
         if has_recording:
             replay_button = QPushButton("Repaso con vídeo")
@@ -2458,6 +2620,48 @@ class MainWindow(QMainWindow):
 
         self.sync_recording_controls()
 
+    # -- ffmpeg y dispositivos de audio (fuera del hilo de la interfaz) --
+
+    def _start_background_ffmpeg_check(self) -> None:
+        """Busca ffmpeg al arrancar sin bloquear la construcción de la ventana.
+
+        ``find_ffmpeg`` recorre el ``PATH`` y comprueba candidatos en disco;
+        hasta que el worker no conteste, los Ajustes muestran «Comprobando
+        ffmpeg…» en vez de dar por hecho que no existe.
+        """
+        configured = str(self.settings.get("ffmpeg_path") or "")
+
+        self._refresh_ffmpeg_task = run_async(
+            lambda: find_ffmpeg(configured),
+            on_finished=self._apply_ffmpeg_check,
+        )
+
+    def _apply_ffmpeg_check(self, _token, found, error) -> None:
+        """Publica en la GUI el resultado de la búsqueda de ffmpeg."""
+        self._refresh_ffmpeg_task = None
+
+        if not error:
+            self.recording_service.apply_ffmpeg_result(found)
+
+        self._ffmpeg_ready = bool(found) and not error
+
+        if hasattr(self, "recording_status"):
+            self.sync_recording_controls()
+
+    def _set_audio_combos_loading(self) -> None:
+        """Marca los desplegables de audio como «Buscando…» y los deshabilita."""
+        for name in ("recording_game_audio_combo", "recording_mic_combo"):
+            combo = getattr(self, name, None)
+
+            if combo is None:
+                continue
+
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("Buscando dispositivos de audio…", "")
+            combo.setEnabled(False)
+            combo.blockSignals(False)
+
     def _on_recording_system_audio_changed(self, _index: int) -> None:
         if not hasattr(self, "recording_system_audio_combo"):
             return
@@ -2471,39 +2675,84 @@ class MainWindow(QMainWindow):
         self.sync_recording_controls()
 
     def refresh_system_audio_devices(self) -> None:
-        """Rellena el combo de captura de sistema (solo en modo full)."""
-        if not hasattr(self, "recording_system_audio_combo"):
+        """Repite en background el sondeo de capturadores de sistema.
+
+        Lo pide el botón de «buscar dispositivos»: fuerza una consulta nueva a
+        ffmpeg (puede tardar segundos), así que se hace en un worker y el
+        desplegable queda deshabilitado con un texto de espera mientras tanto.
+        """
+        combo = getattr(self, "recording_system_audio_combo", None)
+
+        if combo is None:
             return
 
-        found = self.recording_service.refresh_ffmpeg(
-            str(self.settings.get("ffmpeg_path") or "")
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Buscando dispositivos del sistema…", "")
+        combo.setEnabled(False)
+        combo.blockSignals(False)
+
+        configured = str(self.settings.get("ffmpeg_path") or "")
+
+        def scan() -> tuple[str | None, list[str]]:
+            found = find_ffmpeg(configured)
+            devices = (
+                list_audio_devices(found or "", force=True) if found else []
+            )
+
+            return found, devices
+
+        self._system_devices_task = run_async(
+            scan,
+            on_finished=self._apply_system_audio_devices,
         )
 
-        if not found:
-            self.recording_system_audio_combo.clear()
-            self.recording_system_audio_combo.addItem(
-                "Sin ffmpeg: no se puede grabar", ""
-            )
-            self.sync_recording_controls()
+    def _apply_system_audio_devices(self, _token, result, error) -> None:
+        """Vuelca en el combo de sistema lo que devolvió el worker."""
+        self._system_devices_task = None
+
+        combo = getattr(self, "recording_system_audio_combo", None)
+
+        if combo is None:
             return
 
-        devices = list_audio_devices(found)
+        found, devices = self._unpack_device_scan(result, error)
+        self.recording_service.apply_ffmpeg_result(found)
+        combo.setEnabled(True)
+
+        if not found:
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("Sin ffmpeg: no se puede grabar", "")
+            combo.blockSignals(False)
+            self.sync_recording_controls()
+
+            return
+
         saved_system = str(
             self.settings.get("recording_system_audio_device") or ""
         )
 
+        if not saved_system:
+            saved_system = pick_system_audio_device(devices)
+
+            if saved_system:
+                self.settings["recording_system_audio_device"] = saved_system
+
         self._fill_audio_combo(
-            self.recording_system_audio_combo,
+            combo,
             devices,
             saved_system,
             "Automático (mejor capturador de sistema disponible)",
         )
+
         if audio_mode_uses_full_system(
             normalize_audio_mode(
                 self.settings.get("recording_audio_mode", "")
             )
         ):
             self.settings["recording_mic_capture_enabled"] = True
+
         self._save_recording_settings()
         self.sync_recording_controls()
 
@@ -2513,20 +2762,76 @@ class MainWindow(QMainWindow):
         self._save_recording_settings()
         self.sync_recording_controls()
 
+    @staticmethod
+    def _unpack_device_scan(
+        result, error: str | None
+    ) -> tuple[str | None, list[str]]:
+        """Normaliza lo que devuelve un worker de sondeo de dispositivos.
+
+        Un error del worker (o un resultado inesperado) se trata como «no hay
+        ffmpeg»: la interfaz nunca se queda con un desplegable a medias.
+        """
+        if not error and isinstance(result, tuple) and len(result) == 2:
+            found, devices = result
+
+            return found or None, list(devices or [])
+
+        return None, []
+
     def refresh_recording_devices(self, silent: bool = False) -> None:
-        """Rellena los desplegables de sonido con lo que ve ffmpeg."""
+        """Pide a un worker los dispositivos de audio que ve ffmpeg.
+
+        El sondeo DirectShow lanza ffmpeg y tarda varios segundos: se hace
+        fuera del hilo de la interfaz. Mientras responde, los desplegables de
+        juego y micrófono avisan de que están cargando.
+
+        ``silent`` usa la caché de dispositivos (apertura de Ajustes) y evita
+        pisar el texto de estado; el rescan explícito se hace desde el botón
+        de dispositivos del sistema.
+        """
         if not hasattr(self, "recording_game_audio_combo"):
             return
 
-        found = self.recording_service.refresh_ffmpeg(
-            str(self.settings.get("ffmpeg_path") or "")
+        self._set_audio_combos_loading()
+
+        configured = str(self.settings.get("ffmpeg_path") or "")
+        force = not silent
+
+        def scan() -> tuple[str | None, list[str]]:
+            found = find_ffmpeg(configured)
+            devices = (
+                list_audio_devices(found or "", force=force) if found else []
+            )
+
+            return found, devices
+
+        self._devices_task = run_async(
+            scan,
+            on_finished=lambda token, result, error: (
+                self._apply_recording_devices(result, error, silent)
+            ),
+        )
+
+    def _apply_recording_devices(
+        self, result, error: str | None, silent: bool
+    ) -> None:
+        """Rellena los desplegables de juego y micrófono con el sondeo."""
+        self._devices_task = None
+
+        if not hasattr(self, "recording_game_audio_combo"):
+            return
+
+        found, devices = self._unpack_device_scan(result, error)
+        self.recording_service.apply_ffmpeg_result(found)
+
+        combos = (
+            self.recording_game_audio_combo,
+            self.recording_mic_combo,
         )
 
         if not found:
-            for combo in (
-                self.recording_game_audio_combo,
-                self.recording_mic_combo,
-            ):
+            for combo in combos:
+                combo.setEnabled(True)
                 combo.blockSignals(True)
                 combo.clear()
                 combo.addItem("Sin ffmpeg: no se puede grabar", "")
@@ -2534,14 +2839,13 @@ class MainWindow(QMainWindow):
 
             self.sync_recording_controls()
 
-            if not silent:
+            if not silent and hasattr(self, "recording_status"):
                 self.recording_status.setText(
                     self.recording_service.ffmpeg_hint
                 )
 
             return
 
-        devices = list_audio_devices(found)
         saved_game = str(
             self.settings.get("recording_game_audio_device") or ""
         )
@@ -2558,6 +2862,9 @@ class MainWindow(QMainWindow):
 
             if saved_mic:
                 self.settings["recording_mic_device"] = saved_mic
+
+        for combo in combos:
+            combo.setEnabled(True)
 
         self._fill_audio_combo(
             self.recording_game_audio_combo, devices, saved_game,
@@ -2804,8 +3111,17 @@ class MainWindow(QMainWindow):
 
         pieces = []
 
+        searching = (
+            self._refresh_ffmpeg_task is not None
+            or self._devices_task is not None
+        )
+
         if service.ffmpeg_available:
             pieces.append("ffmpeg listo")
+        elif searching:
+            # La búsqueda va en un worker: mientras responde no se da por
+            # hecho que falte ffmpeg (sería un aviso falso de un instante).
+            pieces.append("Comprobando ffmpeg…")
         else:
             pieces.append(
                 service.ffmpeg_hint or "ffmpeg no encontrado"
@@ -2831,7 +3147,7 @@ class MainWindow(QMainWindow):
             else:
                 pieces.append("Ref system: deshabilitado")
 
-        total = self.recording_library.total_size_bytes()
+        total = self.recording_folder_size()
         pieces.append(
             f"Carpeta: {format_size(total)} de "
             f"{int(config.size_limit_gb)} GB"
@@ -2916,6 +3232,9 @@ class MainWindow(QMainWindow):
             self.recordings_page.refresh()
 
     def _on_recording_finished(self, _path: str) -> None:
+        # Hay un vídeo nuevo en la carpeta: las cachés de sidecars y del
+        # listado dejan de valer para las dos listas.
+        self.invalidate_recording_metadata_cache()
         self.sync_recording_controls()
 
         if hasattr(self, "recordings_page"):
@@ -3321,7 +3640,8 @@ class MainWindow(QMainWindow):
     def setup_live_data_worker(self) -> None:
         self.worker_thread = QThread(self)
         self.live_data_worker = LiveDataWorker(
-        self.item_catalog
+            self.item_catalog,
+            game_version=self.version,
         )
 
         self.live_data_worker.moveToThread(

@@ -10,6 +10,7 @@ indicadores de la partida: asesinatos, muertes, asistencias y objetivos
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,7 @@ from app.services.recording_service import (
     RecordingService,
     format_duration,
 )
+from app.ui.async_task import run_async
 
 SEEK_SECONDS = 10
 
@@ -84,6 +86,21 @@ KIND_PRIORITY: dict[str, int] = {
 
 def kind_priority(kind: str) -> int:
     return KIND_PRIORITY.get(kind, 0)
+
+
+#: Tipos de marcador que cuentan como objetivo en la tarjeta ESTADÍSTICAS
+#: (asesinatos, muertes y asistencias van aparte).
+OBJECTIVE_MARKER_KINDS = frozenset(
+    {
+        "dragon",
+        "baron",
+        "herald",
+        "tower",
+        "inhibitor",
+        "horde",
+        "objective",
+    }
+)
 
 
 class MarkerSlider(QSlider):
@@ -469,6 +486,13 @@ class RecordingsPage(QWidget):
         self.entries: list[dict[str, Any]] = []
         self.current_path: Path | None = None
         self.pending_seek_ms: int = 0
+        #: Lectura de la carpeta en curso (worker) y refresco pedido mientras
+        #: tanto: la lista se lee en segundo plano y se pinta al llegar.
+        self._scan_task: Any = None
+        self._scan_pending = False
+        #: Peso de la carpeta cacheado unos segundos: ``_sync_recording_status``
+        #: lo pide en cada refresco y una vez por segundo mientras se graba.
+        self._folder_size_cache: tuple[float, int] | None = None
 
         self._build_layout()
         self._build_player()
@@ -587,18 +611,26 @@ class RecordingsPage(QWidget):
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(10)
 
+        # Título y ESTADÍSTICAS comparten fila: antes la tarjeta de
+        # estadísticas tenía una fila propia (robaba altura al vídeo y, sin
+        # marcadores, quedaba como una caja vacía encima del reproductor).
+        title_row = QHBoxLayout()
+        title_row.setSpacing(10)
+
         self.player_title = QLabel("Elige una grabación de la lista")
         self.player_title.setObjectName("recordingPlayerTitle")
         self.player_title.setWordWrap(True)
-        layout.addWidget(self.player_title)
-
-        top_row = QHBoxLayout()
-        top_row.addStretch(1)
-        top_row.addWidget(self._build_kda_card())
-        layout.addLayout(top_row)
+        title_row.addWidget(self.player_title, 1)
+        title_row.addWidget(self._build_kda_card())
+        layout.addLayout(title_row)
 
         self.video_widget = QVideoWidget()
-        self.video_widget.setMinimumHeight(320)
+        self.video_widget.setObjectName("recordingVideo")
+        # Un mínimo alto (320) impedía que la tarjeta cupiera en pantallas
+        # de poca altura (1600x900: la página no cabía y el reproductor se
+        # salía de su hueco). El vídeo crece con el stretch: solo necesita
+        # un suelo pequeño para seguir siendo usable.
+        self.video_widget.setMinimumHeight(180)
         self.video_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -681,24 +713,35 @@ class RecordingsPage(QWidget):
         card.setFixedWidth(120)
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(2)
 
         title = QLabel("ESTADÍSTICAS")
         title.setObjectName("recordingKdaEyebrow")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        self.kda_value = QLabel("")
+        self.kda_value = QLabel("—")
         self.kda_value.setObjectName("recordingKdaValue")
         self.kda_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.kda_value.setWordWrap(False)
+        self.kda_value.setToolTip(
+            "Asesinatos · muertes · asistencias de la partida grabada"
+        )
         layout.addWidget(self.kda_value)
+
+        self.kda_objectives = QLabel("")
+        self.kda_objectives.setObjectName("recordingKdaObjectives")
+        self.kda_objectives.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.kda_objectives.setToolTip(
+            "Objetivos de la partida (torres, dragones, heraldos, barones…)"
+        )
+        layout.addWidget(self.kda_objectives)
 
         return card
 
     def _update_kda_card(self) -> None:
-        kills = deaths = assists = 0
+        kills = deaths = assists = objectives = 0
         markers = (
             self.position_slider.markers
             if hasattr(self, "position_slider")
@@ -708,20 +751,26 @@ class RecordingsPage(QWidget):
             if not isinstance(marker, dict):
                 continue
             kind = str(marker.get("kind") or "")
-            count = 1
             if kind == "kill":
-                kills += count
+                kills += 1
             elif kind == "death":
-                deaths += count
+                deaths += 1
             elif kind == "assist":
-                assists += count
+                assists += 1
+            elif kind in OBJECTIVE_MARKER_KINDS:
+                objectives += 1
 
+        # Un guion en vez de texto vacío: sin marcadores la tarjeta seguía
+        # pareciendo rota («ESTADÍSTICAS no muestra nada»).
         if kills or deaths or assists:
-            self.kda_value.setText(
-                f"⚔ {kills}    ✖ {deaths}    ✚ {assists}"
-            )
+            self.kda_value.setText(f"⚔ {kills}  ✖ {deaths}  ✚ {assists}")
         else:
-            self.kda_value.setText("")
+            self.kda_value.setText("—")
+
+        self.kda_objectives.setText(
+            f"🎯 {objectives}" if objectives else ""
+        )
+        self.kda_objectives.setVisible(objectives > 0)
 
     def _build_player(self) -> None:
         self.player = QMediaPlayer(self)
@@ -752,9 +801,52 @@ class RecordingsPage(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
-        """Reconstruye la lista sin tocar lo que se esté reproduciendo."""
-        self.entries = self.library.list_recordings()
+        """Pide la lista de grabaciones y reconstruye las filas al llegar.
 
+        ``list_recordings`` recorre la carpeta y lee un sidecar JSON por
+        vídeo; en una biblioteca grande eso bloquea la interfaz, así que se
+        hace en un worker. El estado «Cargando grabaciones…» se ve de
+        inmediato y la lista se pinta cuando el worker responde.
+
+        Si ya hay una lectura en curso se marca otra pendiente en vez de
+        encolar varias: el usuario puede pulsar el botón mientras la carpeta
+        se está leyendo (o hacerlo la propia ventana al mostrar la pestaña).
+        """
+        if self._scan_task is not None:
+            self._scan_pending = True
+
+            return
+
+        self.status_label.setText("Cargando grabaciones…")
+        self.refresh_button.setEnabled(False)
+
+        self._scan_task = run_async(
+            self.library.list_recordings,
+            on_finished=self._apply_entries,
+        )
+
+    def _apply_entries(self, _token, entries, error) -> None:
+        """Publica en el hilo de la GUI la lista que leyó el worker."""
+        self._scan_task = None
+        self.refresh_button.setEnabled(True)
+
+        if error:
+            # Sin lista nueva la interfaz sigue usable: solo se informa.
+            self.status_label.setText(
+                f"No se pudieron leer las grabaciones: {error}"
+            )
+        else:
+            self.entries = list(entries or [])
+            # La carpeta puede haber cambiado: el peso mostrado se relee.
+            self._folder_size_cache = None
+            self._rebuild_rows()
+
+        if self._scan_pending:
+            self._scan_pending = False
+            self.refresh()
+
+    def _rebuild_rows(self) -> None:
+        """Reconstruye las filas sin tocar lo que se esté reproduciendo."""
         while self.list_layout.count():
             item = self.list_layout.takeAt(0)
             widget = item.widget()
@@ -975,6 +1067,7 @@ class RecordingsPage(QWidget):
         self.play_button.setText("▶ Reproducir")
         self.position_slider.setRange(0, 0)
         self.position_slider.set_markers([], 0)
+        self._update_kda_card()
         self.marker_list.clear()
         QApplication.processEvents()
 
@@ -1107,6 +1200,7 @@ class RecordingsPage(QWidget):
 
             if isinstance(markers, list):
                 self.position_slider.set_markers(markers, duration_ms)
+                self._update_kda_card()
 
                 total = sum(
                     isinstance(item, dict) for item in markers
@@ -1199,10 +1293,29 @@ class RecordingsPage(QWidget):
     def _on_service_state(self, _state: str) -> None:
         self._sync_recording_status()
 
+    def folder_size_cached(self) -> int:
+        """Peso de la carpeta de grabaciones, releído como mucho cada 5 s.
+
+        ``_sync_recording_status`` se llama al refrescar, en cada cambio de
+        estado de la grabación y una vez por segundo mientras se graba;
+        ``total_size_bytes`` recorre la carpeta entera cada vez, así que sin
+        caché ese trabajo caía en el hilo de la interfaz continuamente.
+        """
+        now = time.monotonic()
+        cached = self._folder_size_cache
+
+        if cached is not None and now - cached[0] < 5.0:
+            return cached[1]
+
+        total = self.library.total_size_bytes()
+        self._folder_size_cache = (now, total)
+
+        return total
+
     def _sync_recording_status(self, notice: str = "") -> None:
         from app.services.recording_service import format_size
 
-        total = self.library.total_size_bytes()
+        total = self.folder_size_cached()
         count = len(self.entries)
         base = f"{count} grabación(es) · {format_size(total)} en disco"
 

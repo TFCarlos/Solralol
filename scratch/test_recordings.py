@@ -5,6 +5,7 @@ Ejecutar: python -m unittest scratch.test_recordings
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -358,7 +359,6 @@ class CommandTests(unittest.TestCase):
             game_audio_device="Stereo Mix",
             mic_device="Microfono",
             system_audio_device="virtual-audio-capturar",
-            audio_mode="full",
         )
         joined = " ".join(command)
         self.assertIn("audio=virtual-audio-capturar", joined)
@@ -630,6 +630,31 @@ class PageTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def refresh_page(self, page, timeout: float = 5.0) -> None:
+        """Refresca la pestaña y espera a que el worker entregue la lista.
+
+        El listado de grabaciones se lee en segundo plano (``AsyncTask``), así
+        que tras ``refresh()`` ya no basta con procesar un par de eventos: hay
+        que procesar hasta que el escaneo en curso termine y se pinten las
+        filas.
+        """
+        page.refresh()
+        self.wait_for_scan(page, timeout)
+
+    def wait_for_scan(self, page, timeout: float = 5.0) -> None:
+        """Procesa eventos hasta que el escaneo de grabaciones termine."""
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+
+            if page._scan_task is None and not page._scan_pending:
+                return
+
+            time.sleep(0.005)
+
+        raise AssertionError("el refresco de grabaciones no terminó")
+
     def make_page(self):
         directory = Path(tempfile.mkdtemp()) / "recs"
         directory.mkdir(parents=True)
@@ -669,9 +694,7 @@ class PageTests(unittest.TestCase):
         page, _directory = self.make_page()
         page.show()
         self.app.processEvents()
-        page.refresh()
-        self.app.processEvents()
-        self.app.processEvents()
+        self.refresh_page(page)
         titles = sorted(
             {
                 label.text()
@@ -692,8 +715,7 @@ class PageTests(unittest.TestCase):
         page, _directory = self.make_page()
         page.show()
         self.app.processEvents()
-        page.refresh()
-        self.app.processEvents()
+        self.refresh_page(page)
         title = page.findChild(QLabel, "recordingTitle")
         row = title.parent()
         self.assertEqual(
@@ -722,8 +744,7 @@ class PageTests(unittest.TestCase):
         page, _directory = self.make_page()
         page.show()
         self.app.processEvents()
-        page.refresh()
-        self.app.processEvents()
+        self.refresh_page(page)
 
         video = Path(page.entries[0]["path"])
         sidecar = video.with_suffix(".json")
@@ -736,6 +757,7 @@ class PageTests(unittest.TestCase):
 
         self.assertFalse(video.exists())
         self.assertFalse(sidecar.exists())
+        self.wait_for_scan(page)
         self.assertEqual(page.entries, [])
         self.assertIsNone(page.current_path)
 
@@ -745,7 +767,7 @@ class PageTests(unittest.TestCase):
 
     def test_delete_entry_cancelled_keeps_the_files(self):
         page, _directory = self.make_page()
-        page.refresh()
+        self.refresh_page(page)
         video = Path(page.entries[0]["path"])
         sidecar = video.with_suffix(".json")
 
@@ -762,7 +784,7 @@ class PageTests(unittest.TestCase):
 
     def test_delete_entry_releases_the_player_and_resets_it(self):
         page, _directory = self.make_page()
-        page.refresh()
+        self.refresh_page(page)
         video = Path(page.entries[0]["path"])
         page.play_entry(video)
         self.app.processEvents()
@@ -789,7 +811,7 @@ class PageTests(unittest.TestCase):
             self.skipTest("bloqueo de ficheros propio de Windows")
 
         page, _directory = self.make_page()
-        page.refresh()
+        self.refresh_page(page)
         video = Path(page.entries[0]["path"])
         sidecar = video.with_suffix(".json")
         warnings: list[str] = []
@@ -820,6 +842,7 @@ class PageTests(unittest.TestCase):
             self.app.processEvents()
 
         self.assertFalse(video.exists())
+        self.wait_for_scan(page)
         self.assertEqual(page.entries, [])
 
         page.close()
@@ -840,7 +863,7 @@ class PageTests(unittest.TestCase):
             state_changed=Mock(),
         )
         page.service = live_service
-        page.refresh()
+        self.refresh_page(page)
 
         asked: list[str] = []
         with (

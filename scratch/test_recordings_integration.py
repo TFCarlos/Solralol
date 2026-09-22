@@ -232,7 +232,7 @@ class RecordingsIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(
             audio_mode.itemText(audio_mode.findData("all")),
-            "Juego + micrófono + otros (Discord, YouTube…)",
+            "Juego + micrófono + resto del PC (Discord, YouTube, etc.)",
         )
 
         current = audio_mode.currentData()

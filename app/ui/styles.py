@@ -1351,6 +1351,42 @@ QListWidget#recordingMarkerList::item:hover {
     color: #ffffff;
 }
 
+QVideoWidget#recordingVideo {
+    border-radius: 10px;
+    background: #05090f;
+}
+
+QFrame#recordingKdaCard {
+    border: 1px solid rgba(97, 148, 211, 90);
+    border-radius: 8px;
+    background: rgba(8, 17, 31, 205);
+}
+
+QLabel#recordingKdaEyebrow {
+    color: #7f93b1;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    border: none;
+    background: transparent;
+}
+
+QLabel#recordingKdaValue {
+    color: #eef4ff;
+    font-size: 11px;
+    font-weight: 900;
+    border: none;
+    background: transparent;
+}
+
+QLabel#recordingKdaObjectives {
+    color: #d9ae4f;
+    font-size: 10px;
+    font-weight: 800;
+    border: none;
+    background: transparent;
+}
+
 QDialog#liveMatchAnalysisDialog {
     background: #07101f;
     color: #e8f0ff;

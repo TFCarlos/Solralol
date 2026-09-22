@@ -67,6 +67,18 @@ AUDIO_BITRATE_KBPS = 160
 #: Ajustes de audio de DirectShow: menos búfer = menos desfase con el vídeo.
 AUDIO_BUFFER_MS = 100
 
+#: Cuánto se recuerda la lista de dispositivos de audio de ffmpeg. Sondeos
+#: repetidos (Ajustes, inicio de partida, inicio de grabación) sumaban varios
+#: segundos de espera en el hilo de la interfaz sin cambiar el resultado.
+AUDIO_DEVICE_CACHE_SECONDS = 120.0
+
+_AUDIO_DEVICE_CACHE: dict[str, tuple[float, tuple[str, ...]]] = {}
+
+#: Cuánto se recuerda el resultado de buscar ffmpeg en el sistema.
+FFMPEG_LOOKUP_CACHE_SECONDS = 60.0
+
+_FFMPEG_CACHE: dict[str, tuple[float, str | None]] = {}
+
 LIMIT_MIN_GB = 1
 LIMIT_MAX_GB = 500
 LIMIT_DEFAULT_GB = 50
@@ -432,8 +444,42 @@ def recording_settings_defaults() -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 
-def find_ffmpeg(configured_path: str = "") -> str | None:
-    """Devuelve la ruta de ffmpeg.exe o None si no hay ninguno usable."""
+#: Aviso que se muestra cuando no hay ningún ffmpeg utilizable.
+FFMPEG_MISSING_HINT = (
+    "No se encontró ffmpeg. Es necesario para grabar: "
+    "instala imageio-ffmpeg "
+    "(pip install -r requirements.txt) o coloca "
+    "ffmpeg.exe en la carpeta del proyecto."
+)
+
+
+def find_ffmpeg(
+    configured_path: str = "",
+    *,
+    force: bool = False,
+) -> str | None:
+    """Devuelve la ruta de ffmpeg.exe o None si no hay ninguno usable.
+
+    El resultado se recuerda un minuto: la búsqueda recorre el ``PATH`` y
+    comprueba cada candidato en disco, y se hace al arrancar, al abrir Ajustes
+    y al empezar cada partida (unas décimas de segundo cada vez).
+    """
+    key = str(configured_path or "")
+    now = time.monotonic()
+
+    if not force:
+        cached = _FFMPEG_CACHE.get(key)
+
+        if cached is not None and now - cached[0] < FFMPEG_LOOKUP_CACHE_SECONDS:
+            return cached[1]
+
+    found = _search_ffmpeg(key)
+    _FFMPEG_CACHE[key] = (now, found)
+
+    return found
+
+
+def _search_ffmpeg(configured_path: str) -> str | None:
     candidates: list[Path] = []
 
     if configured_path:
@@ -486,10 +532,29 @@ def find_ffmpeg(configured_path: str = "") -> str | None:
     return None
 
 
-def list_audio_devices(ffmpeg_path: str) -> list[str]:
-    """Dispositivos de entrada de audio DirectShow disponibles."""
+def list_audio_devices(
+    ffmpeg_path: str,
+    *,
+    force: bool = False,
+) -> list[str]:
+    """Dispositivos de entrada de audio DirectShow disponibles.
+
+    La consulta lanza ffmpeg con ``-list_devices``, que sondea todos los
+    dispositivos del sistema y puede tardar varios segundos. El resultado se
+    recuerda unos minutos para no repetir la espera al abrir Ajustes, al
+    empezar cada partida o al arrancar la grabación; los botones de «buscar
+    dispositivos» pasan ``force=True`` para volver a preguntar.
+    """
     if not ffmpeg_path:
         return []
+
+    now = time.monotonic()
+
+    if not force:
+        cached = _AUDIO_DEVICE_CACHE.get(ffmpeg_path)
+
+        if cached is not None and now - cached[0] < AUDIO_DEVICE_CACHE_SECONDS:
+            return list(cached[1])
 
     try:
         result = subprocess.run(
@@ -523,6 +588,8 @@ def list_audio_devices(ffmpeg_path: str) -> list[str]:
 
             if name and name not in devices:
                 devices.append(name)
+
+    _AUDIO_DEVICE_CACHE[ffmpeg_path] = (now, tuple(devices))
 
     return devices
 
@@ -873,7 +940,6 @@ def build_ffmpeg_command(
     capture_window_title: str = "",
     capture_desktop: bool = True,
     capture_area: CaptureArea | None = None,
-    audio_mode: str = DEFAULT_AUDIO_MODE,
 ) -> list[str]:
     """Construye la orden completa de ffmpeg para una grabación.
 
@@ -882,24 +948,11 @@ def build_ffmpeg_command(
       escritorio virtual, que es como se graba únicamente el monitor donde
       está el juego sin arrastrar el resto de pantallas.
     - El sonido del juego sale de una fuente DirectShow (mezcla estéreo).
-    - El micrófono y, si se pide, un capturador de la mezcla del sistema
-      (modo «Todo»: Discord, YouTube...) se mezclan con ``amix`` sobre el
-      audio del juego para que todos queden en la misma pista.
-    - El modo ``full`` incluye el sonido del juego, del micrófono y un
-      capturador de mezcla del sistema (por ejemplo Discord, navegadores,
-      Voicemeeter, Stereo Mix, etc.) si hay dispositivo disponible.
+    - Solo se capturan los dispositivos que llegan resueltos: los que decida
+      el modo de audio se eligen antes de llamar aquí (ver
+      ``RecordingService.start``), de modo que una orden con tres dispositivos
+      mezcla los tres con ``amix``.
     """
-    window_title = capture_window_title.strip()
-    framerate = str(quality_fps(quality))
-
-    mode = normalize_audio_mode(audio_mode)
-    include_system_audio = audio_mode_uses_full_system(mode) or audio_mode_uses_system(mode)
-
-    if include_system_audio and not system_audio_device:
-        # Si el usuario eligió modo que captura el sistema pero no eligió
-        # dispositivo, se intenta deducirlo después; aquí no se añade nada
-        # hasta que haya dispositivo efectivo.
-        pass
     window_title = capture_window_title.strip()
     framerate = str(quality_fps(quality))
 
@@ -963,10 +1016,13 @@ def build_ffmpeg_command(
 
     audio_devices: list[str] = []
 
+    # Se mezclan los dispositivos que el llamante ha resuelto: decide él,
+    # según el modo de audio y los dispositivos disponibles, cuáles hay que
+    # capturar (el modo ya se aplicó al resolverlos).
     for device in (
         game_audio_device,
         mic_device,
-        system_audio_device if audio_mode_uses_system(mode) else "",
+        system_audio_device,
     ):
         name = str(device or "").strip()
 
@@ -1448,6 +1504,18 @@ class RecordingLibrary:
 
 
 
+    def _file_and_sidecar_size(self, video_path: Path) -> int:
+        """Bytes del vídeo más los de su sidecar JSON (0 si no se pueden leer)."""
+        total = 0
+
+        for target in (video_path, self.metadata_path(video_path)):
+            try:
+                total += target.stat().st_size
+            except OSError:
+                continue
+
+        return total
+
     def enforce_storage_limit(
         self,
         limit_bytes: int,
@@ -1476,14 +1544,24 @@ class RecordingLibrary:
         else:
             return []
 
-        candidates = [path for path in videos if path != keep]
+        # Los tamaños se leen una sola vez: recalcular el total de la carpeta
+        # después de cada borrado volvía a recorrerla entera y a hacer stat de
+        # todos los ficheros, y con la carpeta llena esa limpieza bloqueaba la
+        # interfaz varios segundos al terminar cada partida.
+        sizes = {path: self._file_and_sidecar_size(path) for path in videos}
+        total = self.total_size_bytes()
         removed: list[Path] = []
 
-        while candidates and self.total_size_bytes() > limit:
-            oldest = candidates.pop(0)
+        for path in videos:
+            if total <= limit:
+                break
 
-            if self.delete(oldest):
-                removed.append(oldest)
+            if path == keep:
+                continue
+
+            if self.delete(path):
+                removed.append(path)
+                total -= sizes.get(path, 0)
 
         return removed
 
@@ -1664,21 +1742,26 @@ class RecordingService(QObject):
 
         return max(0.0, time.monotonic() - self.started_monotonic)
 
-    def refresh_ffmpeg(self, configured_path: str = "") -> str | None:
-        """Vuelve a buscar ffmpeg y guarda el resultado."""
-        found = find_ffmpeg(configured_path)
+    def apply_ffmpeg_result(self, found: str | None) -> None:
+        """Publica el resultado de una búsqueda hecha fuera del hilo de Qt.
+
+        ``find_ffmpeg`` recorre el ``PATH`` y comprueba cada candidato en
+        disco, así que la búsqueda se delega a un worker (``AsyncTask``);
+        aquí solo se guarda lo que encontró, en el hilo de la interfaz.
+        """
         self.ffmpeg_path = found or ""
         self.ffmpeg_available = bool(found)
+        self.ffmpeg_hint = "" if found else FFMPEG_MISSING_HINT
 
-        if not found:
-            self.ffmpeg_hint = (
-                "No se encontró ffmpeg. Es necesario para grabar: "
-                "instala imageio-ffmpeg "
-                "(pip install -r requirements.txt) o coloca "
-                "ffmpeg.exe en la carpeta del proyecto."
-            )
-        else:
-            self.ffmpeg_hint = ""
+    def refresh_ffmpeg(self, configured_path: str = "") -> str | None:
+        """Vuelve a buscar ffmpeg y guarda el resultado.
+
+        Bloquea (recorre el ``PATH`` y hace ``stat`` de cada candidato):
+        desde la interfaz se usa ``find_ffmpeg`` en un ``AsyncTask`` y se
+        publica con ``apply_ffmpeg_result``.
+        """
+        found = find_ffmpeg(configured_path)
+        self.apply_ffmpeg_result(found)
 
         return found
 

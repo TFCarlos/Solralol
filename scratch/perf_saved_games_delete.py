@@ -22,6 +22,12 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 SESSIONS = 40
 VIDEOS = 30
 
+#: Carpeta de grabaciones del guion: los ajustes simulados la devuelven para
+#: que los refrescos asíncronos (que releen el directorio desde los ajustes)
+#: no apunten nunca a la carpeta real del usuario.
+PERF_RECORDINGS_DIR = Path(tempfile.mkdtemp()) / "recs"
+PERF_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def fake_settings_factory():
     class FakeSettingsService:
@@ -29,12 +35,33 @@ def fake_settings_factory():
             pass
 
         def load(self) -> dict:
-            return {}
+            return {
+                "recording_output_dir": str(PERF_RECORDINGS_DIR),
+            }
 
         def save(self, settings: dict) -> None:
             pass
 
     return FakeSettingsService
+
+
+def wait_for_saved_games(window, app, timeout: float = 15.0) -> None:
+    """Procesa eventos hasta que el worker de «Partidas guardadas» termine.
+
+    El refresco es asíncrono (``AsyncTask``): la llamada vuelve al instante y
+    las filas aparecen cuando el worker entrega el resultado.
+    """
+    deadline = time.perf_counter() + timeout
+
+    while time.perf_counter() < deadline:
+        app.processEvents()
+
+        if not window.saved_games_refreshing:
+            return
+
+        time.sleep(0.005)
+
+    raise AssertionError("refresh_saved_games no terminó")
 
 
 def make_session(index: int) -> dict:
@@ -68,8 +95,9 @@ def main() -> None:
         window.live_match_tracker.sessions_path = (
             Path(tempfile.mkdtemp()) / "live_match_sessions.json"
         )
-        recs = Path(tempfile.mkdtemp()) / "recs"
-        recs.mkdir(parents=True, exist_ok=True)
+        # La biblioteca ya apunta a la carpeta temporal de los ajustes: se
+        # reafirma por si algún refresco posterior releyera el directorio.
+        recs = PERF_RECORDINGS_DIR
         window.recording_library.set_directory(recs)
 
         library = window.recording_library
@@ -105,16 +133,25 @@ def main() -> None:
 
         app.processEvents()
 
-        # Frío: primera pasada lee todos los sidecars por cada fila.
+        # La llamada vuelve al instante: solo encola el trabajo en un worker.
         start = time.perf_counter()
         window.refresh_saved_games()
+        enqueue_ms = (time.perf_counter() - start) * 1000.0
+
+        # Frío: primera pasada lee las sesiones y todos los sidecars.
+        rows_before = window.saved_games_layout.count()
+        start = time.perf_counter()
+        wait_for_saved_games(window, app)
         cold = time.perf_counter() - start
 
-        # Caliente: misma operación con la caché poblada.
-        start = time.perf_counter()
+        # Mientras tanto la interfaz siguió viva (filas anteriores
+        # presentadas, sin congelarse en la llamada de arriba).
         window.refresh_saved_games()
+        start = time.perf_counter()
+        wait_for_saved_games(window, app)
         warm = time.perf_counter() - start
 
+        print(f"refresh_saved_games encola: {enqueue_ms:8.1f} ms")
         print(f"refresh_saved_games frío   : {cold * 1000:8.1f} ms")
         print(f"refresh_saved_games caliente: {warm * 1000:8.1f} ms")
 
@@ -147,6 +184,7 @@ def main() -> None:
 
         start = time.perf_counter()
         window.delete_saved_game_session("sesion-000")
+        wait_for_saved_games(window, app)
         delete = time.perf_counter() - start
         print(f"delete_saved_game_session   : {delete * 1000:8.1f} ms")
 

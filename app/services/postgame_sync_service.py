@@ -181,10 +181,6 @@ class PostgameSyncService:
     ) -> tuple[str, dict[str, Any]] | None:
         best: tuple[float, str, dict[str, Any]] | None = None
         total = len(match_ids)
-        print(
-            f"[SYNC] Buscando entre {total} partidas de Riot  —  "
-            f"'{session.get('champion_name')}' @ {session.get('started_at')}"
-        )
 
         for index, match_id in enumerate(match_ids, start=1):
             if callable(on_progress):
@@ -200,9 +196,7 @@ class PostgameSyncService:
                 best = (score, match_id, raw_match)
 
         if best is None:
-            print(f"[SYNC] ✗ Ningún candidato válido entre {total} partidas revisadas.")
             return None
-        print(f"[SYNC] ✓ Mejor candidato: {best[1]} (score={best[0]:.1f})")
         return best[1], best[2]
 
 
@@ -226,7 +220,6 @@ class PostgameSyncService:
             None,
         )
         if not isinstance(participant, dict):
-            print(f"[SYNC] ✗ puuid no encontrado en {raw_match.get('metadata', {}).get('matchId', '?')}")
             return None
 
         expected_champion = str(
@@ -235,9 +228,7 @@ class PostgameSyncService:
         actual_champion = str(
             participant.get("championName", "")
         ).casefold()
-        match_id_label = raw_match.get("metadata", {}).get("matchId", "?")
         if expected_champion and expected_champion != actual_champion:
-            print(f"[SYNC] ✗ {match_id_label}: campeón '{actual_champion}' ≠ esperado '{expected_champion}'")
             return None
 
         started_at = self._parse_time(session.get("started_at"))
@@ -250,20 +241,11 @@ class PostgameSyncService:
         start_difference = abs(game_start - started_at.timestamp())
         duration_difference = abs(duration - local_duration)
 
-        print(
-            f"[SYNC] ? {match_id_label}: champ={actual_champion} "
-            f"start_diff={start_difference:.0f}s (tol={self.START_TOLERANCE_SECONDS}s) "
-            f"dur_diff={duration_difference:.0f}s (tol={self.DURATION_TOLERANCE_SECONDS}s)"
-        )
-
         if start_difference > self.START_TOLERANCE_SECONDS:
-            print(f"[SYNC] ✗ {match_id_label}: start demasiado distante ({start_difference:.0f}s)")
             return None
         if local_duration and duration_difference > self.DURATION_TOLERANCE_SECONDS:
-            print(f"[SYNC] ✗ {match_id_label}: duración demasiado distante ({duration_difference:.0f}s)")
             return None
 
-        print(f"[SYNC] ✓ {match_id_label}: candidato válido (score={start_difference + duration_difference * 2:.1f})")
         return start_difference + duration_difference * 2
 
 
@@ -706,7 +688,6 @@ class PostgameSyncService:
                 ],
             )
             
-            print(f"[DEBUG] Kill event: {result['label']} at {result['time']}")
             
             return result
         

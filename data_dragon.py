@@ -15,6 +15,8 @@ CHAMPION_ICON_DIR = DATA_DIR / "champion_icons"
 CHAMPION_DATA_DIR = DATA_DIR / "champion_data"
 CHAMPION_MEMORY_CACHE: dict[str, dict] = {}
 RUNE_ICON_CATALOG_CACHE: dict[str, str] = {}
+#: La descarga del catálogo de runas ya falló en esta ejecución (sin red).
+RUNE_ICON_CATALOG_FAILED = False
 
 
 def get_latest_version() -> str:
@@ -97,29 +99,40 @@ def download_items(version: str) -> dict:
     return items
 
 
+def load_cached_item_catalog() -> tuple[str, dict]:
+    """Catálogo local sin tocar la red (respaldo de arranque sin conexión)."""
+    try:
+        cached = json.loads(ITEM_CACHE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "16.17.1", {}
+
+    return (
+        str(cached.get("version") or "16.17.1"),
+        cached.get("items") or {},
+    )
+
+
 def load_item_catalog() -> tuple[str, dict]:
+    """Versión y catálogo de objetos, de la red si se puede.
+
+    Bloquea (varias peticiones HTTP), así que la interfaz lo llama desde un
+    worker (``StartupWindow``) y no desde el hilo de la GUI. Ante cualquier
+    fallo devuelve la última copia cacheada en disco.
+    """
     try:
         version = get_latest_version()
     except Exception:
-        if ITEM_CACHE_FILE.exists():
-            try:
-                cached = json.loads(ITEM_CACHE_FILE.read_text(encoding="utf-8"))
-                return cached.get("version", "16.17.1"), cached.get("items", {})
-            except Exception:
-                pass
+        cached_version, cached_items = load_cached_item_catalog()
+
+        if cached_items:
+            return cached_version, cached_items
+
         version = "16.17.1"
 
     try:
         items = download_items(version)
     except Exception:
-        if ITEM_CACHE_FILE.exists():
-            try:
-                cached = json.loads(ITEM_CACHE_FILE.read_text(encoding="utf-8"))
-                items = cached.get("items", {})
-            except Exception:
-                items = {}
-        else:
-            items = {}
+        items = load_cached_item_catalog()[1]
 
     ICON_DIR.mkdir(exist_ok=True)
     CHAMPION_ICON_DIR.mkdir(exist_ok=True)
@@ -300,6 +313,11 @@ RUNE_ICON_DIR = DATA_DIR / "rune_icons"
 _RUNE_ICON_INDEX: dict[str, Path] = {}
 _RUNE_ICON_INDEX_STAMP: int | None = None
 
+#: Runas cuyo icono ya se intentó descargar sin éxito. Sin esta memoria, cada
+#: diálogo de análisis repetía las mismas peticiones fallidas en el hilo de
+#: interfaz (varias décimas de segundo por icono, en el arranque).
+_RUNE_ICON_MISSES: set[str] = set()
+
 
 def _normalize_rune_key(name: str) -> str:
     """Clave tolerante a mayúsculas, espacios, apóstrofos y acentos."""
@@ -429,14 +447,17 @@ def get_rune_icon_path(
         "Biscuit Delivery": "Styles/Inspiration/BiscuitDelivery/BiscuitDelivery.png",
         "Cosmic Insight": "Styles/Inspiration/CosmicInsight/CosmicInsight.png",
         "Approach Velocity": "Styles/Inspiration/ApproachVelocity/ApproachVelocity.png",
-        # Los fragmentos usan subcarpetas propias; no la ruta plana de runas.
-        "Adaptive Force": "StatMods/StatModsAdaptiveForceIcon/StatModsAdaptiveForceIcon.png",
-        "Attack Speed": "StatMods/StatModsAttackSpeedIcon/StatModsAttackSpeedIcon.png",
-        "Ability Haste": "StatMods/StatModsCDRScalingIcon/StatModsCDRScalingIcon.png",
-        "Movement Speed": "StatMods/StatModsMovementSpeedIcon/StatModsMovementSpeedIcon.png",
-        "Health Scaling": "StatMods/StatModsHealthScalingIcon/StatModsHealthScalingIcon.png",
-        "Health": "StatMods/StatModsHealthPlusIcon/StatModsHealthPlusIcon.png",
-        "Tenacity and Slow Resist": "StatMods/StatModsTenacityIcon/StatModsTenacityIcon.png",
+        # Los fragmentos (stat mods) van planos bajo StatMods/, no en
+        # subcarpeta propia: con la subcarpeta el CDN devolvía 403 y la app
+        # repetía la descarga fallida en cada diálogo de análisis (cada
+        # intento bloqueaba la interfaz ~0,3 s).
+        "Adaptive Force": "StatMods/StatModsAdaptiveForceIcon.png",
+        "Attack Speed": "StatMods/StatModsAttackSpeedIcon.png",
+        "Ability Haste": "StatMods/StatModsCDRScalingIcon.png",
+        "Movement Speed": "StatMods/StatModsMovementSpeedIcon.png",
+        "Health Scaling": "StatMods/StatModsHealthScalingIcon.png",
+        "Health": "StatMods/StatModsHealthPlusIcon.png",
+        "Tenacity and Slow Resist": "StatMods/StatModsTenacityIcon.png",
         # Iconos de árbol: en el CDN van por id (7201_Precision.png, ...).
         "Precision": "Styles/7201_Precision.png",
         "Domination": "Styles/7200_Domination.png",
@@ -462,6 +483,7 @@ def get_rune_icon_path(
         "Phase Rush": "Stormraider's Surge",
     }
     lookup_name = aliases.get(rune_name, rune_name)
+    cache_key = _normalize_rune_key(lookup_name)
     asset_path = paths.get(rune_name) or paths.get(lookup_name)
     local_name = re.sub(r"[^A-Za-z0-9._-]+", "_", lookup_name).strip("_")
     local_path = RUNE_ICON_DIR / f"{local_name}.png"
@@ -477,8 +499,14 @@ def get_rune_icon_path(
     if not download:
         return None
 
+    # Ya se intentó sin éxito: reintentarlo en cada diálogo añadía una
+    # espera de red por icono sin ninguna posibilidad de mejorar.
+    if cache_key in _RUNE_ICON_MISSES:
+        return None
+
     if not asset_path:
         asset_path = _rune_icon_catalog(version).get(lookup_name.lower())
+
     if asset_path:
         try:
             url_path = asset_path if asset_path.startswith("perk-images/") else f"perk-images/{asset_path}"
@@ -500,12 +528,23 @@ def get_rune_icon_path(
                     return local_path
                 except requests.RequestException:
                     pass
+
+    _RUNE_ICON_MISSES.add(cache_key)
     return None
 
 
 def _rune_icon_catalog(version: str) -> dict[str, str]:
-    if RUNE_ICON_CATALOG_CACHE:
+    """Catálogo oficial de runas del CDN (una sola petición por ejecución).
+
+    Si la primera petición falla se recuerda el fallo: sin conexión, este
+    método se llamaba una vez por cada runa que había que pintar y cada
+    llamada volvía a esperar el timeout de red.
+    """
+    global RUNE_ICON_CATALOG_FAILED
+
+    if RUNE_ICON_CATALOG_CACHE or RUNE_ICON_CATALOG_FAILED:
         return RUNE_ICON_CATALOG_CACHE
+
     try:
         response = requests.get(
             f"{DD_BASE_URL}/cdn/{version}/data/en_US/runesReforged.json",
@@ -520,7 +559,9 @@ def _rune_icon_catalog(version: str) -> dict[str, str]:
                     if name:
                         RUNE_ICON_CATALOG_CACHE[name] = rune.get("icon", "")
     except (requests.RequestException, ValueError, TypeError):
-        return {}
+        RUNE_ICON_CATALOG_FAILED = True
+        return RUNE_ICON_CATALOG_CACHE
+
     return RUNE_ICON_CATALOG_CACHE
 
 

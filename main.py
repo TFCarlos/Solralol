@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import sys
+import traceback
 
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication
 
+from app.ui import startup_window
 from app.ui.main_window import MainWindow
-from data_dragon import load_item_catalog
+from data_dragon import load_cached_item_catalog, load_item_catalog
 
 
 # Avisos de Qt que solo ensucian la consola: Qt ya no incluye tipografías
@@ -52,6 +54,48 @@ def install_message_filter() -> None:
     qInstallMessageHandler(handler)
 
 
+def build_main_window(
+    result,
+    error,
+    holder: dict,
+    loader: startup_window.StartupWindow,
+) -> None:
+    """Crea la ventana principal cuando el catálogo ya está disponible.
+
+    Se ejecuta en el hilo de la GUI: la descarga del catálogo (red) ya la hizo
+    el worker, así que aquí solo queda construir los widgets.
+    """
+    if error:
+        print(
+            f"Aviso: no se pudo actualizar el catálogo de objetos ({error}); "
+            "se usará la copia local.",
+            flush=True,
+        )
+        version, item_catalog = load_cached_item_catalog()
+    else:
+        version, item_catalog = result
+        print(
+            f"Catálogo Data Dragon listo (parche {version}).",
+            flush=True,
+        )
+
+    loader.set_message("Preparando la interfaz…")
+    QApplication.processEvents()
+
+    try:
+        window = MainWindow(version=version, item_catalog=item_catalog)
+    except Exception:  # noqa: BLE001 - sin ventana no hay nada que mostrar
+        loader.stop()
+        traceback.print_exc()
+        QApplication.exit(1)
+
+        return
+
+    holder["window"] = window
+    window.showMaximized()
+    loader.stop()
+
+
 def main() -> int:
     install_message_filter()
 
@@ -60,39 +104,45 @@ def main() -> int:
     app.setApplicationName("Solralol")
     app.setOrganizationName("Solralol")
 
+    # El catálogo de objetos se descarga la primera vez de cada parche: el
+    # trabajo va a un worker y la ventana de carga mantiene la interfaz viva
+    # (barra animada y cronómetro) mientras tanto.
+    holder: dict = {}
+    loader = startup_window.StartupWindow(
+        message="Descargando catálogo de objetos…",
+        hint="Solo la primera vez de cada parche.",
+    )
+    loader.finished.connect(
+        lambda result, error: build_main_window(result, error, holder, loader)
+    )
+    loader.show()
+    loader.move_to_center()
+    app.processEvents()
+
     try:
-        print("Descargando catálogo de objetos actual...", flush=True)
-
-        version, item_catalog = load_item_catalog()
-
-        print(
-            f"Catálogo Data Dragon listo "
-            f"(parche {version}).",
-            flush=True,
-        )
-
-        window = MainWindow(
-            version=version,
-            item_catalog=item_catalog,
-        )
+        loader.start(load_item_catalog)
     except KeyboardInterrupt:
         # Ctrl+C mientras se descarga el catálogo: sin nada que limpiar.
-        print("\nCancelado por el usuario.")
+        print("\nCancelado por el usuario.", flush=True)
+        loader.stop()
         return 0
 
-    window.showMaximized()
-
     try:
-        return app.exec()
+        code = app.exec()
     except KeyboardInterrupt:
         # Ctrl+C en la consola: cerrar la ventana detiene el sondeo de TAB y
         # los hilos de fondo (closeEvent), sin volcar un traceback.
-        try:
-            window.close()
-        except RuntimeError:
-            pass
+        window = holder.get("window")
+
+        if window is not None:
+            try:
+                window.close()
+            except RuntimeError:
+                pass
 
         return 0
+
+    return code
 
 
 if __name__ == "__main__":

@@ -126,24 +126,48 @@ def test_postgame_sidebar_builds_cards() -> None:
 
 
 def test_recordings_kda_card() -> None:
-    page = RecordingPage()
+    from app.services.recording_service import RecordingLibrary
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    library = RecordingLibrary()
+    service = SimpleNamespace(
+        is_recording=False,
+        output_path=None,
+        elapsed_seconds=lambda: 0.0,
+        started=Mock(),
+        finished=Mock(),
+        failed=Mock(),
+        state_changed=Mock(),
+    )
+    page = RecordingsPage(library=library, service=service)
+
     kda_card = page._build_kda_card()
     assert kda_card.objectName() == "recordingKdaCard"
     assert kda_card.width() == 120
 
-    page.markers = [
-        {"kind": "kill", "count": 1},
-        {"kind": "kill", "count": 1},
-        {"kind": "death", "count": 1},
-        {"kind": "assist", "count": 2},
-    ]
+    # _update_kda_card lee los marcadores de la barra, no de la página.
+    page.position_slider.set_markers(
+        [
+            {"time": 10.0, "kind": "kill"},
+            {"time": 20.0, "kind": "kill"},
+            {"time": 30.0, "kind": "death"},
+            {"time": 40.0, "kind": "assist"},
+            {"time": 45.0, "kind": "assist"},
+            {"time": 50.0, "kind": "dragon"},
+            {"time": 60.0, "kind": "tower"},
+        ],
+        0,
+    )
     page._update_kda_card()
     text = page.kda_value.text()
     assert "⚔ 2" in text and "✖ 1" in text and "✚ 2" in text, text
+    assert page.kda_objectives.text() == "🎯 2", page.kda_objectives.text()
 
-    page.markers = []
+    page.position_slider.set_markers([], 0)
     page._update_kda_card()
-    assert page.kda_value.text() == ""
+    assert page.kda_value.text() == "—"
+    assert not page.kda_objectives.isVisibleTo(page)
 
 
 if __name__ == "__main__":

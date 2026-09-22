@@ -16,6 +16,7 @@ Ejecutar: python -m unittest scratch.test_postgame_replay
 """
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -1240,16 +1241,25 @@ class MainWindowReplayTests(unittest.TestCase):
 
     def setUp(self):
         self.saved: dict = {}
+        # Carpeta de grabaciones temporal creada ANTES de construir la ventana:
+        # los ajustes simulados la devuelven, y así los refrescos asíncronos
+        # (que vuelven a fijar el directorio desde los ajustes) nunca apuntan
+        # a la carpeta real de grabaciones del usuario.
+        self.recordings_dir = Path(tempfile.mkdtemp()) / "recs"
+        self.recordings_dir.mkdir(parents=True, exist_ok=True)
 
         def fake_settings_factory():
             saved = self.saved
+            recordings_dir = self.recordings_dir
 
             class FakeSettingsService:
                 def __init__(self, *args, **kwargs) -> None:
                     pass
 
                 def load(self) -> dict:
-                    return {}
+                    return {
+                        "recording_output_dir": str(recordings_dir),
+                    }
 
                 def save(self, settings: dict) -> None:
                     saved.clear()
@@ -1272,9 +1282,30 @@ class MainWindowReplayTests(unittest.TestCase):
         self.window.live_match_tracker.sessions_path = (
             Path(tempfile.mkdtemp()) / "live_match_sessions.json"
         )
-        directory = Path(tempfile.mkdtemp()) / "recs"
-        directory.mkdir(parents=True, exist_ok=True)
-        self.window.recording_library.set_directory(directory)
+        # Los ajustes ya apuntan a la carpeta temporal, pero se reafirma por si
+        # algún refresco posterior releyera el directorio desde ellos.
+        self.window.recording_library.set_directory(self.recordings_dir)
+
+    def refresh_recordings_page(self, timeout: float = 5.0) -> None:
+        """Refresca la pestaña Grabaciones y espera a que el worker termine.
+
+        El listado se lee en segundo plano (``AsyncTask``), así que tras
+        ``refresh()`` hay que procesar eventos hasta que las filas queden
+        pintadas en vez de asumir que ya están.
+        """
+        page = self.window.recordings_page
+        page.refresh()
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+
+            if page._scan_task is None and not page._scan_pending:
+                return
+
+            time.sleep(0.005)
+
+        raise AssertionError("la pestaña Grabaciones no terminó de refrescar")
 
     def tearDown(self):
         self.window.close()
@@ -1478,8 +1509,7 @@ class MainWindowReplayTests(unittest.TestCase):
     def test_recordings_page_window_button_opens_the_replay(self):
         video = self.write_recording()
         page = self.window.recordings_page
-        page.refresh()
-        self.app.processEvents()
+        self.refresh_recordings_page()
 
         button = next(
             button

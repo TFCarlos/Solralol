@@ -49,19 +49,13 @@ class PostgameSyncWorker(QObject):
         account_region: str,
         platform_region: str,
     ) -> None:
-        print(f"[WORKER] Iniciando sincronización para {session.get('session_id')}")
-
         try:
-            print(f"[WORKER] Creando RiotApiService...")
-
             riot_service = RiotApiService(
                 api_key=api_key,
                 account_region=account_region,
                 platform_region=platform_region,
                 cache=MatchHistoryCache(),
             )
-
-            print(f"[WORKER] Creando PostgameSyncService...")
 
             service = PostgameSyncService(
                 api_key=api_key,
@@ -72,22 +66,14 @@ class PostgameSyncWorker(QObject):
                 riot_api_service=riot_service,
             )
 
-            print(f"[WORKER] Llamando a service.sync_session()...")
-
             updated_session = service.sync_session(
                 session,
                 on_progress=self._emit_progress,
             )
 
-            print(f"[WORKER] Sincronización completada: {updated_session.get('final_sync', {}).get('status')}")
-
             self.sync_ready.emit(updated_session)
 
         except Exception as error:
-            print(f"[WORKER] Error: {error}")
-            import traceback
-            traceback.print_exc()
-
             self.sync_failed.emit(
                 f"No se pudo sincronizar la partida: {error}"
             )

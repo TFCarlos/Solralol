@@ -19,10 +19,23 @@ class LiveDataWorker(QObject):
     #: La API local dejó de responder después de estar en partida: ha terminado.
     game_ended = Signal()
 
-    def __init__(self, item_catalog: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        item_catalog: dict[str, Any] | None = None,
+        game_version: str = "",
+    ) -> None:
         super().__init__()
         self.game_service = GameService()
-        self.tracker = LiveMatchTracker(item_catalog or {})
+        #: Este tracker solo alimenta el análisis en vivo (sus snapshots de 2 s
+        #: y su sesión en memoria): la partida que se guarda en disco es la del
+        #: tracker de la ventana. Sin ``persist`` cada partida se escribía dos
+        #: veces, con dos ids distintos, y el historial duplicaba el trabajo y
+        #: el tamaño del fichero de sesiones.
+        self.tracker = LiveMatchTracker(
+            item_catalog or {},
+            game_version=game_version,
+            persist=False,
+        )
         self.last_game_signature = ""
         self.was_in_game = False
 
@@ -103,16 +116,8 @@ class LiveDataWorker(QObject):
         self.live_analysis_ready.emit(session)
 
     def _finish_tracking(self) -> None:
-        if not self.tracker.is_tracking:
-            return
-
-        completed = self.tracker.finish()
-        if completed is not None:
-            completed["live"] = False
-            completed["source"] = "live_client_data_api"
-
-    def finish_tracking(self) -> None:
-        self._finish_tracking()
+        """Cierra la sesión en curso (la guarda el tracker de la ventana)."""
+        self.tracker.finish()
 
     def _emit_read_failed(self, message: str) -> None:
         try:

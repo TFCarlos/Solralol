@@ -13,6 +13,15 @@ class LiveMatchTracker:
 
     SAMPLE_INTERVAL_SECONDS = 2.0
     MAX_SAVED_SESSIONS = 50
+
+    #: Resolución con la que un snapshot llega al disco. Durante la partida
+    #: se muestrea cada ``SAMPLE_INTERVAL_SECONDS`` (2 s) porque el análisis en
+    #: vivo necesita ese detalle, pero guardarlos todos multiplicaba el tamaño
+    #: del fichero de sesiones (cientos de MB con el historial lleno) y con él
+    #: el tiempo de lectura y escritura, que es lo que congelaba la interfaz.
+    #: Al guardar se conserva un punto cada ``SNAPSHOT_SAVE_INTERVAL_SECONDS``
+    #: más el primero y el último: suficiente para las gráficas y las fases.
+    SNAPSHOT_SAVE_INTERVAL_SECONDS = 10.0
     ROLES = ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY")
 
     ROLE_ALIASES = {
@@ -72,14 +81,33 @@ class LiveMatchTracker:
         ("_t2_", "CHAOS"),
     )
 
-    def __init__(self, item_catalog: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        item_catalog: dict[str, Any],
+        game_version: str = "",
+        persist: bool = True,
+    ) -> None:
         self.item_catalog = item_catalog
+        #: Parche de Data Dragon con el que analizar la partida. Se recibe ya
+        #: resuelto (la ventana descarga el catálogo al arrancar) para no
+        #: pedirlo por red al empezar cada partida: esa consulta bloqueaba la
+        #: interfaz hasta 5 s justo cuando el juego arrancaba.
+        self.game_version = str(game_version or "")
+        #: ``False`` para un tracker que solo alimenta el análisis en vivo: su
+        #: sesión no se escribe en disco ni genera log (la guarda el tracker
+        #: principal). Evita partidas duplicadas y escrituras de sobra.
+        self.persist = bool(persist)
         self.sessions_path = (
             Path.home() / ".solralol" / "live_match_sessions.json"
         )
         self.session: dict[str, Any] | None = None
         self.last_sample_time = -1.0
         self.event_order = 0
+        #: Caché de ``load_saved_sessions``. El fichero puede pesar cientos de
+        #: MB: releerlo y analizarlo en cada refresco, borrado o paso de la
+        #: sincronización con Riot bloqueaba la interfaz varios segundos.
+        self._sessions_cache: list[dict[str, Any]] | None = None
+        self._sessions_cache_stamp: tuple[str, int, int] | None = None
 
     @property
     def is_tracking(self) -> bool:
@@ -92,10 +120,9 @@ class LiveMatchTracker:
             local_player.get("championName", "Desconocido")
         )
 
-        # Intentar obtener la versión del parche actual desde DataDragon.
-        # Si falla la petición, se usa un string vacío y el análisis usará
-        # la versión por defecto configurada en DataDragonAssetService.
-        game_version = self._fetch_current_version()
+        # El parche ya lo trae la ventana desde el catálogo que descarga al
+        # arrancar (o desde su caché en disco): aquí no se consulta la red.
+        game_version = self.game_version
 
         self.session = {
             "schema_version": 2,
@@ -162,7 +189,11 @@ class LiveMatchTracker:
         if self.session is None:
             return None
 
-        completed = deepcopy(self.session)
+        # La sesión en curso se convierte en la sesión guardada: no hace falta
+        # copiarla entera (con partidas de una hora son decenas de MB) porque
+        # el tracker la suelta justo después.
+        completed = self.session
+        self.session = None
         completed["ended_at"] = datetime.now(UTC).isoformat()
         completed["final_scoreboard"] = self._build_final_scoreboard(
             completed
@@ -170,17 +201,18 @@ class LiveMatchTracker:
         completed.pop("seen_event_ids", None)
         completed.pop("last_player_state", None)
 
-        sessions = self.load_saved_sessions()
-        sessions.append(completed)
-        self._save_sessions(sessions[-self.MAX_SAVED_SESSIONS :])
+        if self.persist:
+            thin_snapshots(completed)
+            sessions = self.load_saved_sessions()
+            sessions.append(completed)
+            self._save_sessions(sessions[-self.MAX_SAVED_SESSIONS :])
 
-        try:
-            from app.services.match_log_service import MatchLogService
-            MatchLogService().save_match_log(completed)
-        except Exception:
-            pass
+            try:
+                from app.services.match_log_service import MatchLogService
+                MatchLogService().save_match_log(completed)
+            except Exception:
+                pass
 
-        self.session = None
         self.last_sample_time = -1.0
         self.event_order = 0
         return completed
@@ -189,12 +221,41 @@ class LiveMatchTracker:
         return deepcopy(self.session) if self.session else None
 
     def load_saved_sessions(self) -> list[dict[str, Any]]:
+        """Sesiones guardadas, leídas del disco solo si el fichero cambió.
+
+        La lista vive en memoria entre lecturas: el fichero puede pesar
+        cientos de MB y analizarlo en cada refresco, borrado o paso de la
+        sincronización con Riot bloqueaba la interfaz varios segundos. Quien
+        modifique una sesión debe guardarla (``_save_sessions``) para que el
+        cambio llegue al disco y a esta caché.
+        """
+        stamp = self._path_stamp()
+
+        if self._sessions_cache is not None and stamp == self._sessions_cache_stamp:
+            return self._sessions_cache
+
+        sessions = self._read_sessions_file()
+        self._sessions_cache = sessions
+        self._sessions_cache_stamp = stamp
+
+        return sessions
+
+    def _read_sessions_file(self) -> list[dict[str, Any]]:
         try:
             with self.sessions_path.open("r", encoding="utf-8") as file:
                 data = json.load(file)
         except (FileNotFoundError, OSError, json.JSONDecodeError):
             return []
+
         return data if isinstance(data, list) else []
+
+    def _path_stamp(self) -> tuple[str, int, int]:
+        """``(ruta, mtime_ns, tamaño)``: identifica el contenido del fichero."""
+        try:
+            stat = self.sessions_path.stat()
+            return (str(self.sessions_path), stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            return (str(self.sessions_path), 0, 0)
 
     def delete_saved_session(self, session_id: str) -> None:
         sessions = [
@@ -1099,6 +1160,18 @@ class LiveMatchTracker:
         self,
         sessions: list[dict[str, Any]],
     ) -> None:
+        """Guarda la lista completa en disco y la deja como caché en memoria.
+
+        Se escribe JSON compacto (sin ``indent``): el mismo contenido ocupa la
+        mitad y tarda la mitad en escribirse y en volver a leerse. Los
+        snapshots de cada sesión se reducen a la resolución de guardado, de
+        modo que el historial deja de crecer sin freno y el primer guardado
+        tras esta mejora compacta también las partidas ya existentes.
+        """
+        for session in sessions:
+            if isinstance(session, dict):
+                thin_snapshots(session)
+
         self.sessions_path.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -1109,32 +1182,72 @@ class LiveMatchTracker:
                 sessions,
                 file,
                 ensure_ascii=False,
-                indent=2,
+                separators=(",", ":"),
             )
         temporary_path.replace(self.sessions_path)
 
-    @staticmethod
-    def _fetch_current_version() -> str:
-        """
-        Obtiene la versión actual del parche desde DataDragon.
+        self._sessions_cache = sessions
+        self._sessions_cache_stamp = self._path_stamp()
 
-        Se usa al inicio de la sesión para guardar el parche en el que
-        se jugó la partida, de modo que el análisis pospartida pueda
-        resolver items y campeones con la versión exacta.
+def thin_snapshots(
+    session: dict[str, Any],
+    interval: float = LiveMatchTracker.SNAPSHOT_SAVE_INTERVAL_SECONDS,
+) -> int:
+    """Reduce los snapshots de una sesión a la resolución de guardado.
 
-        Devuelve un string vacío si la petición falla (sin conexión,
-        timeout, etc.) para no bloquear el inicio de la partida.
-        """
-        try:
-            import requests  # importación local para no añadir dep. circular
-            response = requests.get(
-                "https://ddragon.leagueoflegends.com/api/versions.json",
-                timeout=5,
-            )
-            response.raise_for_status()
-            versions = response.json()
-            if isinstance(versions, list) and versions:
-                return str(versions[0])
-        except Exception:
-            pass
-        return ""
+    Devuelve cuántos puntos se conservaron. Es idempotente, así que aplicarla
+    sobre una sesión ya reducida no cambia nada. Se guardan siempre el primer
+    punto y el último (el que describe el estado final) además de un punto por
+    cada ``interval`` segundos, que es de sobra para las gráficas y las fases
+    del análisis pospartida; ``player_timelines`` y ``final_scoreboard`` son
+    campos aparte y no pierden nada.
+    """
+    snapshots = session.get("snapshots")
+
+    if not isinstance(snapshots, list):
+        return 0
+
+    if len(snapshots) < 2:
+        return len(snapshots)
+
+    try:
+        step = max(0.0, float(interval))
+    except (TypeError, ValueError):
+        step = 0.0
+
+    if step <= 0:
+        return len(snapshots)
+
+    kept: list[Any] = []
+    next_time: float | None = None
+
+    for index, snapshot in enumerate(snapshots):
+        if index == 0:
+            kept.append(snapshot)
+            next_time = _snapshot_time(snapshot) + step
+            continue
+
+        moment = _snapshot_time(snapshot)
+
+        if next_time is not None and moment >= next_time:
+            kept.append(snapshot)
+            next_time = moment + step
+
+    if kept[-1] is not snapshots[-1]:
+        kept.append(snapshots[-1])
+
+    if len(kept) != len(snapshots):
+        session["snapshots"] = kept
+
+    return len(kept)
+
+
+def _snapshot_time(snapshot: Any) -> float:
+    """Momento (segundos de partida) de un snapshot; 0 si no es válido."""
+    if not isinstance(snapshot, dict):
+        return 0.0
+
+    try:
+        return float(snapshot.get("time", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0

@@ -6,3 +6,7 @@ config.local.json
 data/item_icons/
 data/champion_icons/
 data/champion_data/
+data/rune_icons/
+data/spell_icons/
+build/
+dist/

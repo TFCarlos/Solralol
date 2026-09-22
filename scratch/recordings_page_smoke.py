@@ -43,9 +43,10 @@ def main() -> None:
     assert kda_card.objectName() == "recordingKdaCard"
     assert kda_card.width() == 120
 
-    # 2) Empty KDA
+    # 2) Empty KDA (marcador de «sin datos», nunca texto vacío)
     page._update_kda_card()
-    assert page.kda_value.text() == ""
+    assert page.kda_value.text() == "—"
+    assert not page.kda_objectives.isVisibleTo(page)
 
     # 3) With markers (set them on the slider because _update_kda_card reads from it)
     from app.ui.recordings_page import MarkerSlider
@@ -92,9 +93,6 @@ def main() -> None:
     page._update_kda_card()
     text = page.kda_value.text()
     assert "⚔ 7" in text
-
-    print("recordings page smoke ok")
-
 
     print("recordings page smoke ok")
 
