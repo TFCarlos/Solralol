@@ -19,6 +19,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Callable
 
+from _paths import DATA_DIR
 from app.services.riot_api_service import RiotApiService, RiotApiError
 
 # Límites de la API key de desarrollo de Riot
@@ -171,7 +172,7 @@ class WinrateCalculatorService:
         self.platform_region = platform_region.casefold()
         self._limiter = RateLimiter()
         self.champions_path = champions_path or (
-            Path(__file__).parents[2] / "data" / "champions_strict.json"
+            DATA_DIR / "champions_strict.json"
         )
         if self.api_key:
             self._api: RiotApiService | None = RiotApiService(

@@ -5,9 +5,10 @@ from pathlib import Path
 
 import requests
 
+from _paths import DATA_DIR
+
 DD_BASE_URL = "https://ddragon.leagueoflegends.com"
 
-DATA_DIR = Path("data")
 ITEM_CACHE_FILE = DATA_DIR / "items.json"
 ICON_DIR = DATA_DIR / "item_icons"
 CHAMPION_ICON_DIR = DATA_DIR / "champion_icons"

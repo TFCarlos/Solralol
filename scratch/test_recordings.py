@@ -25,17 +25,25 @@ from app.services.recording_service import (
     QUALITY_PRESETS,
     RecordingConfig,
     RecordingLibrary,
+    audio_mode_label,
+    audio_mode_uses_game,
+    audio_mode_uses_full_system,
+    audio_mode_uses_mic,
+    audio_mode_uses_system,
     bitrate_label,
     build_ffmpeg_command,
     build_markers,
+    derive_audio_mode,
     find_ffmpeg,
     format_duration,
     format_size,
     marker_counts,
     markers_summary,
+    normalize_audio_mode,
     normalize_bitrate,
     pick_game_audio_device,
     pick_microphone_device,
+    pick_system_audio_device,
     quality_label,
     recording_settings_defaults,
     sanitize_filename_part,
@@ -154,6 +162,120 @@ class PresetTests(unittest.TestCase):
         self.assertEqual(config.game_audio_device, "Stereo Mix")
         self.assertEqual(config.size_limit_bytes, 25 * 1024**3)
 
+    def test_audio_mode_migration_from_legacy_keys(self):
+        # Ajustes antiguos: el modo se deduce del micro y del dispositivo.
+        self.assertEqual(
+            RecordingConfig.from_settings(
+                {
+                    "recording_game_audio_device": "Stereo Mix",
+                    "recording_mic_enabled": True,
+                }
+            ).audio_mode,
+            "game_mic",
+        )
+        self.assertEqual(
+            RecordingConfig.from_settings(
+                {"recording_mic_enabled": True}
+            ).audio_mode,
+            "mic",
+        )
+        self.assertEqual(
+            RecordingConfig.from_settings(
+                {"recording_game_audio_device": "Stereo Mix"}
+            ).audio_mode,
+            "game",
+        )
+        self.assertEqual(
+            RecordingConfig.from_settings({}).audio_mode,
+            "none",
+        )
+
+        # Ajustes nuevos: la clave manda y no se re-deduce.
+        self.assertEqual(
+            RecordingConfig.from_settings(
+                {"recording_audio_mode": "all"}
+            ).audio_mode,
+            "all",
+        )
+        self.assertEqual(
+            RecordingConfig.from_settings(
+                {
+                    "recording_audio_mode": "basura",
+                    "recording_game_audio_device": "Stereo Mix",
+                }
+            ).audio_mode,
+            "game",
+        )
+        # Con captura de sistema activada y micrófono → full.
+        self.assertEqual(
+            RecordingConfig.from_settings(
+                {
+                    "recording_audio_mode": "basura",
+                    "recording_mic_enabled": True,
+                    "recording_mic_capture_enabled": True,
+                    "recording_game_audio_device": "Stereo Mix",
+                }
+            ).audio_mode,
+            "full",
+        )
+
+    def test_audio_mode_helpers(self):
+        self.assertEqual(normalize_audio_mode(None), "game")
+        self.assertEqual(
+            audio_mode_label("all"),
+            "Juego + micrófono + resto del PC (Discord, YouTube, etc.)",
+        )
+        self.assertTrue(audio_mode_uses_game("game_mic"))
+        self.assertFalse(audio_mode_uses_game("mic"))
+        self.assertTrue(audio_mode_uses_mic("all"))
+        self.assertFalse(audio_mode_uses_mic("game"))
+        self.assertTrue(audio_mode_uses_system("all"))
+        self.assertFalse(audio_mode_uses_system("game_mic"))
+        self.assertTrue(audio_mode_uses_full_system("full"))
+        self.assertFalse(audio_mode_uses_full_system("all"))
+        self.assertTrue(audio_mode_uses_full_system("full"))
+        self.assertFalse(audio_mode_uses_system("game"))
+
+
+class AudioPickTests(unittest.TestCase):
+    def test_picks_loopback_and_microphone(self):
+        devices = ["Microfono (Realtek)", "Stereo Mix (Realtek)"]
+        self.assertEqual(
+            pick_game_audio_device(devices), "Stereo Mix (Realtek)"
+        )
+        self.assertEqual(
+            pick_microphone_device(devices), "Microfono (Realtek)"
+        )
+        self.assertEqual(pick_game_audio_device([]), "")
+        self.assertEqual(
+            pick_microphone_device(["Altavoces"]), "Altavoces"
+        )
+
+    def test_system_device_skips_the_excluded_ones(self):
+        devices = [
+            "Stereo Mix (Realtek)",
+            "VB-Cable Output (VB-Audio)",
+            "Microfono (Realtek)",
+        ]
+
+        # El juego ya se captura con Stereo Mix: no se repite ese input.
+        self.assertEqual(
+            pick_system_audio_device(
+                devices, exclude={"Stereo Mix (Realtek)"}
+            ),
+            "VB-Cable Output (VB-Audio)",
+        )
+
+        # Sin capturador libre, no se añade nada (el propio Stereo Mix ya
+        # incluye la mezcla completa del sistema).
+        self.assertEqual(
+            pick_system_audio_device(
+                ["Stereo Mix (Realtek)", "Microfono (Realtek)"],
+                exclude={"Stereo Mix (Realtek)"},
+            ),
+            "",
+        )
+
     def test_config_defaults_unknown_values(self):
         config = RecordingConfig.from_settings({})
         self.assertTrue(config.enabled)
@@ -216,6 +338,42 @@ class CommandTests(unittest.TestCase):
         joined = " ".join(command)
         self.assertIn("audio=Microfono", joined)
         self.assertIn("-c:a", command)
+
+    def test_system_audio_mode_mixes_a_third_device(self):
+        command = build_ffmpeg_command(
+            ffmpeg_path="ffmpeg",
+            output_path="salida.mp4",
+            game_audio_device="Stereo Mix",
+            mic_device="Microfono",
+            system_audio_device="virtual-audio-capturer",
+        )
+        joined = " ".join(command)
+        self.assertIn("audio=virtual-audio-capturer", joined)
+        self.assertIn("amix=inputs=3", joined)
+
+    def test_system_full_includes_third_device(self):
+        command = build_ffmpeg_command(
+            ffmpeg_path="ffmpeg",
+            output_path="salida.mp4",
+            game_audio_device="Stereo Mix",
+            mic_device="Microfono",
+            system_audio_device="virtual-audio-capturar",
+            audio_mode="full",
+        )
+        joined = " ".join(command)
+        self.assertIn("audio=virtual-audio-capturar", joined)
+        self.assertIn("amix=inputs=3", joined)
+
+    def test_duplicated_devices_are_not_input_twice(self):
+        command = build_ffmpeg_command(
+            ffmpeg_path="ffmpeg",
+            output_path="salida.mp4",
+            game_audio_device="Stereo Mix",
+            system_audio_device="Stereo Mix",
+        )
+        joined = " ".join(command)
+        self.assertEqual(joined.count("audio=Stereo Mix"), 1)
+        self.assertNotIn("amix=inputs=", joined)
 
     def test_quality_changes_scale_and_framerate(self):
         low = build_ffmpeg_command(

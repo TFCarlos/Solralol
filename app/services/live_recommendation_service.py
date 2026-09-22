@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from _paths import DATA_DIR
 from app.services.synergy_recommendation_service import SynergyRecommendationService
 
 
@@ -41,7 +42,7 @@ def item_ids(values):
 
 @lru_cache(maxsize=1)
 def load_knowledge():
-    root = Path(__file__).resolve().parents[2] / "data"
+    root = DATA_DIR
     def read(name):
         try:
             value = json.loads((root / name).read_text(encoding="utf-8"))

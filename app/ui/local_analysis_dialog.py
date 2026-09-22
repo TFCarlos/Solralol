@@ -7,6 +7,8 @@ from typing import Any
 import math
 from math import cos, sin
 
+from _paths import DATA_DIR
+
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
@@ -439,9 +441,9 @@ class LocalAnalysisDialog(QDialog):
         self.setObjectName("localAnalysisDialog")
         self.setWindowTitle("Análisis local · SolraLoL")
         self.resize(1100, 760)
-        self.champions_path = Path(__file__).parents[2] / "data" / "champions_strict.json"
-        self.items_path = Path(__file__).parents[2] / "data" / "legendary_items_strict.json"
-        self.catalog_path = Path(__file__).parents[2] / "data" / "items.json"
+        self.champions_path = DATA_DIR / "champions_strict.json"
+        self.items_path = DATA_DIR / "legendary_items_strict.json"
+        self.catalog_path = DATA_DIR / "items.json"
         self.champions = self._load(self.champions_path)
         self._known_champion_names = {str(entry.get("character", "")).casefold(): str(entry.get("character", "")) for entry in self.champions}
         self.items = self._load(self.items_path)

@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
+from _paths import DATA_DIR
+
 import requests
 from PySide6.QtCore import (
     QObject,
@@ -29,7 +31,7 @@ class DataDragonAssetService(QObject):
         super().__init__(parent)
         # Use the patch of the locally downloaded item catalog. A fixed old
         # patch cannot serve icons for newer items (e.g. Dusk and Dawn, 2510).
-        catalog_path = Path(__file__).resolve().parents[2] / "data" / "items.json"
+        catalog_path = DATA_DIR / "items.json"
         catalog = self._load_json(catalog_path)
         version = catalog.get("version") if isinstance(catalog, dict) else None
         self.version = (

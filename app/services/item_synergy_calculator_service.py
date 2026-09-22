@@ -18,13 +18,14 @@ from pathlib import Path
 from typing import Any
 
 from data_dragon import download_items, get_latest_version, load_item_catalog
+from _paths import DATA_DIR
 
 
 class ItemSynergyCalculatorService:
     """Calculadora cuantitativa y generador de objetos a partir de Data Dragon."""
 
-    DEFAULT_RULES_PATH = Path(__file__).parents[2] / "data" / "passive_rules.json"
-    DEFAULT_ITEMS_PATH = Path(__file__).parents[2] / "data" / "legendary_items_strict.json"
+    DEFAULT_RULES_PATH = DATA_DIR / "passive_rules.json"
+    DEFAULT_ITEMS_PATH = DATA_DIR / "legendary_items_strict.json"
 
     def __init__(self, rules_path: Path | None = None) -> None:
         self.rules_path = rules_path or self.DEFAULT_RULES_PATH

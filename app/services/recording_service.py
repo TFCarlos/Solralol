@@ -94,6 +94,36 @@ MIC_HINTS = (
     "webcam",
 )
 
+#: Dispositivos que capturan la mezcla completa del sistema (Discord,
+#: YouTube, etc.) además del juego: capturadores virtuales y cables.
+SYSTEM_AUDIO_HINTS = (
+    "virtual-audio-capturer",
+    "vb-cable",
+    "voicemeeter",
+    "loopback",
+    "cable output",
+    "stereo mix",
+    "mezcla estéreo",
+    "mezcla estereo",
+    "what u hear",
+)
+
+#: Qué audio se mezcla en la grabación. ``none`` solo vídeo; ``game`` la
+#: fuente elegida para el sonido del juego; ``mic`` solo el micrófono;
+#: ``game_mic`` los dos; ``all`` añade además un capturador de la mezcla
+#: del sistema (Discord, YouTube...) cuando hay un dispositivo disponible.
+AUDIO_MODES = ("none", "game", "mic", "game_mic", "all", "full")
+DEFAULT_AUDIO_MODE = "game"
+
+AUDIO_MODE_LABELS = {
+    "none": "Sin sonido (solo vídeo)",
+    "game": "Solo juego",
+    "mic": "Solo micrófono",
+    "game_mic": "Solo juego y micrófono",
+    "all": "Juego + micrófono + resto del PC (Discord, YouTube, etc.)",
+    "full": "Juego + micrófono + todo el resto del sistema",
+}
+
 VIDEO_SUFFIXES = (".mp4", ".mkv")
 
 #: Qué parte de la pantalla se graba. ``game`` (por defecto) localiza la
@@ -285,10 +315,14 @@ class RecordingConfig:
     mic_enabled: bool = False
     mic_device: str = ""
     game_audio_device: str = ""
+    mic_capture_enabled: bool = False
+    mic_capture_device: str = ""
+    mic_capture_enabled: bool = False
     size_limit_gb: float = float(LIMIT_DEFAULT_GB)
     ffmpeg_path: str = ""
     capture_mode: str = DEFAULT_CAPTURE_MODE
     capture_window_title: str = ""
+    audio_mode: str = DEFAULT_AUDIO_MODE
 
     @property
     def height(self) -> int:
@@ -324,6 +358,24 @@ class RecordingConfig:
         except (TypeError, ValueError):
             limit_value = float(LIMIT_DEFAULT_GB)
 
+        mic_enabled = bool(data.get("recording_mic_enabled", False))
+        mic_capture_enabled = bool(
+            data.get("recording_mic_capture_enabled", False)
+        )
+        game_audio_device = str(
+            data.get("recording_game_audio_device") or ""
+        )
+
+        # Migración: los ajustes antiguos no tienen modo de audio, se
+        # deduce del micrófono, del capturador de sistema y del dispositivo
+        # del juego guardados para no cambiar el comportamiento de nadie.
+        audio_mode = derive_audio_mode(
+            data.get("recording_audio_mode"),
+            mic_enabled=mic_enabled,
+            mic_capture_enabled=mic_capture_enabled,
+            game_audio_device=game_audio_device,
+        )
+
         return cls(
             output_dir=(
                 Path(output_dir).expanduser()
@@ -335,11 +387,11 @@ class RecordingConfig:
             video_bitrate=normalize_bitrate(
                 data.get("recording_bitrate", DEFAULT_BITRATE)
             ),
-            mic_enabled=bool(data.get("recording_mic_enabled", False)),
+            mic_enabled=mic_enabled,
+            mic_capture_enabled=mic_capture_enabled,
+            mic_capture_device=str(data.get("recording_mic_capture_device") or ""),
             mic_device=str(data.get("recording_mic_device") or ""),
-            game_audio_device=str(
-                data.get("recording_game_audio_device") or ""
-            ),
+            game_audio_device=game_audio_device,
             size_limit_gb=limit_value,
             ffmpeg_path=str(data.get("ffmpeg_path") or ""),
             capture_mode=normalize_capture_mode(
@@ -348,16 +400,25 @@ class RecordingConfig:
             capture_window_title=str(
                 data.get("recording_capture_window") or ""
             ),
+            audio_mode=audio_mode,
         )
 
 
 def recording_settings_defaults() -> dict[str, Any]:
-    """Valores por defecto de las claves de grabación de settings.json."""
+    """Valores por defecto de las claves de grabación de settings.json.
+
+    ``recording_audio_mode`` NO va aquí a propósito: si se precargara con
+    ``setdefault``, taparía la migración de ``derive_audio_mode`` para los
+    ajustes antiguos. Se escribe la primera vez que el usuario cambia el
+    modo de audio en Ajustes.
+    """
     return {
         "recording_auto": True,
         "recording_quality": DEFAULT_QUALITY,
         "recording_bitrate": DEFAULT_BITRATE,
         "recording_mic_enabled": False,
+        "recording_mic_capture_enabled": False,
+        "recording_mic_capture_device": "",
         "recording_mic_device": "",
         "recording_game_audio_device": "",
         "recording_output_dir": str(default_recordings_dir()),
@@ -507,6 +568,105 @@ def normalize_capture_mode(value: Any) -> str:
     mode = str(value or "")
 
     return mode if mode in CAPTURE_MODES else DEFAULT_CAPTURE_MODE
+
+
+def normalize_audio_mode(value: Any) -> str:
+    """Modo de audio válido desde cualquier valor guardado."""
+    mode = str(value or "").strip()
+
+    return mode if mode in AUDIO_MODES else DEFAULT_AUDIO_MODE
+
+
+def derive_audio_mode(
+    value: Any,
+    *,
+    mic_enabled: bool = False,
+    mic_capture_enabled: bool = False,
+    game_audio_device: str = "",
+) -> str:
+    """Modo de audio de un ajuste, migrando configuraciones antiguas.
+
+    Si ``recording_audio_mode`` no existe o no es válido, se deduce de las
+    claves que usaban las versiones anteriores (dispositivo del juego, checkbox
+    del micrófono y, si existía, captura de mezcla del sistema) para no cambiar
+    el comportamiento de nadie.
+    """
+    mode = str(value or "").strip()
+
+    if mode in AUDIO_MODES:
+        return mode
+
+    uses_game = bool(str(game_audio_device or "").strip())
+    uses_mic = bool(mic_enabled)
+    uses_system_capture = bool(mic_capture_enabled)
+
+    if uses_system_capture:
+        if uses_game and uses_mic:
+            return "full"
+        if uses_mic:
+            return "full"
+        return "full"
+
+    if uses_game and uses_mic:
+        return "game_mic"
+
+    if uses_mic:
+        return "mic"
+
+    if uses_game:
+        return "game"
+
+    return "none"
+
+
+def audio_mode_label(mode: Any) -> str:
+    return AUDIO_MODE_LABELS.get(
+        normalize_audio_mode(mode),
+        AUDIO_MODE_LABELS[DEFAULT_AUDIO_MODE],
+    )
+
+
+def audio_mode_uses_game(mode: Any) -> bool:
+    return normalize_audio_mode(mode) in {"game", "game_mic", "all", "full"}
+
+
+def audio_mode_uses_mic(mode: Any) -> bool:
+    return normalize_audio_mode(mode) in {"mic", "game_mic", "all", "full"}
+
+
+def audio_mode_uses_system(mode: Any) -> bool:
+    return normalize_audio_mode(mode) in {"all", "full"}
+
+
+def audio_mode_uses_full_system(mode: Any) -> bool:
+    return normalize_audio_mode(mode) == "full"
+
+
+def pick_system_audio_device(
+    devices: list[str],
+    exclude: set[str] | None = None,
+) -> str:
+    """Dispositivo que captura la mezcla del sistema, distinto del elegido.
+
+    Para el modo «Todo»: si el sonido del juego ya sale de una mezcla
+    (Stereo Mix, capturador virtual...) ese mismo ya incluye Discord y
+    YouTube, y no se añade nada más. Si hay otro capturador libre
+    (VB-Cable, Voicemeeter...), se usa como fuente adicional.
+    """
+    skip = {
+        str(value)
+        for value in (exclude or set())
+        if str(value or "").strip()
+    }
+
+    for device in devices:
+        if device in skip:
+            continue
+
+        if matches_any(device, SYSTEM_AUDIO_HINTS):
+            return device
+
+    return ""
 
 
 def capture_mode_label(mode: Any) -> str:
@@ -709,9 +869,11 @@ def build_ffmpeg_command(
     video_bitrate: int = DEFAULT_BITRATE,
     game_audio_device: str = "",
     mic_device: str = "",
+    system_audio_device: str = "",
     capture_window_title: str = "",
     capture_desktop: bool = True,
     capture_area: CaptureArea | None = None,
+    audio_mode: str = DEFAULT_AUDIO_MODE,
 ) -> list[str]:
     """Construye la orden completa de ffmpeg para una grabación.
 
@@ -720,9 +882,24 @@ def build_ffmpeg_command(
       escritorio virtual, que es como se graba únicamente el monitor donde
       está el juego sin arrastrar el resto de pantallas.
     - El sonido del juego sale de una fuente DirectShow (mezcla estéreo).
-    - El micrófono, si se indica, se mezcla con ``amix`` sobre el audio del
-      juego para que ambos queden en la misma pista.
+    - El micrófono y, si se pide, un capturador de la mezcla del sistema
+      (modo «Todo»: Discord, YouTube...) se mezclan con ``amix`` sobre el
+      audio del juego para que todos queden en la misma pista.
+    - El modo ``full`` incluye el sonido del juego, del micrófono y un
+      capturador de mezcla del sistema (por ejemplo Discord, navegadores,
+      Voicemeeter, Stereo Mix, etc.) si hay dispositivo disponible.
     """
+    window_title = capture_window_title.strip()
+    framerate = str(quality_fps(quality))
+
+    mode = normalize_audio_mode(audio_mode)
+    include_system_audio = audio_mode_uses_full_system(mode) or audio_mode_uses_system(mode)
+
+    if include_system_audio and not system_audio_device:
+        # Si el usuario eligió modo que captura el sistema pero no eligió
+        # dispositivo, se intenta deducirlo después; aquí no se añade nada
+        # hasta que haya dispositivo efectivo.
+        pass
     window_title = capture_window_title.strip()
     framerate = str(quality_fps(quality))
 
@@ -786,11 +963,15 @@ def build_ffmpeg_command(
 
     audio_devices: list[str] = []
 
-    if game_audio_device:
-        audio_devices.append(game_audio_device)
+    for device in (
+        game_audio_device,
+        mic_device,
+        system_audio_device if audio_mode_uses_system(mode) else "",
+    ):
+        name = str(device or "").strip()
 
-    if mic_device and mic_device not in audio_devices:
-        audio_devices.append(mic_device)
+        if name and name not in audio_devices:
+            audio_devices.append(name)
 
     for device in audio_devices:
         command.extend(
@@ -1553,13 +1734,45 @@ class RecordingService(QObject):
             if counter > 99:
                 break
 
+        # Resolución de dispositivos según el modo de audio: el juego y el
+        # micrófono se auto-detectan si no hay uno guardado; el modo «Todo»
+        # añade además un capturador de la mezcla del sistema distinto del
+        # ya usado (si el juego ya se captura con Stereo Mix, ese mismo ya
+        # incluye Discord/YouTube y no se añade un segundo).
+        mode = normalize_audio_mode(config.audio_mode)
+        game_device = ""
+        mic_device = ""
+        system_device = ""
+
+        if mode != "none":
+            available = list_audio_devices(self.ffmpeg_path)
+
+            if audio_mode_uses_game(mode):
+                game_device = (
+                    config.game_audio_device
+                    or pick_game_audio_device(available)
+                )
+
+            if audio_mode_uses_mic(mode):
+                mic_device = (
+                    config.mic_device
+                    or pick_microphone_device(available)
+                )
+
+            if audio_mode_uses_system(mode):
+                system_device = pick_system_audio_device(
+                    available,
+                    exclude={game_device, mic_device},
+                )
+
         command = build_ffmpeg_command(
             ffmpeg_path=self.ffmpeg_path,
             output_path=output,
             quality=config.quality,
             video_bitrate=config.video_bitrate,
-            game_audio_device=config.game_audio_device,
-            mic_device=config.mic_device if config.mic_enabled else "",
+            game_audio_device=game_device,
+            mic_device=mic_device,
+            system_audio_device=system_device,
             capture_area=(
                 find_game_capture_area()
                 if config.capture_mode == "game"

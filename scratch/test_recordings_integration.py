@@ -222,8 +222,28 @@ class RecordingsIntegrationTests(unittest.TestCase):
         )
 
         self.assertTrue(window.recording_auto_checkbox.isChecked())
-        self.assertFalse(window.recording_mic_checkbox.isChecked())
-        self.assertFalse(window.recording_mic_combo.isEnabled())
+
+        # Audio: un solo desplegable de modo con las 5 opciones, y los
+        # selectores de dispositivo visibles solo en los modos que los usan.
+        audio_mode = window.recording_audio_mode_combo
+        self.assertEqual(
+            [audio_mode.itemData(i) for i in range(audio_mode.count())],
+            ["none", "game", "mic", "game_mic", "all", "full"],
+        )
+        self.assertEqual(
+            audio_mode.itemText(audio_mode.findData("all")),
+            "Juego + micrófono + otros (Discord, YouTube…)",
+        )
+
+        current = audio_mode.currentData()
+        self.assertEqual(
+            window.recording_game_audio_combo.isVisibleTo(window),
+            current in {"game", "game_mic", "all", "full"},
+        )
+        self.assertEqual(
+            window.recording_mic_combo.isVisibleTo(window),
+            current in {"mic", "game_mic", "all", "full"},
+        )
 
         slider = window.recording_limit_slider
         self.assertEqual(slider.minimum(), LIMIT_MIN_GB)

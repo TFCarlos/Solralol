@@ -1412,6 +1412,47 @@ class MainWindowReplayTests(unittest.TestCase):
             [],
         )
 
+    def test_find_recording_for_session_caches_sidecars(self):
+        library = self.window.recording_library
+
+        for index, sid in enumerate(("s-1", "s-2", "s-3")):
+            video = library.directory / f"Solralol_{index}.mp4"
+            video.write_bytes(b"x" * 64)
+            library.write_metadata(video, {"session_id": sid})
+
+        calls: list[Path] = []
+        original = library.load_metadata
+
+        library.load_metadata = lambda p: (  # type: ignore[method-assign]
+            calls.append(Path(p)), original(p)
+        )[1]
+
+        session = {"session_id": "s-2"}
+        self.assertTrue(self.window.find_recording_for_session(session))
+        loaded_first_pass = len(calls)
+
+        self.assertTrue(loaded_first_pass >= 1)
+
+        self.assertTrue(self.window.find_recording_for_session(session))
+        self.assertEqual(len(calls), loaded_first_pass)
+
+        self.window.invalidate_recording_metadata_cache()
+        self.assertTrue(self.window.find_recording_for_session(session))
+        self.assertGreater(len(calls), loaded_first_pass)
+
+        library.load_metadata = original  # type: ignore[method-assign]
+
+    def test_deleting_a_saved_game_invalidates_the_sidecar_cache(self):
+        video = self.write_recording(session_id="sesion-local-1")
+
+        self.assertTrue(self.window.recording_metadata_cached(video))
+        self.assertTrue(self.window._recording_metadata_cache)
+
+        self.window.delete_recording_file(str(video))
+
+        self.assertEqual(self.window._recording_metadata_cache, {})
+        self.assertEqual(self.window.recording_metadata_cached(video), {})
+
     def test_open_replay_window_matches_the_video_and_is_reused(self):
         video = self.write_recording()
         session = sample_session()

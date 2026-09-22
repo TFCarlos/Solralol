@@ -11,6 +11,8 @@ from typing import Any, Callable
 import requests
 from bs4 import BeautifulSoup, Tag
 
+from _paths import DATA_DIR
+
 _ROLE = {"top": "top", "jungle": "jungle", "mid": "mid", "middle": "mid", "adc": "adc", "bot": "adc", "bottom": "adc", "support": "support", "utility": "support"}
 _TREES = {"Precision", "Domination", "Sorcery", "Resolve", "Inspiration"}
 _KEYSTONES = {"Press the Attack", "Lethal Tempo", "Fleet Footwork", "Conqueror", "Electrocute", "Dark Harvest", "Hail of Blades", "Arcane Comet", "Summon Aery", "Phase Rush", "Grasp of the Undying", "Aftershock", "Guardian", "Glacial Augment", "First Strike", "Unsealed Spellbook"}
@@ -20,7 +22,7 @@ class ChampionScraperService:
     """No usa APIs privadas de U.GG; interpreta las páginas públicas visibles."""
 
     def __init__(self, champions_path: Path | None = None, request_delay: float = 0.8) -> None:
-        self.champions_path = champions_path or Path(__file__).resolve().parents[2] / "data" / "champions_strict.json"
+        self.champions_path = champions_path or DATA_DIR / "champions_strict.json"
         self.request_delay = max(0.0, request_delay)
         self.session = requests.Session()
         self.session.headers.update({

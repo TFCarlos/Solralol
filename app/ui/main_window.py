@@ -13,6 +13,7 @@ from PySide6.QtCore import (
 
 from PySide6.QtGui import (
     QColor,
+    QDesktopServices,
     QPainter,
     QRadialGradient,
 )
@@ -67,6 +68,8 @@ from app.services.postgame_sync_worker import (
 )
 
 from app.services.recording_service import (
+    AUDIO_MODE_LABELS,
+    AUDIO_MODES,
     BITRATE_PRESETS,
     DEFAULT_BITRATE,
     LIMIT_DEFAULT_GB,
@@ -76,12 +79,19 @@ from app.services.recording_service import (
     RecordingConfig,
     RecordingLibrary,
     RecordingService,
+    audio_mode_uses_game,
+    audio_mode_uses_mic,
+    audio_mode_uses_system,
+    audio_mode_uses_full_system,
+    audio_mode_label,
     bitrate_label,
     find_video_for_session,
     format_size,
     list_audio_devices,
+    normalize_audio_mode,
     pick_game_audio_device,
     pick_microphone_device,
+    pick_system_audio_device,
     quality_label,
     recording_settings_defaults,
 )
@@ -179,6 +189,15 @@ class MainWindow(QMainWindow):
 
         self.version = version
         self.item_catalog = item_catalog
+        # Sidecar por vídeo: [(mtime_ns del JSON, metadatos)], consultado
+        # en cada fila de «Partidas guardadas» y cada coincidencia de
+        # repaso; sin caché serían O(filas × vídeos) lecturas por refresco.
+        self._recording_metadata_cache: dict[str, tuple[int, dict]] = {}
+        # Listado de vídeos cacheado mientras el mtime de la carpeta no
+        # cambie: video_files() hace iterdir+stat por fichero y se consulta
+        # una vez por fila en cada refresco de la lista.
+        self._recording_videos_cache: list[Path] | None = None
+        self._recording_videos_cache_stamp: int | None = None
         self.settings_service = SettingsService()
         self.settings = self.settings_service.load()
         self.riot_api_key = self.settings.get(
@@ -252,6 +271,9 @@ class MainWindow(QMainWindow):
         self.recording_service.state_changed.connect(
             self._sync_overlay_recording
         )
+        self.recording_system_audio_combo = None
+        self.recording_system_audio_button = None
+        self.recording_mic_capture_enabled = False
 
         self.match_history: list[dict] = []
         self.history_is_loading = False
@@ -1214,7 +1236,69 @@ class MainWindow(QMainWindow):
         if video_path:
             self.delete_recording_file(video_path)
 
+        # El borrado del vídeo ya reconstruye las dos listas (la señal
+        # recordings_changed refresca las partidas guardadas); aquí basta
+        # con la invalidación de la caché de sidecars.
+        self.invalidate_recording_metadata_cache()
         self.refresh_saved_games()
+
+    def invalidate_recording_metadata_cache(self) -> None:
+        """Olvida sidecars y listado de vídeos (tras borrar o grabar)."""
+        self._recording_metadata_cache.clear()
+        self._recording_videos_cache = None
+        self._recording_videos_cache_stamp = None
+
+    def recording_videos_cached(self) -> list[Path]:
+        """Listado de vídeos de la carpeta, releído solo si cambió.
+
+        ``video_files()`` lista el directorio y hace ``stat`` de cada
+        fichero: dentro de ``refresh_saved_games`` se consulta una vez por
+        fila, así que se cachea contra el ``mtime`` de la carpeta (cambia
+        al crear, borrar o renombrar entradas).
+        """
+        try:
+            stamp = self.recording_library.directory.stat().st_mtime_ns
+        except OSError:
+            stamp = None
+
+        if (
+            self._recording_videos_cache is not None
+            and self._recording_videos_cache_stamp == stamp
+        ):
+            return self._recording_videos_cache
+
+        videos = self.recording_library.video_files()
+        self._recording_videos_cache = videos
+        self._recording_videos_cache_stamp = stamp
+
+        return videos
+
+    def recording_metadata_cached(self, video_path: str | Path) -> dict:
+        """Sidecar de un vídeo leído de disco una sola vez.
+
+        ``refresh_saved_games`` consulta los sidecars de TODOS los vídeos
+        una vez por fila: sin caché son O(filas × vídeos) lecturas de
+        fichero por refresco. La clave incluye el ``mtime`` del JSON para
+        detectar sidecars reescritos sin invalidar todo el lote.
+        """
+        path = Path(video_path)
+        key = str(path)
+
+        try:
+            stamp = path.with_suffix(".json").stat().st_mtime_ns
+        except OSError:
+            self._recording_metadata_cache.pop(key, None)
+            return {}
+
+        cached = self._recording_metadata_cache.get(key)
+
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+
+        metadata = self.recording_library.load_metadata(path)
+        self._recording_metadata_cache[key] = (stamp, metadata)
+
+        return metadata
 
     def delete_recording_file(self, video_path: str) -> bool:
         """Borra un vídeo (y su sidecar) soltando antes los reproductores.
@@ -1243,8 +1327,8 @@ class MainWindow(QMainWindow):
 
         deleted = self.recording_library.delete(video)
 
-        if hasattr(self, "recordings_page"):
-            self.recordings_page.refresh()
+        # Los sidecars han cambiado: la próxima consulta releerá disco.
+        self.invalidate_recording_metadata_cache()
 
         return deleted
 
@@ -1825,20 +1909,52 @@ class MainWindow(QMainWindow):
 
         return row, slider, value
 
-    def _settings_api_card(self) -> QWidget:
-        card, card_layout = self._settings_card("Ajustes")
+    def _settings_web_button(self, url: str, label: str) -> QPushButton:
+        """Botón que abre una web en el navegador del sistema."""
+        button = QPushButton(label)
+        button.setObjectName("secondaryButton")
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip(url)
+        button.clicked.connect(
+            lambda checked=False, target=url: QDesktopServices.openUrl(
+                QUrl(target)
+            )
+        )
 
-        api_title = QLabel("Riot API")
-        api_title.setObjectName("settingsGroupTitle")
-        card_layout.addWidget(api_title)
+        return button
+
+    def _settings_api_card(self) -> QWidget:
+        card, card_layout = self._settings_card(
+            "Riot API — datos de invocador e historial"
+        )
 
         card_layout.addWidget(
             self._settings_description(
-                "Introduce tu Riot API key para habilitar los datos de "
-                "invocador, historial de partidas y estadísticas externas. "
-                "La clave se guarda localmente en tu configuración."
+                "La Riot API es el canal oficial de datos de Riot: partidas, "
+                "estadísticas, perfiles, tier list, etc. SolraLoL la usa para "
+                "sincronizar «Partidas guardadas» (KDA, oro, objetivos, timelines "
+                "juego a juego), cargar el historial soloQ y siempre cuando un "
+                "diálogo de análisis necesita datos oficiales."
             )
         )
+
+        steps = QLabel(
+            "Cómo conseguir la clave:\n"
+            "1. Ve a developer.riotgames.com e inicia sesión con tu cuenta "
+            "Riot.\n"
+            "2. En el panel de desarrollador, acepta las condiciones y pulsa "
+            "«Generate API Key» para crear una clave de desarrollo.\n"
+            "3. Pega aquí la clave (empieza por RGAPI-). Caduca cada 24 h, "
+            "así que vuelve a generarla cuando deje de funcionar.\n"
+            "4. Con la clave activa: se sincronizan «Partidas guardadas», "
+            "el historial soloQ y las estadísticas externas de análisis.\n"
+            "La clave se guarda solo en tu equipo, dentro de la configuración "
+            "local de la app."
+        )
+        steps.setObjectName("settingsSteps")
+        steps.setTextFormat(Qt.TextFormat.PlainText)
+        steps.setWordWrap(True)
+        card_layout.addWidget(steps)
 
         self.api_key_input = QLineEdit()
         self.api_key_input.setObjectName("apiKeyInput")
@@ -1874,6 +1990,13 @@ class MainWindow(QMainWindow):
         )
         api_actions.addWidget(self.clear_api_key_button)
 
+        api_actions.addWidget(
+            self._settings_web_button(
+                "https://developer.riotgames.com",
+                "Abrir portal de desarrolladores ↗",
+            )
+        )
+
         api_actions.addStretch(1)
         card_layout.addLayout(api_actions)
 
@@ -1892,11 +2015,26 @@ class MainWindow(QMainWindow):
 
         card_layout.addWidget(
             self._settings_description(
-                "Introduce tu API key de Google AI Studio (Gemini) para "
-                "habilitar el re-análisis inteligente de campeones desde "
-                "la pestaña de edición."
+                "La IA Gemini alimenta el re-análisis inteligente de "
+                "campeones: lee tus partidas y sugiere builds, runas y "
+                "consejos concretos desde la pestaña de edición. Se "
+                "consigue gratis en Google AI Studio con tu cuenta de "
+                "Google y se guarda solo en tu configuración local."
             )
         )
+
+        gemini_steps = QLabel(
+            "Cómo conseguir la clave:\n"
+            "1. Ve a aistudio.google.com e inicia sesión con tu cuenta de "
+            "Google.\n"
+            "2. Pulsa «Get API key» → «Create API key» dentro de un proyecto.\n"
+            "3. Copia la clave (empieza por AIzaSy…) y pégala aquí abajo. "
+            "La capa gratuita es más que suficiente para el re-análisis."
+        )
+        gemini_steps.setObjectName("settingsSteps")
+        gemini_steps.setTextFormat(Qt.TextFormat.PlainText)
+        gemini_steps.setWordWrap(True)
+        card_layout.addWidget(gemini_steps)
 
         self.gemini_api_key_input = QLineEdit()
         self.gemini_api_key_input.setObjectName("apiKeyInput")
@@ -1929,6 +2067,13 @@ class MainWindow(QMainWindow):
             self.clear_gemini_api_key
         )
         gemini_actions.addWidget(self.clear_gemini_api_key_button)
+
+        gemini_actions.addWidget(
+            self._settings_web_button(
+                "https://aistudio.google.com/apikey",
+                "Abrir Google AI Studio ↗",
+            )
+        )
 
         gemini_actions.addStretch(1)
         card_layout.addLayout(gemini_actions)
@@ -2034,55 +2179,139 @@ class MainWindow(QMainWindow):
             )
         )
 
-        game_audio_row = QHBoxLayout()
-        game_audio_row.setSpacing(10)
+        # Selección del modo de audio para la grabación.
+        audio_mode_row = QHBoxLayout()
+        audio_mode_row.setSpacing(10)
 
-        game_audio_caption = QLabel("Sonido del juego")
-        game_audio_caption.setObjectName("settingsLabel")
-        game_audio_caption.setMinimumWidth(150)
-        game_audio_row.addWidget(game_audio_caption)
+        audio_mode_caption = QLabel("Qué sonido se graba")
+        audio_mode_caption.setObjectName("settingsLabel")
+        audio_mode_caption.setMinimumWidth(150)
+        audio_mode_row.addWidget(audio_mode_caption)
+
+        self.recording_audio_mode_combo = QComboBox()
+        self.recording_audio_mode_combo.setObjectName("analysisCombo")
+
+        for mode in AUDIO_MODES:
+            self.recording_audio_mode_combo.addItem(
+                AUDIO_MODE_LABELS[mode], mode
+            )
+
+        self.set_combo_value(
+            self.recording_audio_mode_combo,
+            RecordingConfig.from_settings(self.settings).audio_mode,
+        )
+        self.recording_audio_mode_combo.currentIndexChanged.connect(
+            self._on_recording_audio_mode_changed
+        )
+        audio_mode_row.addWidget(self.recording_audio_mode_combo, 1)
+        card_layout.addLayout(audio_mode_row)
+
+        # Panel de insumos de audio: cada checkbox habilita/deshabilita su
+        # dispositivo dentro del modo seleccionado. El modo "full" añade un
+        # tercer insumo (mezcla del sistema) que captura Discord, YouTube,
+        # navegadores, etc.
+        audio_mix_card = QFrame()
+        audio_mix_card.setObjectName("sectionCard")
+        audio_mix_card.setMinimumHeight(150)
+        audio_mix_layout = QVBoxLayout(audio_mix_card)
+        audio_mix_layout.setContentsMargins(14, 12, 14, 12)
+        audio_mix_layout.setSpacing(10)
+
+        # --- Sonido del juego ---
+        game_input = QWidget()
+        game_input_layout = QHBoxLayout(game_input)
+        game_input_layout.setContentsMargins(0, 0, 0, 0)
+        game_input_layout.setSpacing(10)
+
+        self.recording_game_audio_caption = QLabel(
+            "Sonido del juego"
+        )
+        self.recording_game_audio_caption.setObjectName("settingsLabel")
+        self.recording_game_audio_caption.setMinimumWidth(150)
+        game_input_layout.addWidget(self.recording_game_audio_caption)
 
         self.recording_game_audio_combo = QComboBox()
         self.recording_game_audio_combo.setObjectName("analysisCombo")
         self.recording_game_audio_combo.currentIndexChanged.connect(
             self._on_recording_game_audio_changed
         )
-        game_audio_row.addWidget(self.recording_game_audio_combo, 1)
-        card_layout.addLayout(game_audio_row)
+        game_input_layout.addWidget(self.recording_game_audio_combo, 1)
+        audio_mix_layout.addWidget(game_input)
 
-        self.recording_mic_checkbox = QCheckBox("Grabar mi micrófono")
-        self.recording_mic_checkbox.setChecked(
-            bool(self.settings.get("recording_mic_enabled", False))
-        )
-        self.recording_mic_checkbox.toggled.connect(
-            self._on_recording_mic_toggled
-        )
-        card_layout.addWidget(self.recording_mic_checkbox)
+        # --- Micrófono ---
+        mic_input = QWidget()
+        mic_input_layout = QHBoxLayout(mic_input)
+        mic_input_layout.setContentsMargins(0, 0, 0, 0)
+        mic_input_layout.setSpacing(10)
 
-        mic_row = QHBoxLayout()
-        mic_row.setSpacing(10)
-
-        mic_caption = QLabel("Micrófono")
-        mic_caption.setObjectName("settingsLabel")
-        mic_caption.setMinimumWidth(150)
-        mic_row.addWidget(mic_caption)
+        self.recording_mic_caption = QLabel("Micrófono")
+        self.recording_mic_caption.setObjectName("settingsLabel")
+        self.recording_mic_caption.setMinimumWidth(150)
+        mic_input_layout.addWidget(self.recording_mic_caption)
 
         self.recording_mic_combo = QComboBox()
         self.recording_mic_combo.setObjectName("analysisCombo")
         self.recording_mic_combo.currentIndexChanged.connect(
             self._on_recording_mic_device_changed
         )
-        mic_row.addWidget(self.recording_mic_combo, 1)
-        card_layout.addLayout(mic_row)
+        mic_input_layout.addWidget(self.recording_mic_combo, 1)
+        audio_mix_layout.addWidget(mic_input)
 
-        self.recording_devices_button = QPushButton(
-            "Buscar dispositivos de sonido"
+        # --- Todo el resto (Discord, YouTube, …) ---
+        system_input = QWidget()
+        system_input_layout = QHBoxLayout(system_input)
+        system_input_layout.setContentsMargins(0, 0, 0, 0)
+        system_input_layout.setSpacing(10)
+
+        self.recording_system_audio_caption = QLabel(
+            "Todo el resto (Discord, YouTube, …)"
         )
-        self.recording_devices_button.setObjectName("secondaryButton")
-        self.recording_devices_button.clicked.connect(
-            self.refresh_recording_devices
+        self.recording_system_audio_caption.setObjectName("settingsLabel")
+        self.recording_system_audio_caption.setMinimumWidth(150)
+        system_input_layout.addWidget(self.recording_system_audio_caption)
+
+        self.recording_system_audio_combo = QComboBox()
+        self.recording_system_audio_combo.setObjectName("analysisCombo")
+        self.recording_system_audio_combo.setDisabled(True)
+        self.recording_system_audio_combo.currentIndexChanged.connect(
+            self._on_recording_system_audio_changed
         )
-        card_layout.addWidget(self.recording_devices_button)
+        system_input_layout.addWidget(self.recording_system_audio_combo, 1)
+        audio_mix_layout.addWidget(system_input)
+
+        card_layout.addWidget(audio_mix_card)
+
+        # Nota sobre qué hace falta para el modo "full".
+        card_layout.addWidget(
+            self._settings_description(
+                "«Todo el resto» necesita un capturador de la mezcla del "
+                "sistema (Stereo Mix, VB-Cable, Voicemeeter…): si el sonido "
+                "del juego ya sale de uno de esos, ese mismo ya incluye "
+                "Discord y YouTube y no se añade otro aparte."
+            )
+        )
+
+        # Botón para refrescar dispositivos de sistema (solo en modo full).
+        self.recording_system_audio_button = QPushButton(
+            "Buscar dispositivos del sistema"
+        )
+        self.recording_system_audio_button.setObjectName("secondaryButton")
+        self.recording_system_audio_button.setDisabled(True)
+        self.recording_system_audio_button.clicked.connect(
+            self.refresh_system_audio_devices
+        )
+        card_layout.addWidget(self.recording_system_audio_button)
+
+        card_layout.addWidget(
+            self._settings_description(
+                "Al elegir “full”, la app guarda automáticamente la "
+                "configuración de captura de sistema y vuelve a buscar "
+                "dispositivos de mezcla del sistema. Si no hay ninguno "
+                "disponible, el modo “full” solo captura juego + micrófono."
+            )
+        )
+
+        card_layout.addStretch(1)
 
         folder_row = QHBoxLayout()
         folder_row.setSpacing(10)
@@ -2191,6 +2420,20 @@ class MainWindow(QMainWindow):
 
         self.sync_recording_controls()
 
+    def _on_recording_audio_mode_changed(self, _index: int) -> None:
+        if not hasattr(self, "recording_audio_mode_combo"):
+            return
+
+        value = self.recording_audio_mode_combo.currentData()
+
+        if value is not None:
+            # Se persiste en cuanto se elige: así la próxima lectura de
+            # RecordingConfig no tiene que deducirlo de las claves viejas.
+            self.settings["recording_audio_mode"] = str(value)
+            self._save_recording_settings()
+
+        self.sync_recording_controls()
+
     def _on_recording_game_audio_changed(self, _index: int) -> None:
         if not hasattr(self, "recording_game_audio_combo"):
             return
@@ -2203,11 +2446,6 @@ class MainWindow(QMainWindow):
 
         self.sync_recording_controls()
 
-    def _on_recording_mic_toggled(self, checked: bool) -> None:
-        self.settings["recording_mic_enabled"] = bool(checked)
-        self._save_recording_settings()
-        self.sync_recording_controls()
-
     def _on_recording_mic_device_changed(self, _index: int) -> None:
         if not hasattr(self, "recording_mic_combo"):
             return
@@ -2217,6 +2455,57 @@ class MainWindow(QMainWindow):
         if value is not None:
             self.settings["recording_mic_device"] = str(value)
             self._save_recording_settings()
+
+        self.sync_recording_controls()
+
+    def _on_recording_system_audio_changed(self, _index: int) -> None:
+        if not hasattr(self, "recording_system_audio_combo"):
+            return
+
+        value = self.recording_system_audio_combo.currentData()
+
+        if value is not None:
+            self.settings["recording_system_audio_device"] = str(value)
+            self._save_recording_settings()
+
+        self.sync_recording_controls()
+
+    def refresh_system_audio_devices(self) -> None:
+        """Rellena el combo de captura de sistema (solo en modo full)."""
+        if not hasattr(self, "recording_system_audio_combo"):
+            return
+
+        found = self.recording_service.refresh_ffmpeg(
+            str(self.settings.get("ffmpeg_path") or "")
+        )
+
+        if not found:
+            self.recording_system_audio_combo.clear()
+            self.recording_system_audio_combo.addItem(
+                "Sin ffmpeg: no se puede grabar", ""
+            )
+            self.sync_recording_controls()
+            return
+
+        devices = list_audio_devices(found)
+        saved_system = str(
+            self.settings.get("recording_system_audio_device") or ""
+        )
+
+        self._fill_audio_combo(
+            self.recording_system_audio_combo,
+            devices,
+            saved_system,
+            "Automático (mejor capturador de sistema disponible)",
+        )
+        if audio_mode_uses_full_system(
+            normalize_audio_mode(
+                self.settings.get("recording_audio_mode", "")
+            )
+        ):
+            self.settings["recording_mic_capture_enabled"] = True
+        self._save_recording_settings()
+        self.sync_recording_controls()
 
     def _on_recording_limit_changed(self, gigabytes: int) -> None:
         self.settings["recording_size_limit_gb"] = float(gigabytes)
@@ -2272,11 +2561,11 @@ class MainWindow(QMainWindow):
 
         self._fill_audio_combo(
             self.recording_game_audio_combo, devices, saved_game,
-            "Sin sonido del juego (solo vídeo)",
+            "Automático (mejor capturador disponible)",
         )
         self._fill_audio_combo(
             self.recording_mic_combo, devices, saved_mic,
-            "Micrófono no elegido",
+            "Automático (mejor micrófono disponible)",
         )
         self._save_recording_settings()
         self.sync_recording_controls()
@@ -2429,9 +2718,9 @@ class MainWindow(QMainWindow):
         y ``started_at``/``ended_at`` de la sesión.
         """
         found = find_video_for_session(
-            self.recording_library.video_files(),
+            self.recording_videos_cached(),
             session,
-            self.recording_library.load_metadata,
+            self.recording_metadata_cached,
         )
 
         return str(found) if found is not None else ""
@@ -2448,10 +2737,11 @@ class MainWindow(QMainWindow):
             self.recording_auto_checkbox,
             self.recording_quality_combo,
             self.recording_bitrate_combo,
+            self.recording_audio_mode_combo,
             self.recording_game_audio_combo,
-            self.recording_mic_checkbox,
             self.recording_mic_combo,
-            self.recording_devices_button,
+            self.recording_system_audio_combo,
+            self.recording_system_audio_button,
             self.recording_dir_button,
         )
 
@@ -2466,9 +2756,11 @@ class MainWindow(QMainWindow):
             self.recording_bitrate_combo, config.video_bitrate
         )
         self.set_combo_value(
+            self.recording_audio_mode_combo, config.audio_mode
+        )
+        self.set_combo_value(
             self.recording_game_audio_combo, config.game_audio_device
         )
-        self.recording_mic_checkbox.setChecked(config.mic_enabled)
         self.set_combo_value(
             self.recording_mic_combo, config.mic_device
         )
@@ -2480,7 +2772,35 @@ class MainWindow(QMainWindow):
             str(self.settings.get("recording_output_dir", ""))
         )
 
-        self.recording_mic_combo.setEnabled(config.mic_enabled)
+        # Los dispositivos solo tienen sentido en los modos que los usan:
+        # se ocultan en vez de deshabilitarse para no marear con opciones.
+        mode = normalize_audio_mode(config.audio_mode)
+        show_game = audio_mode_uses_game(mode)
+        show_mic = audio_mode_uses_mic(mode)
+
+        self.recording_game_audio_caption.setVisible(show_game)
+        self.recording_game_audio_combo.setVisible(show_game)
+        self.recording_mic_caption.setVisible(show_mic)
+        self.recording_mic_combo.setVisible(show_mic)
+
+        # El tercer insumo (mezcla del sistema) solo tiene sentido en modo
+        # "full". Se habilita junto con su botón de búsqueda cuando se elige
+        # ese modo.
+        show_system = audio_mode_uses_full_system(mode)
+        self.recording_system_audio_caption.setVisible(show_system)
+        self.recording_system_audio_combo.setVisible(show_system)
+        self.recording_system_audio_button.setVisible(show_system)
+        self.recording_system_audio_combo.setDisabled(not show_system)
+        self.recording_system_audio_button.setDisabled(not show_system)
+
+        # Sincronizar el checkbox de captura de sistema y el dispositivo
+        # elegido, pero solo si el modo lo permite (modo full).
+        if show_system:
+            self.recording_system_audio_combo.setCurrentIndex(
+                self.recording_system_audio_combo.findData(
+                    config.mic_capture_device
+                )
+            )
 
         pieces = []
 
@@ -2491,17 +2811,25 @@ class MainWindow(QMainWindow):
                 service.ffmpeg_hint or "ffmpeg no encontrado"
             )
 
-        if config.game_audio_device:
-            pieces.append(
-                f"Sonido del juego: {config.game_audio_device}"
-            )
-        else:
-            pieces.append("Sin sonido del juego (solo vídeo)")
+        pieces.append(audio_mode_label(config.audio_mode))
 
-        if config.mic_enabled:
+        if audio_mode_uses_game(mode) and config.game_audio_device:
             pieces.append(
-                f"Micrófono: {config.mic_device or 'automático'}"
+                f"Juego: {config.game_audio_device}"
             )
+
+        if audio_mode_uses_mic(mode):
+            pieces.append(
+                f"Micro: {config.mic_device or 'automático'}"
+            )
+
+        if show_system:
+            if config.mic_capture_enabled:
+                pieces.append(
+                    f"Ref system: {config.mic_capture_device or 'automático'}"
+                )
+            else:
+                pieces.append("Ref system: deshabilitado")
 
         total = self.recording_library.total_size_bytes()
         pieces.append(

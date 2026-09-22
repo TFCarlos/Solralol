@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from _paths import DATA_DIR
+
 
 class DraftAnalyzerService:
     """Servicio de análisis en tiempo real para fase de Draft (Champ Select)."""
@@ -28,7 +30,7 @@ class DraftAnalyzerService:
     )
 
     def __init__(self, champions_strict_path: Path | None = None) -> None:
-        self.path = champions_strict_path or Path(__file__).resolve().parents[2] / "data" / "champions_strict.json"
+        self.path = champions_strict_path or DATA_DIR / "champions_strict.json"
         self.champions: dict[str, dict[str, Any]] = {}
         self.champ_by_id: dict[int, str] = {}
         self._load_data()

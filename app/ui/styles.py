@@ -337,6 +337,32 @@ QLabel#apiKeyStatus[state="missing"] {
     color: #9caec9;
 }
 
+/* Pasos numerados de las tarjetas de API (Riot / Gemini): bloque
+   monoespaciado sobre fondo hundido para leerse como una guía. */
+QLabel#settingsSteps {
+    padding: 10px 14px;
+    border: 1px solid rgba(97, 148, 211, 60);
+    border-left: 3px solid #d9ae4f;
+    border-radius: 8px;
+    color: #b8c8e4;
+    background: rgba(5, 12, 24, 140);
+    font-size: 12px;
+    line-height: 160%;
+}
+
+/* Los desplegables de Ajustes respiran un poco más y muestran mejor el
+   modo de audio elegido, que tiene etiquetas largas. */
+QComboBox#analysisCombo {
+    min-height: 32px;
+    padding: 6px 12px;
+}
+
+QFrame#settingsPage QFrame#sectionCard {
+    border: 1px solid rgba(97, 148, 211, 75);
+    border-radius: 14px;
+    background: rgba(10, 20, 36, 200);
+}
+
 QLineEdit#riotIdInput {
     min-height: 34px;
     padding: 6px 10px;
