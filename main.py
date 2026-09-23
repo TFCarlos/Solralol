@@ -5,8 +5,10 @@ import sys
 import traceback
 
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+import _paths
 from app.ui import startup_window
 from app.ui.main_window import MainWindow
 from data_dragon import load_cached_item_catalog, load_item_catalog
@@ -96,13 +98,41 @@ def build_main_window(
     loader.stop()
 
 
+def set_app_user_model_id() -> None:
+    """Registra un AppUserModelID propio para la aplicación en Windows.
+
+    Sin esto, la barra de tareas agrupa el proceso bajo ``python.exe`` y
+    muestra el icono del intérprete en vez del logo de Solralol (también
+    afecta a las miniaturas y a Alt-Tab). En un exe de PyInstaller el ID
+    queda fijo, lo que además evita que cambie entre versiones.
+    """
+
+    if sys.platform != "win32":
+        return
+
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "Solralol.App"
+        )
+    except Exception:  # noqa: BLE001 - cosmético: nunca debe romper el arranque
+        pass
+
+
 def main() -> int:
     install_message_filter()
+    set_app_user_model_id()
 
     app = QApplication(sys.argv)
 
     app.setApplicationName("Solralol")
     app.setOrganizationName("Solralol")
+
+    # Logo de la aplicación (ventana, barra de tareas y alt-tab).
+    app_icon = QIcon(str(_paths.DATA_DIR / "LogoApp.png"))
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
 
     # El catálogo de objetos se descarga la primera vez de cada parche: el
     # trabajo va a un worker y la ventana de carga mantiene la interfaz viva

@@ -12,6 +12,9 @@ datas = [
     ('data', 'data'),
 ]
 
+# Icono del ejecutable (.exe) generado a partir de data/LogoApp.png.
+icon = 'data/LogoApp.ico'
+
 hiddenimports = [
     # imageio-ffmpeg se importa dinámicamente en recording_service.py y PyInstaller
     # no lo detecta por sí mismo.
@@ -66,4 +69,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=icon,
 )

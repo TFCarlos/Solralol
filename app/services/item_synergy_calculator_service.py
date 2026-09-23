@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import app.services.synergy_math as sm  # arquitectura matemática v2
 from data_dragon import download_items, get_latest_version, load_item_catalog
 from _paths import DATA_DIR
 
@@ -30,6 +31,10 @@ class ItemSynergyCalculatorService:
     def __init__(self, rules_path: Path | None = None) -> None:
         self.rules_path = rules_path or self.DEFAULT_RULES_PATH
         self.rules = self._load_rules()
+        # Catálogo determinista de pasivas (esquema stat_bias/utility_tag/weight).
+        # `self.rules` (JSON legacy) se conserva por compatibilidad, pero el
+        # cálculo ya no usa búsquedas difusas: solo coincidencia exacta aquí.
+        self.passive_rules: dict[str, dict[str, Any]] = self._builtin_passive_rules()
 
     def _load_rules(self) -> dict[str, Any]:
         """Carga las reglas de pasivas desde el archivo de configuración JSON o usa reglas por defecto."""
@@ -84,92 +89,28 @@ class ItemSynergyCalculatorService:
         }
 
     # ------------------------------------------------------------------
-    # Fórmulas de cálculo de multiplicadores base
+    # Cálculo cuantitativo (delega en la arquitectura matemática de
+    # `synergy_math`: gold efficiency + perfil de presupuesto + sigmoide
+    # de saturación + modelo ortogonal stats/pasivas anti double-dipping).
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _builtin_passive_rules() -> dict[str, dict[str, Any]]:
+        """Reglas deterministas por defecto (esquema stat_bias/utility_tag/weight)."""
+        return {
+            name.casefold(): dict(rule)
+            for name, rule in sm.BUILTIN_PASSIVE_RULES.items()
+        }
 
     def calculate_base_multipliers(self, stats: dict[str, Any]) -> dict[str, float]:
-        """Calcula los multiplicadores de sinergia base a partir de las estadísticas directas del objeto."""
+        """Multiplicadores de sinergia base (escala homogénea [1.0, 2.0]).
+
+        Solo considera stats directas (Base Stat Score); las pasivas se
+        aplican en `apply_passive_bonuses` como modificadores ortogonales.
+        """
         if not isinstance(stats, dict):
             return {}
-
-        synergies: dict[str, float] = {}
-
-        # 1. Attack Damage (AD)
-        ad = float(stats.get("attack_damage", 0))
-        if ad > 0:
-            synergies["attack_damage"] = round(1.0 + (ad / 10.0) * 0.1, 2)
-
-        # 2. Ability Power (AP)
-        ap = float(stats.get("ability_power", 0))
-        if ap > 0:
-            synergies["attack_power"] = round(1.0 + (ap / 13.0) * 0.1, 2)
-
-        # 3. Crítico
-        crit = float(stats.get("critical_strike_chance_percent", 0))
-        if crit > 0:
-            synergies["critic"] = round(1.0 + (crit / 5.0) * 0.1, 2)
-
-        # 4. Letalidad
-        lethality = float(stats.get("lethality", 0))
-        if lethality > 0:
-            synergies["lethality"] = round(1.0 + (lethality / 5.0) * 0.1, 2)
-
-        # 5. Velocidad de movimiento
-        ms_pct = float(stats.get("movement_speed_percent", 0))
-        ms_flat = float(stats.get("movement_speed_flat", 0))
-        if ms_pct > 0 or ms_flat > 0:
-            val = (ms_pct / 5.0) * 0.1 if ms_pct > 0 else (ms_flat / 25.0) * 0.1
-            synergies["mobility"] = round(1.0 + val, 2)
-
-        # 6. Hypercarry (Acumula aceleración de habilidad, velocidad de ataque, tenacidad)
-        as_pct = float(stats.get("attack_speed_percent", 0))
-        ah = float(stats.get("ability_haste", 0))
-        tenacity = float(stats.get("tenacity", 0))
-
-        hyper_inc = 0.0
-        if as_pct > 0:
-            hyper_inc += (as_pct / 8.0) * 0.1
-        if ah > 0:
-            hyper_inc += (ah / 3.0) * 0.1
-        if tenacity > 0:
-            hyper_inc += (tenacity / 10.0) * 0.1
-
-        if hyper_inc > 0:
-            synergies["hypercarry"] = round(1.0 + hyper_inc, 2)
-
-        # 7. Sustain (Robo de vida, omnivampirismo, regeneración)
-        ls = float(stats.get("life_steal_percent", 0))
-        omni = float(stats.get("omnivamp_percent", 0))
-        if ls > 0 or omni > 0:
-            sustain_inc = (ls / 3.0) * 0.1 + (omni * 0.1)
-            synergies["sustain"] = round(1.0 + sustain_inc, 2)
-
-        # 8. Durability (Vida, Armadura, Resistencia Mágica)
-        hp = float(stats.get("health", 0))
-        armor = float(stats.get("armor", 0))
-        mr = float(stats.get("magic_resistance", 0))
-
-        durability_inc = 0.0
-        if hp > 0:
-            durability_inc += (hp / 100.0) * 0.1
-        if armor > 0:
-            durability_inc += (armor / 10.0) * 0.1
-        if mr > 0:
-            durability_inc += (mr / 10.0) * 0.1
-
-        if durability_inc > 0:
-            synergies["durability"] = round(1.0 + durability_inc, 2)
-
-        # 9. Heal and Shield Power
-        hsp = float(stats.get("heal_and_shield_power_percent", 0))
-        if hsp > 0:
-            synergies["heal_shield_power"] = round(1.0 + (hsp / 5.0) * 0.1, 2)
-
-        return synergies
-
-    # ------------------------------------------------------------------
-    # Bonificaciones por pasivas y activas
-    # ------------------------------------------------------------------
+        return sm.compute_item_synergy(stats).synergy_multipliers
 
     def apply_passive_bonuses(
         self,
@@ -178,68 +119,27 @@ class ItemSynergyCalculatorService:
         synergies: dict[str, float],
         counter_weights: dict[str, float],
     ) -> None:
-        """Aplica bonificaciones adicionales a las sinergias y contrapesos basadas en pasivas y activas."""
-        if not isinstance(passive_names, list):
+        """Aplica modificadores ortogonales de pasivas (Passive Value Modifiers).
+
+        Cada pasiva se resuelve de forma determinista por nombre exacto en el
+        catálogo de reglas (sin búsqueda difusa por subcadenas). Los aportes ya
+        vienen atenuados por solapamiento (anti double-dipping) y saturados por
+        sigmoide, por lo que modifican `synergies` y `counter_weights` dentro
+        de sus techos ([1, 2] y [0, 1] respectivamente).
+        """
+        if not isinstance(passive_names, list) or not passive_names:
             return
-
-        exact_rules: dict[str, Any] = self.rules.get("exact_passives", {})
-        keyword_rules: list[dict[str, Any]] = self.rules.get("keyword_rules", [])
-
-        ad = float(stats.get("attack_damage", 0))
-        ap = float(stats.get("ability_power", 0))
-
-        for passive in passive_names:
-            p_name = str(passive).strip()
-            p_lower = p_name.lower()
-
-            matched = False
-
-            # 1. Búsqueda exacta
-            if p_name in exact_rules or p_lower in (k.lower() for k in exact_rules):
-                matched_rule = next(
-                    (v for k, v in exact_rules.items() if k.lower() == p_lower),
-                    None,
-                )
-                if matched_rule:
-                    self._apply_rule(matched_rule, ad, ap, synergies, counter_weights)
-                    matched = True
-
-            # 2. Búsqueda por palabras clave (si no hubo coincidencia exacta)
-            if not matched:
-                for kw_rule in keyword_rules:
-                    keywords = kw_rule.get("keywords", [])
-                    if any(kw in p_lower for kw in keywords):
-                        self._apply_rule(kw_rule, ad, ap, synergies, counter_weights)
-
-    def _apply_rule(
-        self,
-        rule: dict[str, Any],
-        ad: float,
-        ap: float,
-        synergies: dict[str, float],
-        counter_weights: dict[str, float],
-    ) -> None:
-        """Aplica una regla de pasiva individual."""
-        for key, bonus in rule.get("synergy_multipliers", {}).items():
-            current = synergies.get(key, 1.0)
-            synergies[key] = round(current + float(bonus), 2)
-
-        for key, bonus in rule.get("counter_weights", {}).items():
-            current = counter_weights.get(key, 0.0)
-            counter_weights[key] = round(current + float(bonus), 2)
-
-        if rule.get("dynamic_spellblade"):
-            bonus = float(rule.get("bonus", 0.2))
-            if ad >= ap:
-                current = synergies.get("attack_damage", 1.0)
-                synergies["attack_damage"] = round(current + bonus, 2)
-            else:
-                current = synergies.get("attack_power", 1.0)
-                synergies["attack_power"] = round(current + bonus, 2)
-
-    # ------------------------------------------------------------------
-    # Cálculo de contrapesos (counter_weights)
-    # ------------------------------------------------------------------
+        score = sm.compute_item_synergy(
+            stats,
+            passive_names=passive_names,
+            passive_rules=self.passive_rules,
+        )
+        for key, value in score.synergy_multipliers.items():
+            base = synergies.get(key, sm.SYNERGY_MIN)
+            synergies[key] = round(min(max(base, value), sm.SYNERGY_MAX), 2)
+        for key, value in score.counter_weights.items():
+            base = counter_weights.get(key, 0.0)
+            counter_weights[key] = round(min(max(base, value), sm.COUNTER_MAX), 2)
 
     def calculate_counter_weights(
         self,
@@ -247,61 +147,14 @@ class ItemSynergyCalculatorService:
         functionality: dict[str, Any],
         classifications: dict[str, Any],
     ) -> dict[str, float]:
-        """Calcula los contrapesos (penetración, trituración y daño anti-tanque) de un objeto."""
-        counter_weights: dict[str, float] = {}
-
-        if not isinstance(stats, dict):
-            stats = {}
-
-        # 1. Penetración de armadura %
-        armor_pen = float(stats.get("armor_penetration_percent", 0))
-        if armor_pen > 0:
-            val = round((armor_pen / 5.0) * 0.1, 2)
-            counter_weights["armor"] = val
-            counter_weights["survivability_vs_armor"] = val
-
-        # 2. Penetración mágica %
-        magic_pen_pct = float(stats.get("magic_penetration_percent", 0))
-        if magic_pen_pct > 0:
-            val = round((magic_pen_pct / 5.0) * 0.1, 2)
-            counter_weights["magic_resistance"] = val
-            counter_weights["survivability_vs_damage"] = val
-
-        # 3. Penetración mágica plana
-        magic_pen_flat = float(stats.get("magic_penetration_flat", 0))
-        if magic_pen_flat > 0:
-            val = round((magic_pen_flat / 5.0) * 0.05, 2)
-            counter_weights["magic_resistance"] = round(counter_weights.get("magic_resistance", 0.0) + val, 2)
-
-        # 4. Clasificaciones de counter_mechanics
+        """Contrapesos (mecánicas anti-tanque/penetraciones) en [0.0, 1.0]."""
+        mechanics: list[str] = []
         if isinstance(classifications, dict):
-            mechanics = classifications.get("counter_mechanics", [])
-            if isinstance(mechanics, list):
-                for mech in mechanics:
-                    m = str(mech).lower()
-                    if "high health" in m or "max health" in m or "tanks" in m:
-                        counter_weights["survivability_vs_damage"] = round(
-                            counter_weights.get("survivability_vs_damage", 0.0) + 0.3, 2
-                        )
-                    elif "heavy armor" in m or "armor shred" in m:
-                        counter_weights["armor"] = round(counter_weights.get("armor", 0.0) + 0.3, 2)
-                        counter_weights["survivability_vs_armor"] = round(
-                            counter_weights.get("survivability_vs_armor", 0.0) + 0.3, 2
-                        )
-                    elif "heavy mr" in m or "magic shred" in m:
-                        counter_weights["magic_resistance"] = round(
-                            counter_weights.get("magic_resistance", 0.0) + 0.3, 2
-                        )
-                    elif "shields" in m:
-                        counter_weights["survivability_vs_damage"] = round(
-                            counter_weights.get("survivability_vs_damage", 0.0) + 0.2, 2
-                        )
-                    elif "crowd control" in m or "cc" in m:
-                        counter_weights["survivability_overall"] = round(
-                            counter_weights.get("survivability_overall", 0.0) + 0.2, 2
-                        )
-
-        return counter_weights
+            raw = classifications.get("counter_mechanics", [])
+            if isinstance(raw, list):
+                mechanics = [str(m) for m in raw]
+        safe_stats = stats if isinstance(stats, dict) else {}
+        return sm.counter_weights_score(safe_stats, mechanics)
 
     # ------------------------------------------------------------------
     # Actualización y reconstrucción completa desde Data Dragon

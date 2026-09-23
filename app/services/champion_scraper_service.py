@@ -623,10 +623,10 @@ class ChampionScraperService:
             rate = float(match.group(1)) / 100
             games = int(match.group(2).replace(".", "").replace(",", ""))
             rows.append({"champion": enemy, "win_rate": rate, "overall_win_rate": rate, "lane_games": games, "overall_games": games, "primary_role": role.title(), "tip": ""})
-        if len(rows) >= 6:
+        if len(rows) >= 10:
             rows.sort(key=lambda row: row["win_rate"])
             average = sum(row["win_rate"] for row in rows) / len(rows)
-            counters, good = rows[:3], rows[-3:][::-1]
+            counters, good = rows[:5], rows[-5:][::-1]
             for entry in counters:
                 entry["tip"] = f"{champion} gana el {entry['win_rate']:.1%} de {entry['lane_games']:,} partidas frente a {entry['champion']}. Juega la fase de líneas con cautela.".replace(",", ".")
             for entry in good:
@@ -692,7 +692,7 @@ class ChampionScraperService:
                     continue
                 rate = float(values[0]) / 100
                 rows.append({"champion": name, "win_rate": rate, "overall_win_rate": rate, "lane_games": 0, "overall_games": 0, "primary_role": role.title(), "tip": "Datos de matchup actualizados desde U.GG."})
-                if len(rows) == 3:
+                if len(rows) == 5:
                     break
             if rows:
                 result[field] = rows
@@ -729,7 +729,7 @@ class ChampionScraperService:
                              "lane_games": int(entry.get("lane_games", 0) or 0), "overall_games": int(entry.get("overall_games", 0) or 0),
                              "primary_role": role.title(), "tip": str(entry.get("tip", ""))[:240]})
             if rows:
-                output[field] = rows[:3]
+                output[field] = rows[:5]
         if isinstance(matchups.get("summary"), dict):
             output["summary"] = matchups["summary"]
         return output

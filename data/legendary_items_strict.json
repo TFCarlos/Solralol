@@ -39,12 +39,12 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.54,
-      "hypercarry": 2.03,
-      "durability": 1.2
+      "attack_power": 1.94,
+      "hypercarry": 1.7,
+      "durability": 1.21
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -85,11 +85,11 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.69,
-      "hypercarry": 1.33
+      "attack_power": 1.95,
+      "hypercarry": 1.13
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -131,9 +131,9 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.66,
-      "hypercarry": 1.92,
-      "durability": 1.3
+      "durability": 1.34,
+      "attack_power": 1.9,
+      "hypercarry": 1.71
     },
     "counter_weights": {}
   },
@@ -177,8 +177,8 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.62,
-      "hypercarry": 1.67
+      "attack_power": 1.95,
+      "hypercarry": 1.43
     },
     "counter_weights": {}
   },
@@ -221,11 +221,14 @@
       "about": "Objeto legendario con valor de 2750 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "lethality": 1.36,
-      "hypercarry": 1.67
+      "lethality": 1.16,
+      "attack_damage": 1.94,
+      "hypercarry": 1.2
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.7,
+      "survivability_vs_armor": 0.7
+    }
   },
   {
     "id": "6673",
@@ -265,13 +268,12 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "critic": 1.5,
-      "hypercarry": 1.2,
-      "durability": 1.2
+      "attack_damage": 1.94,
+      "critic": 1.65,
+      "durability": 1.21
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -313,7 +315,8 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "durability": 2.0
+      "durability": 1.95,
+      "sustain": 1.33
     },
     "counter_weights": {}
   },
@@ -354,11 +357,11 @@
       "about": "Objeto legendario con valor de 2600 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.87,
-      "durability": 1.8
+      "durability": 1.97,
+      "hypercarry": 1.43
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -399,9 +402,9 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "critic": 1.5,
-      "mobility": 1.2,
-      "hypercarry": 1.81
+      "hypercarry": 1.92,
+      "critic": 1.62,
+      "mobility": 1.11
     },
     "counter_weights": {}
   },
@@ -447,11 +450,13 @@
       "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.6,
-      "hypercarry": 1.5,
-      "durability": 1.5
+      "durability": 1.43,
+      "attack_damage": 1.94,
+      "hypercarry": 1.11
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "survivability_overall": 0.14
+    }
   },
   {
     "id": "2524",
@@ -492,8 +497,8 @@
       "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.5,
-      "durability": 1.6
+      "durability": 1.95,
+      "hypercarry": 1.36
     },
     "counter_weights": {}
   },
@@ -537,12 +542,12 @@
       "about": "Objeto legendario con valor de 2250 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.27,
-      "hypercarry": 1.33,
-      "heal_shield_power": 1.2
+      "heal_shield_power": 1.12,
+      "attack_power": 1.37,
+      "hypercarry": 1.1
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -579,11 +584,12 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.73
+      "attack_power": 1.94,
+      "magic_pen": 1.79
     },
     "counter_weights": {
-      "magic_resistance": 0.8,
-      "survivability_vs_damage": 0.8
+      "magic_resistance": 0.96,
+      "survivability_vs_damage": 0.96
     }
   },
   {
@@ -626,8 +632,8 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.54,
-      "hypercarry": 1.83
+      "attack_power": 1.94,
+      "hypercarry": 1.7
     },
     "counter_weights": {}
   },
@@ -671,12 +677,13 @@
       "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.7,
-      "durability": 1.25,
-      "heal_shield_power": 1.24
+      "durability": 1.7,
+      "hypercarry": 1.17,
+      "heal_shield_power": 1.16
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14,
+      "survivability_overall": 0.14
     }
   },
   {
@@ -718,11 +725,11 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.4,
-      "durability": 1.6
+      "tankiness": 1.4,
+      "durability": 1.95
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -765,9 +772,9 @@
       "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.38,
-      "mobility": 1.08,
-      "hypercarry": 1.5
+      "attack_power": 1.67,
+      "hypercarry": 1.14,
+      "mobility": 1.07
     },
     "counter_weights": {}
   },
@@ -809,9 +816,9 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "critic": 1.5,
-      "mobility": 1.08,
-      "hypercarry": 1.44
+      "hypercarry": 1.85,
+      "critic": 1.9,
+      "mobility": 1.08
     },
     "counter_weights": {}
   },
@@ -853,8 +860,8 @@
       "about": "Objeto legendario con valor de 2600 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.5,
-      "durability": 1.4
+      "durability": 1.87,
+      "attack_power": 1.93
     },
     "counter_weights": {}
   },
@@ -899,12 +906,13 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.5,
-      "sustain": 1.33,
-      "durability": 1.35,
-      "hypercarry": 1.2
+      "durability": 1.68,
+      "sustain": 1.11,
+      "attack_damage": 1.94
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "survivability_overall": 0.14
+    }
   },
   {
     "id": "3152",
@@ -945,10 +953,10 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.46,
-      "hypercarry": 1.67,
-      "durability": 1.35,
-      "mobility": 1.2
+      "durability": 1.64,
+      "attack_power": 1.85,
+      "hypercarry": 1.26,
+      "mobility": 1.16
     },
     "counter_weights": {}
   },
@@ -991,12 +999,13 @@
       "about": "Objeto legendario con valor de 2500 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "lethality": 1.3,
-      "hypercarry": 1.1
+      "lethality": 1.18,
+      "attack_damage": 1.95
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "armor": 0.73,
+      "survivability_vs_armor": 0.73,
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1038,8 +1047,8 @@
       "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.33,
-      "durability": 1.8
+      "durability": 1.95,
+      "hypercarry": 1.13
     },
     "counter_weights": {}
   },
@@ -1083,8 +1092,8 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "mobility": 1.08,
-      "durability": 1.9
+      "durability": 1.95,
+      "mobility": 1.08
     },
     "counter_weights": {}
   },
@@ -1127,9 +1136,12 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "durability": 2.2
+      "durability": 1.95,
+      "sustain": 1.4
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "survivability_vs_damage": 0.29
+    }
   },
   {
     "id": "3110",
@@ -1169,8 +1181,8 @@
       "about": "Objeto legendario con valor de 2500 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.67,
-      "durability": 1.75
+      "durability": 1.95,
+      "hypercarry": 1.48
     },
     "counter_weights": {}
   },
@@ -1216,10 +1228,10 @@
       "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "hypercarry": 1.31,
-      "durability": 1.45,
-      "wave_clear": 1.2
+      "durability": 1.74,
+      "attack_damage": 1.85,
+      "hypercarry": 1.19,
+      "wave_clear": 1.1
     },
     "counter_weights": {}
   },
@@ -1264,13 +1276,13 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.54,
-      "hypercarry": 1.5,
-      "durability": 1.55
+      "durability": 1.62,
+      "attack_power": 1.91,
+      "hypercarry": 1.15
     },
     "counter_weights": {
-      "magic_resistance": 0.3,
-      "survivability_vs_damage": 0.3
+      "magic_resistance": 0.29,
+      "survivability_vs_damage": 0.29
     }
   },
   {
@@ -1313,13 +1325,13 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "hypercarry": 1.77,
-      "durability": 1.4
+      "durability": 1.6,
+      "attack_damage": 1.9,
+      "hypercarry": 1.18
     },
     "counter_weights": {
-      "armor": 0.3,
-      "survivability_vs_armor": 0.3
+      "armor": 0.29,
+      "survivability_vs_armor": 0.29
     }
   },
   {
@@ -1362,9 +1374,9 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "critic": 1.5,
-      "mobility": 1.08,
-      "hypercarry": 1.56
+      "hypercarry": 1.9,
+      "critic": 1.86,
+      "mobility": 1.08
     },
     "counter_weights": {}
   },
@@ -1406,8 +1418,8 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.5,
-      "durability": 1.9
+      "durability": 1.95,
+      "hypercarry": 1.17
     },
     "counter_weights": {}
   },
@@ -1452,11 +1464,11 @@
       "about": "Objeto legendario con valor de 2250 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "durability": 1.2,
-      "heal_shield_power": 1.36
+      "durability": 1.47,
+      "heal_shield_power": 1.14
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1497,8 +1509,8 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.62,
-      "hypercarry": 2.12
+      "attack_power": 1.9,
+      "hypercarry": 1.92
     },
     "counter_weights": {}
   },
@@ -1539,11 +1551,11 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.6,
-      "hypercarry": 1.5
+      "attack_damage": 1.95,
+      "hypercarry": 1.17
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1584,9 +1596,9 @@
       "about": "Objeto legendario con valor de 2750 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.77,
-      "hypercarry": 1.33,
-      "wave_clear": 1.1
+      "attack_power": 1.95,
+      "hypercarry": 1.12,
+      "wave_clear": 1.06
     },
     "counter_weights": {}
   },
@@ -1632,12 +1644,12 @@
       "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.27,
-      "hypercarry": 1.67,
-      "durability": 1.2
+      "durability": 1.15,
+      "attack_power": 1.25,
+      "hypercarry": 1.2
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1680,8 +1692,8 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.3,
-      "hypercarry": 1.44
+      "attack_damage": 1.93,
+      "hypercarry": 1.87
     },
     "counter_weights": {}
   },
@@ -1725,11 +1737,11 @@
       "about": "Objeto legendario con valor de 2400 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.5,
-      "durability": 1.55
+      "durability": 1.95,
+      "hypercarry": 1.3
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1773,11 +1785,14 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "lethality": 1.2,
-      "hypercarry": 1.33
+      "lethality": 1.1,
+      "attack_damage": 1.95,
+      "hypercarry": 1.11
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.57,
+      "survivability_vs_armor": 0.57
+    }
   },
   {
     "id": "3073",
@@ -1821,9 +1836,9 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "hypercarry": 1.25,
-      "durability": 1.45
+      "durability": 1.77,
+      "attack_damage": 1.87,
+      "hypercarry": 1.14
     },
     "counter_weights": {}
   },
@@ -1866,12 +1881,12 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.6,
-      "hypercarry": 1.7,
-      "durability": 1.6
+      "durability": 1.68,
+      "attack_damage": 1.94,
+      "hypercarry": 1.12
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1914,12 +1929,14 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.5,
-      "lethality": 1.3,
-      "durability": 1.25
+      "lethality": 1.14,
+      "durability": 1.27,
+      "attack_damage": 1.94
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "armor": 0.66,
+      "survivability_vs_armor": 0.66,
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -1963,11 +1980,14 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "lethality": 1.36,
-      "mobility": 1.18
+      "lethality": 1.21,
+      "attack_damage": 1.95,
+      "mobility": 1.17
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.76,
+      "survivability_vs_armor": 0.76
+    }
   },
   {
     "id": "3031",
@@ -2004,8 +2024,8 @@
       "about": "Objeto legendario con valor de 3500 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.75,
-      "critic": 1.5
+      "attack_damage": 1.95,
+      "critic": 1.41
     },
     "counter_weights": {}
   },
@@ -2047,9 +2067,9 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "critic": 1.5,
-      "mobility": 1.08,
-      "hypercarry": 1.5
+      "hypercarry": 1.88,
+      "critic": 1.88,
+      "mobility": 1.08
     },
     "counter_weights": {}
   },
@@ -2091,8 +2111,9 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.82,
-      "durability": 1.45
+      "tankiness": 1.14,
+      "durability": 1.68,
+      "hypercarry": 1.9
     },
     "counter_weights": {}
   },
@@ -2135,13 +2156,12 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "hypercarry": 1.33,
-      "durability": 1.4,
-      "heal_shield_power": 1.2
+      "durability": 1.77,
+      "attack_damage": 1.91,
+      "hypercarry": 1.1
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -2185,8 +2205,8 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.5,
-      "hypercarry": 1.56
+      "attack_damage": 1.94,
+      "hypercarry": 1.78
     },
     "counter_weights": {}
   },
@@ -2228,12 +2248,13 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.58,
-      "hypercarry": 1.67
+      "attack_power": 1.9,
+      "hypercarry": 1.21,
+      "magic_pen": 1.52
     },
     "counter_weights": {
-      "magic_resistance": 0.6,
-      "survivability_vs_damage": 0.6
+      "magic_resistance": 0.9,
+      "survivability_vs_damage": 0.9
     }
   },
   {
@@ -2274,8 +2295,8 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "mobility": 1.08,
-      "durability": 1.95
+      "durability": 1.95,
+      "mobility": 1.08
     },
     "counter_weights": {}
   },
@@ -2321,9 +2342,9 @@
       "about": "Objeto legendario con valor de 3333 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.56,
-      "hypercarry": 1.88,
-      "durability": 1.33
+      "durability": 1.37,
+      "attack_damage": 1.88,
+      "hypercarry": 1.71
     },
     "counter_weights": {}
   },
@@ -2368,9 +2389,10 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.33,
-      "durability": 1.9,
-      "wave_clear": 1.1
+      "durability": 1.94,
+      "sustain": 1.47,
+      "hypercarry": 1.09,
+      "wave_clear": 1.09
     },
     "counter_weights": {}
   },
@@ -2412,9 +2434,9 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.5,
-      "durability": 1.8,
-      "attack_damage": 1.2
+      "durability": 1.95,
+      "hypercarry": 1.21,
+      "attack_damage": 1.21
     },
     "counter_weights": {}
   },
@@ -2459,11 +2481,14 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.6,
-      "lethality": 1.36,
-      "hypercarry": 1.5
+      "lethality": 1.16,
+      "attack_damage": 1.95,
+      "hypercarry": 1.13
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.7,
+      "survivability_vs_armor": 0.7
+    }
   },
   {
     "id": "2517",
@@ -2505,9 +2530,9 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.65,
-      "hypercarry": 1.2,
-      "sustain": 1.5
+      "tankiness": 1.12,
+      "sustain": 1.08,
+      "attack_damage": 1.95
     },
     "counter_weights": {}
   },
@@ -2552,12 +2577,15 @@
       "about": "Objeto legendario con valor de 2850 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "lethality": 1.36,
-      "hypercarry": 1.33,
-      "wave_clear": 1.4
+      "lethality": 1.19,
+      "attack_damage": 1.95,
+      "hypercarry": 1.1,
+      "wave_clear": 1.06
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.74,
+      "survivability_vs_armor": 0.74
+    }
   },
   {
     "id": "3748",
@@ -2599,9 +2627,9 @@
       "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "durability": 1.6,
-      "wave_clear": 1.4
+      "durability": 1.92,
+      "attack_damage": 1.89,
+      "wave_clear": 1.14
     },
     "counter_weights": {}
   },
@@ -2645,10 +2673,10 @@
       "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.65,
-      "hypercarry": 1.5,
-      "sustain": 1.4,
-      "wave_clear": 1.4
+      "sustain": 1.12,
+      "attack_damage": 1.95,
+      "hypercarry": 1.13,
+      "wave_clear": 1.09
     },
     "counter_weights": {}
   },
@@ -2694,9 +2722,9 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.3,
-      "attack_power": 1.23,
-      "hypercarry": 1.31
+      "attack_damage": 1.88,
+      "hypercarry": 1.41,
+      "attack_power": 1.37
     },
     "counter_weights": {}
   },
@@ -2741,13 +2769,11 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "hypercarry": 1.31,
-      "sustain": 1.33
+      "sustain": 1.14,
+      "attack_damage": 1.94,
+      "hypercarry": 1.36
     },
-    "counter_weights": {
-      "survivability_vs_damage": 0.3
-    }
+    "counter_weights": {}
   },
   {
     "id": "3085",
@@ -2787,9 +2813,9 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "critic": 1.5,
-      "mobility": 1.1,
-      "hypercarry": 1.5
+      "hypercarry": 1.88,
+      "critic": 1.88,
+      "mobility": 1.09
     },
     "counter_weights": {}
   },
@@ -2833,10 +2859,10 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.54,
-      "mobility": 1.08,
-      "hypercarry": 1.83,
-      "durability": 1.35
+      "durability": 1.45,
+      "attack_power": 1.84,
+      "hypercarry": 1.29,
+      "mobility": 1.07
     },
     "counter_weights": {}
   },
@@ -2880,12 +2906,12 @@
       "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.35,
-      "mobility": 1.08,
-      "heal_shield_power": 1.2
+      "heal_shield_power": 1.12,
+      "attack_power": 1.63,
+      "mobility": 1.08
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -2926,11 +2952,11 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "durability": 2.25
+      "durability": 1.95
     },
     "counter_weights": {
-      "magic_resistance": 0.3,
-      "survivability_vs_damage": 0.3
+      "magic_resistance": 0.29,
+      "survivability_vs_damage": 0.29
     }
   },
   {
@@ -2973,8 +2999,8 @@
       "about": "Objeto legendario con valor de 3100 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.45,
-      "durability": 1.45
+      "durability": 1.85,
+      "attack_damage": 1.93
     },
     "counter_weights": {}
   },
@@ -3015,10 +3041,12 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.85
+      "attack_power": 1.95,
+      "magic_pen": 1.12
     },
     "counter_weights": {
-      "magic_resistance": 0.15
+      "magic_resistance": 0.62,
+      "survivability_vs_damage": 0.29
     }
   },
   {
@@ -3061,8 +3089,8 @@
       "about": "Objeto legendario con valor de 2400 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.5,
-      "durability": 1.55
+      "durability": 1.95,
+      "hypercarry": 1.3
     },
     "counter_weights": {}
   },
@@ -3105,9 +3133,9 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.5,
-      "hypercarry": 1.5,
-      "durability": 1.4
+      "durability": 1.75,
+      "attack_power": 1.88,
+      "hypercarry": 1.15
     },
     "counter_weights": {}
   },
@@ -3151,12 +3179,10 @@
       "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.69,
-      "hypercarry": 1.5
+      "attack_power": 1.95,
+      "hypercarry": 1.21
     },
-    "counter_weights": {
-      "magic_resistance": 0.3
-    }
+    "counter_weights": {}
   },
   {
     "id": "3075",
@@ -3195,7 +3221,7 @@
       "about": "Objeto legendario con valor de 2450 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "durability": 1.9
+      "durability": 1.95
     },
     "counter_weights": {}
   },
@@ -3239,8 +3265,8 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.35,
-      "hypercarry": 1.5
+      "attack_damage": 1.95,
+      "hypercarry": 1.41
     },
     "counter_weights": {}
   },
@@ -3284,8 +3310,8 @@
       "about": "Objeto legendario con valor de 2400 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.46,
-      "hypercarry": 1.5
+      "attack_power": 1.75,
+      "hypercarry": 1.13
     },
     "counter_weights": {}
   },
@@ -3328,9 +3354,9 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.45,
-      "hypercarry": 1.5,
-      "durability": 1.45
+      "durability": 1.73,
+      "attack_damage": 1.9,
+      "hypercarry": 1.12
     },
     "counter_weights": {}
   },
@@ -3373,11 +3399,11 @@
       "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.33,
-      "durability": 1.8
+      "durability": 1.95,
+      "hypercarry": 1.13
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -3419,9 +3445,9 @@
       "about": "Objeto legendario con valor de 2850 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.58,
-      "hypercarry": 1.6,
-      "durability": 1.35
+      "durability": 1.58,
+      "attack_power": 1.92,
+      "hypercarry": 1.14
     },
     "counter_weights": {}
   },
@@ -3465,8 +3491,8 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.35,
-      "hypercarry": 1.5
+      "attack_damage": 1.95,
+      "hypercarry": 1.41
     },
     "counter_weights": {}
   },
@@ -3508,8 +3534,8 @@
       "about": "Objeto legendario con valor de 2650 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.5,
-      "durability": 1.8
+      "durability": 1.95,
+      "hypercarry": 1.21
     },
     "counter_weights": {}
   },
@@ -3554,9 +3580,9 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.5,
-      "critic": 1.5,
-      "hypercarry": 1.31
+      "attack_damage": 1.92,
+      "hypercarry": 1.17,
+      "critic": 1.49
     },
     "counter_weights": {}
   },
@@ -3599,11 +3625,11 @@
       "about": "Objeto legendario con valor de 2500 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.35,
-      "heal_shield_power": 1.32
+      "heal_shield_power": 1.29,
+      "attack_power": 1.71
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -3645,8 +3671,8 @@
     },
     "synergy_multipliers": {
       "attack_power": 1.97,
-      "mobility": 1.12,
-      "hypercarry": 1.33
+      "hypercarry": 1.11,
+      "mobility": 1.09
     },
     "counter_weights": {}
   },
@@ -3689,8 +3715,8 @@
       "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.58,
-      "hypercarry": 1.83
+      "attack_power": 1.94,
+      "hypercarry": 1.65
     },
     "counter_weights": {}
   },
@@ -3733,7 +3759,7 @@
       "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "durability": 2.1
+      "durability": 1.95
     },
     "counter_weights": {}
   },
@@ -3778,8 +3804,9 @@
       "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.33,
-      "durability": 1.6
+      "durability": 1.92,
+      "sustain": 1.69,
+      "hypercarry": 1.11
     },
     "counter_weights": {}
   },
@@ -3826,10 +3853,10 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.45,
-      "attack_power": 1.35,
-      "mobility": 1.08,
-      "hypercarry": 1.38
+      "attack_damage": 1.88,
+      "hypercarry": 1.25,
+      "mobility": 1.07,
+      "attack_power": 1.38
     },
     "counter_weights": {}
   },
@@ -3874,11 +3901,14 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "lethality": 1.44,
-      "hypercarry": 1.5
+      "lethality": 1.23,
+      "attack_damage": 1.94,
+      "hypercarry": 1.13
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.78,
+      "survivability_vs_armor": 0.78
+    }
   },
   {
     "id": "6676",
@@ -3922,11 +3952,14 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Assassin, Marksman."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.5,
-      "critic": 1.5,
-      "lethality": 1.2
+      "lethality": 1.09,
+      "attack_damage": 1.93,
+      "critic": 1.6
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.52,
+      "survivability_vs_armor": 0.52
+    }
   },
   {
     "id": "3033",
@@ -3967,13 +4000,13 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.35,
-      "critic": 1.5,
-      "hypercarry": 1.1
+      "lethality": 1.49,
+      "attack_damage": 1.77,
+      "critic": 1.56
     },
     "counter_weights": {
-      "armor": 0.6,
-      "survivability_vs_armor": 0.6
+      "armor": 0.89,
+      "survivability_vs_armor": 0.89
     }
   },
   {
@@ -4016,13 +4049,14 @@
       "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.35,
+      "lethality": 1.61,
+      "attack_damage": 1.73,
       "critic": 1.5
     },
     "counter_weights": {
-      "armor": 0.7,
-      "survivability_vs_armor": 0.7,
-      "survivability_vs_damage": 0.3
+      "armor": 0.92,
+      "survivability_vs_armor": 0.92,
+      "survivability_vs_damage": 0.29
     }
   },
   {
@@ -4066,12 +4100,12 @@
       "about": "Objeto legendario con valor de 2300 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.23,
-      "hypercarry": 1.5,
-      "heal_shield_power": 1.2
+      "heal_shield_power": 1.13,
+      "attack_power": 1.31,
+      "hypercarry": 1.19
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.57
     }
   },
   {
@@ -4112,8 +4146,8 @@
       "about": "Objeto legendario con valor de 3250 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.81,
-      "durability": 1.5
+      "durability": 1.58,
+      "attack_power": 1.95
     },
     "counter_weights": {}
   },
@@ -4155,12 +4189,13 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.45,
-      "hypercarry": 1.5
+      "lethality": 1.67,
+      "attack_damage": 1.91,
+      "hypercarry": 1.13
     },
     "counter_weights": {
-      "armor": 0.7,
-      "survivability_vs_armor": 0.7
+      "armor": 0.93,
+      "survivability_vs_armor": 0.93
     }
   },
   {
@@ -4203,12 +4238,12 @@
       "about": "Objeto legendario con valor de 2200 de oro. Aporta estadísticas clave para Mage, Support."
     },
     "synergy_multipliers": {
-      "attack_power": 1.19,
-      "hypercarry": 1.67,
-      "durability": 1.2
+      "durability": 1.17,
+      "attack_power": 1.15,
+      "hypercarry": 1.23
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -4252,9 +4287,9 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "mobility": 1.08,
-      "durability": 1.5
+      "durability": 1.88,
+      "attack_damage": 1.9,
+      "mobility": 1.07
     },
     "counter_weights": {}
   },
@@ -4296,10 +4331,11 @@
       "about": "Objeto legendario con valor de 2900 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "durability": 2.2
+      "durability": 1.95,
+      "sustain": 1.33
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -4341,11 +4377,12 @@
       "about": "Objeto legendario con valor de 2700 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.33,
-      "durability": 1.9
+      "durability": 1.94,
+      "sustain": 1.41,
+      "hypercarry": 1.09
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -4389,9 +4426,9 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Fighter, Mage."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.4,
-      "attack_power": 1.62,
-      "sustain": 2.0
+      "sustain": 1.11,
+      "attack_damage": 1.81,
+      "attack_power": 1.88
     },
     "counter_weights": {}
   },
@@ -4435,8 +4472,8 @@
       "about": "Objeto legendario con valor de 3300 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.3,
-      "durability": 1.55
+      "durability": 1.93,
+      "attack_damage": 1.83
     },
     "counter_weights": {}
   },
@@ -4477,12 +4514,11 @@
       "about": "Objeto legendario con valor de 3400 de oro. Aporta estadísticas clave para Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.8,
-      "sustain": 1.5,
-      "heal_shield_power": 1.2
+      "sustain": 1.15,
+      "attack_damage": 1.95
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -4524,9 +4560,9 @@
       "about": "Objeto legendario con valor de 3050 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.7,
-      "critic": 1.5,
-      "hypercarry": 1.67
+      "attack_damage": 1.94,
+      "hypercarry": 1.17,
+      "critic": 1.49
     },
     "counter_weights": {}
   },
@@ -4569,11 +4605,14 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Assassin, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.85,
-      "lethality": 1.36,
-      "hypercarry": 1.33
+      "lethality": 1.19,
+      "attack_damage": 1.96,
+      "hypercarry": 1.1
     },
-    "counter_weights": {}
+    "counter_weights": {
+      "armor": 0.74,
+      "survivability_vs_armor": 0.74
+    }
   },
   {
     "id": "4646",
@@ -4615,11 +4654,13 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.69,
-      "mobility": 1.12
+      "attack_power": 1.95,
+      "magic_pen": 1.13,
+      "mobility": 1.09
     },
     "counter_weights": {
-      "magic_resistance": 0.15
+      "magic_resistance": 0.65,
+      "survivability_vs_damage": 0.29
     }
   },
   {
@@ -4658,7 +4699,7 @@
       "about": "Objeto legendario con valor de 3500 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 2.3
+      "attack_power": 1.95
     },
     "counter_weights": {}
   },
@@ -4701,11 +4742,11 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage."
     },
     "synergy_multipliers": {
-      "attack_power": 1.46,
-      "durability": 1.3
+      "durability": 1.8,
+      "attack_power": 1.94
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.3
+      "survivability_vs_damage": 0.29
     }
   },
   {
@@ -4749,8 +4790,8 @@
       "about": "Objeto legendario con valor de 2600 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.35,
-      "durability": 1.35
+      "durability": 1.91,
+      "attack_power": 1.9
     },
     "counter_weights": {}
   },
@@ -4792,11 +4833,11 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Mage, Tank."
     },
     "synergy_multipliers": {
-      "attack_power": 1.81,
-      "durability": 1.4
+      "durability": 1.41,
+      "attack_power": 1.95
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.2
+      "survivability_vs_damage": 0.14
     }
   },
   {
@@ -4838,13 +4879,12 @@
       "about": "Objeto legendario con valor de 3000 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.45,
-      "mobility": 1.08,
-      "hypercarry": 1.5,
-      "critic": 1.2
+      "attack_damage": 1.93,
+      "hypercarry": 1.72,
+      "mobility": 1.07
     },
     "counter_weights": {
-      "survivability_vs_damage": 0.3
+      "survivability_vs_damage": 0.18
     }
   },
   {
@@ -4885,9 +4925,9 @@
       "about": "Objeto legendario con valor de 3200 de oro. Aporta estadísticas clave para Fighter, Tank."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "durability": 1.45,
-      "hypercarry": 1.3
+      "durability": 1.57,
+      "attack_damage": 1.95,
+      "hypercarry": 1.1
     },
     "counter_weights": {}
   },
@@ -4929,9 +4969,9 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Tank."
     },
     "synergy_multipliers": {
-      "hypercarry": 1.33,
       "durability": 1.95,
-      "wave_clear": 1.1
+      "hypercarry": 1.12,
+      "wave_clear": 1.06
     },
     "counter_weights": {}
   },
@@ -4975,8 +5015,8 @@
       "about": "Objeto legendario con valor de 2800 de oro. Aporta estadísticas clave para Marksman, Fighter."
     },
     "synergy_multipliers": {
-      "attack_damage": 1.55,
-      "critic": 1.5
+      "attack_damage": 1.94,
+      "critic": 1.65
     },
     "counter_weights": {}
   }

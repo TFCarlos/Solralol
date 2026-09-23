@@ -1,161 +1,164 @@
 {
-  "exact_passives": {
-    "Giant Slayer": {
-      "counter_weights": { "survivability_vs_damage": 0.3 }
-    },
-    "Carve": {
-      "counter_weights": { "armor": 0.3, "survivability_vs_armor": 0.3 }
-    },
-    "Magical Opus": {
-      "synergy_multipliers": { "attack_power": 0.3 }
-    },
-    "Eminence": {
-      "synergy_multipliers": { "attack_damage": 0.3 }
-    },
-    "Rebirth": {
-      "synergy_multipliers": { "hypercarry": 0.3 }
-    },
-    "Lifeline": {
-      "synergy_multipliers": { "hypercarry": 0.2, "durability": 0.2 }
-    },
-    "Spellblade": {
-      "dynamic_spellblade": true,
-      "bonus": 0.2
-    },
-    "Immolate": {
-      "synergy_multipliers": { "wave_clear": 0.1, "durability": 0.1 }
-    },
-    "Immoloate": {
-      "synergy_multipliers": { "wave_clear": 0.1, "durability": 0.1 }
-    },
-    "Cleave": {
-      "synergy_multipliers": { "wave_clear": 0.2 }
-    },
-    "Crescent": {
-      "synergy_multipliers": { "wave_clear": 0.2 }
-    },
-    "Cloudburst": {
-      "synergy_multipliers": { "mobility": 0.2 }
-    },
-    "Supersonic": {
-      "synergy_multipliers": { "mobility": 0.2 }
-    },
-    "Wraith Step": {
-      "synergy_multipliers": { "mobility": 0.1 }
-    },
-    "Soulrend": {
-      "synergy_multipliers": { "mobility": 0.1 }
-    },
-    "Stasis": {
-      "synergy_multipliers": { "hypercarry": 0.3 }
-    },
-    "Quicksilver": {
-      "synergy_multipliers": { "hypercarry": 0.2 }
-    },
-    "Purify": {
-      "synergy_multipliers": { "hypercarry": 0.2 }
-    },
-    "Consecration": {
-      "synergy_multipliers": { "hypercarry": 0.2 }
-    },
-    "Echo": {
-      "synergy_multipliers": { "wave_clear": 0.1 }
-    },
-    "Torment": {
-      "counter_weights": { "survivability_vs_damage": 0.3 }
-    },
+  "schema": "v2-deterministic",
+  "description": "Reglas de pasivas resueltas SOLO por coincidencia exacta de nombre (casefold). Sin busquedas difusas. Cada regla declara stat_bias (arquetipo al que escala), utility_tag (mecanica funcional) y weight (intensidad 0..1, saturada por sigmoide). counter_keys alimenta counter_weights (0..1). overlap_with indica la cubeta de stats cuyo presupuesto ya puntuo ese mecanismo (anti double-dipping).",
+  "passive_rules": {
     "Azakana Gaze": {
-      "counter_weights": { "survivability_vs_damage": 0.3 }
-    },
-    "Dissolve": {
-      "counter_weights": { "magic_resistance": 0.3, "survivability_vs_damage": 0.3 }
-    },
-    "Grievous Wounds": {
-      "synergy_multipliers": { "hypercarry": 0.1 }
-    },
-    "Shield Reaver": {
-      "synergy_multipliers": { "hypercarry": 0.1 }
-    },
-    "Death and Taxes": {
-      "synergy_multipliers": { "critic": 0.2 }
+      "stat_bias": "counter",
+      "utility_tag": "anti_health",
+      "weight": 0.6,
+      "counter_keys": [
+        "survivability_vs_damage"
+      ]
     },
     "Bring It Down": {
-      "synergy_multipliers": { "critic": 0.2 },
-      "counter_weights": { "survivability_vs_damage": 0.3 }
+      "stat_bias": "counter",
+      "utility_tag": "anti_health",
+      "weight": 0.5,
+      "counter_keys": [
+        "survivability_vs_damage"
+      ]
+    },
+    "Carve": {
+      "stat_bias": "counter",
+      "utility_tag": "armor_shred",
+      "weight": 0.6,
+      "counter_keys": [
+        "armor",
+        "survivability_vs_armor"
+      ]
+    },
+    "Cleave": {
+      "stat_bias": "wave_clear",
+      "utility_tag": "waveclear",
+      "weight": 0.55
+    },
+    "Cloudburst": {
+      "stat_bias": "mobility",
+      "utility_tag": "mobility",
+      "weight": 0.45
+    },
+    "Consecration": {
+      "stat_bias": "hypercarry",
+      "utility_tag": "aura",
+      "weight": 0.4
+    },
+    "Crescent": {
+      "stat_bias": "wave_clear",
+      "utility_tag": "waveclear",
+      "weight": 0.55
+    },
+    "Death and Taxes": {
+      "stat_bias": "offensive",
+      "utility_tag": "execute",
+      "weight": 0.4
+    },
+    "Dissolve": {
+      "stat_bias": "counter",
+      "utility_tag": "mr_shred",
+      "weight": 0.6,
+      "counter_keys": [
+        "magic_resistance",
+        "survivability_vs_damage"
+      ]
+    },
+    "Echo": {
+      "stat_bias": "wave_clear",
+      "utility_tag": "waveclear",
+      "weight": 0.45
+    },
+    "Eminence": {
+      "stat_bias": "offensive",
+      "utility_tag": "spellblade",
+      "weight": 0.55
+    },
+    "Giant Slayer": {
+      "stat_bias": "counter",
+      "utility_tag": "anti_health",
+      "weight": 0.6,
+      "counter_keys": [
+        "survivability_vs_damage"
+      ]
+    },
+    "Grievous Wounds": {
+      "stat_bias": "counter",
+      "utility_tag": "anti_heal",
+      "weight": 0.5
+    },
+    "Immolate": {
+      "stat_bias": "wave_clear",
+      "utility_tag": "waveclear",
+      "weight": 0.45,
+      "overlap_with": "defensive"
     },
     "Infinite Precision": {
-      "synergy_multipliers": { "critic": 0.3 }
+      "stat_bias": "offensive",
+      "utility_tag": "crit_scaling",
+      "weight": 0.5
     },
-    "Perfection": {
-      "synergy_multipliers": { "critic": 0.3 }
+    "Lifeline": {
+      "stat_bias": "defensive",
+      "utility_tag": "lifeline_shield",
+      "weight": 0.55,
+      "overlap_with": "defensive"
     },
-    "Mist's Edge": {
-      "counter_weights": { "survivability_vs_damage": 0.3 }
+    "Magical Opus": {
+      "stat_bias": "offensive",
+      "utility_tag": "spellblade",
+      "weight": 0.55
     },
-    "Siphon": {
-      "synergy_multipliers": { "mobility": 0.1, "sustain": 0.1 }
+    "Purify": {
+      "stat_bias": "defensive",
+      "utility_tag": "cc_cleanse",
+      "weight": 0.5
     },
-    "Fervor": {
-      "synergy_multipliers": { "attack_damage": 0.1, "hypercarry": 0.1 }
+    "Quicksilver": {
+      "stat_bias": "defensive",
+      "utility_tag": "cc_cleanse",
+      "weight": 0.5
     },
-    "Void Corruption": {
-      "synergy_multipliers": { "durability": 0.2 }
+    "Rebirth": {
+      "stat_bias": "hypercarry",
+      "utility_tag": "revive",
+      "weight": 0.6
     },
-    "Goliath": {
-      "synergy_multipliers": { "durability": 0.3 }
+    "Shield Reaver": {
+      "stat_bias": "counter",
+      "utility_tag": "anti_shield",
+      "weight": 0.5
     },
-    "Colossus": {
-      "synergy_multipliers": { "durability": 0.3 }
+    "Soulrend": {
+      "stat_bias": "mobility",
+      "utility_tag": "mobility",
+      "weight": 0.3
     },
-    "Unholy Vitality": {
-      "synergy_multipliers": { "durability": 0.2, "magic_resistance": 0.1 }
+    "Spellblade": {
+      "stat_bias": "offensive",
+      "utility_tag": "spellblade",
+      "weight": 0.55,
+      "dynamic": true
     },
-    "Hatefog": {
-      "counter_weights": { "magic_resistance": 0.3 }
+    "Stasis": {
+      "stat_bias": "defensive",
+      "utility_tag": "stasis",
+      "weight": 0.6
+    },
+    "Supersonic": {
+      "stat_bias": "mobility",
+      "utility_tag": "mobility",
+      "weight": 0.45
+    },
+    "Torment": {
+      "stat_bias": "counter",
+      "utility_tag": "anti_health",
+      "weight": 0.6,
+      "counter_keys": [
+        "survivability_vs_damage"
+      ]
+    },
+    "Wraith Step": {
+      "stat_bias": "mobility",
+      "utility_tag": "mobility",
+      "weight": 0.3
     }
-  },
-  "keyword_rules": [
-    {
-      "keywords": ["slayer", "giant", "dominik", "percent health", "max health", "cut down"],
-      "counter_weights": { "survivability_vs_damage": 0.3 }
-    },
-    {
-      "keywords": ["cleave", "crescent", "aoe", "radial", "area"],
-      "synergy_multipliers": { "wave_clear": 0.2 }
-    },
-    {
-      "keywords": ["spellblade", "sheen"],
-      "dynamic_spellblade": true,
-      "bonus": 0.2
-    },
-    {
-      "keywords": ["lifeline", "sterak", "maw", "shieldbow"],
-      "synergy_multipliers": { "hypercarry": 0.2, "durability": 0.2 }
-    },
-    {
-      "keywords": ["shield", "heal", "blessing", "sanctuary", "harmony"],
-      "synergy_multipliers": { "heal_shield_power": 0.2 }
-    },
-    {
-      "keywords": ["move", "speed", "dash", "step", "stride", "glide", "haste"],
-      "synergy_multipliers": { "mobility": 0.1 }
-    },
-    {
-      "keywords": ["shred", "carve", "sunder", "armor reduction"],
-      "counter_weights": { "armor": 0.3, "survivability_vs_armor": 0.3 }
-    },
-    {
-      "keywords": ["dissolve", "void", "mr reduction", "magic shred"],
-      "counter_weights": { "magic_resistance": 0.3, "survivability_vs_damage": 0.3 }
-    },
-    {
-      "keywords": ["stasis", "revive", "rebirth", "guardian", "invulnerable"],
-      "synergy_multipliers": { "hypercarry": 0.3 }
-    },
-    {
-      "keywords": ["cleanse", "quicksilver", "purify", "tenacity", "unstoppable"],
-      "synergy_multipliers": { "hypercarry": 0.2 }
-    }
-  ]
+  }
 }
-

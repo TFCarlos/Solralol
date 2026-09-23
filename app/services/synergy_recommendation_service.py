@@ -138,6 +138,15 @@ class SynergyRecommendationService:
             for item_id, item in items.items()
             if self._is_legendary(item)
         ]
+        # Deduplicar por nombre normalizado: el mismo objeto puede llegar con IDs
+        # distintos (strict vs Data Dragon). Se conserva la mejor puntuación.
+        unique: dict[str, ItemRecommendation] = {}
+        for rec in recommendations:
+            key = self._normalise_item_name(rec.name)
+            existing = unique.get(key)
+            if existing is None or rec.score > existing.score:
+                unique[key] = rec
+        recommendations = list(unique.values())
         return sorted(recommendations, key=lambda value: value.score, reverse=True)[:limit]
 
     @staticmethod

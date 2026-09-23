@@ -1,8 +1,8 @@
 """Calcula winrates dinámicos por campeón usando Riot Match V5 API y modelado estadístico.
 
 Para cada campeón:
-  - Selecciona los 3 oponentes de su mismo rol con MENOR winrate -> `counters` (ej. 41% - 48%)
-  - Selecciona los 3 oponentes de su mismo rol con MAYOR winrate -> `good_against` (ej. 52% - 59%)
+  - Selecciona los 5 oponentes de su mismo rol con MENOR winrate -> `counters` (ej. 41% - 48%)
+  - Selecciona los 5 oponentes de su mismo rol con MAYOR winrate -> `good_against` (ej. 52% - 59%)
   - Diferencia explícitamente:
       1. Winrate en línea predilecta (ej. Ahri Mid vs Sylas Mid)
       2. Winrate general (Overall) (ej. Ahri vs Sylas en toda la partida)
@@ -158,7 +158,7 @@ def match_v5_positions(roles: set[str]) -> list[str]:
 
 
 class WinrateCalculatorService:
-    """Servicio para calcular dinámicamente los 3 counters y 3 'bueno contra' de cada campeón."""
+    """Servicio para calcular dinámicamente los 5 counters y 5 'bueno contra' de cada campeón."""
 
     def __init__(
         self,
@@ -356,7 +356,7 @@ class WinrateCalculatorService:
         observed_lane: dict[tuple[str, str, str], list[int]],
         observed_overall: dict[tuple[str, str], list[int]],
     ) -> int:
-        """Calcula los enfrentamientos contra todos los oponentes del mismo rol y selecciona top 3 counters y top 3 ventajas."""
+        """Calcula los enfrentamientos contra todos los oponentes del mismo rol y selecciona top 5 counters y top 5 ventajas."""
         champion_name = str(profile.get("character", ""))
         champ_key = normalize_champion_key(champion_name)
         champ_roles = roles_for_champion(profile)
@@ -404,11 +404,11 @@ class WinrateCalculatorService:
         # Ordenar por winrate de línea (de menor a mayor)
         evaluated.sort(key=lambda x: x["win_rate"])
 
-        # 3 con MENOR winrate de línea -> Counters
-        counters_data = evaluated[:3]
+        # 5 con MENOR winrate de línea -> Counters
+        counters_data = evaluated[:5]
 
-        # 3 con MAYOR winrate de línea -> Bueno contra (Ventajas)
-        good_against_data = evaluated[-3:][::-1]
+        # 5 con MAYOR winrate de línea -> Bueno contra (Ventajas)
+        good_against_data = evaluated[-5:][::-1]
 
         if "matchups" not in profile or not isinstance(profile["matchups"], dict):
             profile["matchups"] = {}

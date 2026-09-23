@@ -9,7 +9,7 @@ from math import cos, sin
 
 from _paths import DATA_DIR
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QProgressBar,
@@ -320,30 +320,105 @@ class PowerCurveWidget(QWidget):
 
 
 class BarWidget(QWidget):
+    """Lista ordenada de sinergias: icono, nombre, barra degradada y puntuación."""
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.values: list[tuple[str, float, str]] = []
         self.setMinimumHeight(112)
 
+    def set_values(self, values: list[tuple[str, float, str]]) -> None:
+        self.values = values
+        self.updateGeometry()
+        self.update()
+
+    def _row_height(self) -> int:
+        return 44
+
+    def sizeHint(self):  # noqa: N802
+        height = max(self.minimumHeight(), self._row_height() * max(1, len(self.values)) + 16)
+        return QSize(self.width(), height)
+
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.fillRect(self.rect(), QColor(9, 24, 40, 220))
-        maximum = max((value for _, value, _ in self.values), default=1.0)
-        width = max(1, self.width() // max(1, len(self.values)))
-        for index, entry in enumerate(self.values):
-            label, value, item_id = entry
-            x = index * width + 8
+
+        if not self.values:
+            painter.setPen(QColor(120, 140, 165))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Sin datos de sinergia disponibles.")
+            return
+
+        maximum = max((value for _, value, _ in self.values), default=1.0) or 1.0
+        row_h = self._row_height()
+        top = 8
+        for index, (label, value, item_id) in enumerate(self.values):
+            y = top + index * row_h
+            # Fila alternada sutil
+            if index % 2 == 0:
+                painter.fillRect(6, y, self.width() - 12, row_h - 6, QColor(255, 255, 255, 10))
+
+            # Icono del objeto
+            icon_x = 14
+            icon_size = 32
+            icon_cy = y + (row_h - 6) // 2
             icon_path = get_item_icon_path(item_id, self.item_catalog, "16.17.1") if hasattr(self, "item_catalog") else None
             if icon_path and icon_path.exists():
                 pixmap = QPixmap(str(icon_path))
-                painter.drawPixmap(x, 10, pixmap.scaled(46, 46, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            painter.setPen(QColor(217, 174, 79))
-            painter.drawText(x + 52, 27, f"{value:.1f}")
+                painter.drawPixmap(
+                    icon_x, icon_cy - icon_size // 2,
+                    pixmap.scaled(icon_size, icon_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation),
+                )
+            else:
+                painter.setPen(QPen(QColor(57, 188, 218, 120), 1.2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRoundedRect(icon_x, icon_cy - icon_size // 2, icon_size, icon_size, 6, 6)
+
+            # Nombre truncado
+            text_x = icon_x + icon_size + 10
+            name_w = min(170, self.width() // 3)
             painter.setPen(QColor(220, 232, 246))
-            painter.drawText(x, 78, label[:18])
-            painter.setPen(QColor(57, 188, 218))
-            painter.drawRect(x + 52, 38, max(8, int((width - 66) * value / maximum)), 5)
+            font = painter.font()
+            font.setBold(True)
+            font.setPointSize(max(7, font.pointSize() - 1))
+            painter.setFont(font)
+            metrics = painter.fontMetrics()
+            painter.drawText(text_x, icon_cy + metrics.ascent() // 2, metrics.elidedText(label, Qt.TextElideMode.ElideRight, name_w))
+
+            # Barra degradada
+            font.setBold(False)
+            painter.setFont(font)
+            bar_x = text_x + name_w + 10
+            bar_w = max(40, self.width() - bar_x - 78)
+            bar_h = 10
+            bar_y = icon_cy - bar_h // 2
+            track = QRectF(bar_x, bar_y, bar_w, bar_h)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 18))
+            painter.drawRoundedRect(track, bar_h / 2, bar_h / 2)
+            ratio = max(0.0, min(1.0, value / maximum))
+            fill_w = max(bar_h, bar_w * ratio) if ratio > 0 else 0
+            if fill_w > 0:
+                gradient = QLinearGradient(bar_x, 0, bar_x + bar_w, 0)
+                gradient.setColorAt(0.0, QColor(57, 188, 218))
+                gradient.setColorAt(1.0, QColor(217, 174, 79))
+                painter.setBrush(gradient)
+                painter.drawRoundedRect(QRectF(bar_x, bar_y, fill_w, bar_h), bar_h / 2, bar_h / 2)
+
+            # Puntuación en píldora
+            score_text = f"{value:.1f}"
+            pill_w = 52
+            pill_h = 20
+            pill_x = self.width() - pill_w - 14
+            pill_y = icon_cy - pill_h // 2
+            painter.setBrush(QColor(217, 174, 79, 40))
+            painter.setPen(QPen(QColor(217, 174, 79), 1.0))
+            painter.drawRoundedRect(QRectF(pill_x, pill_y, pill_w, pill_h), pill_h / 2, pill_h / 2)
+            painter.setPen(QColor(240, 214, 140))
+            pill_font = painter.font()
+            pill_font.setBold(True)
+            painter.setFont(pill_font)
+            painter.drawText(QRectF(pill_x, pill_y, pill_w, pill_h), Qt.AlignmentFlag.AlignCenter, score_text)
 
 
 class HeatmapWidget(QWidget):
@@ -1417,7 +1492,7 @@ class LocalAnalysisDialog(QDialog):
         matchups = profile.get("matchups", {})
         counters = matchups.get("counters", []) if isinstance(matchups, dict) else []
         counter_labels = []
-        for entry in counters[:3]:
+        for entry in counters[:5]:
             if isinstance(entry, dict):
                 c_name = str(entry.get("champion", "?"))
                 wr = entry.get("win_rate")
@@ -1444,8 +1519,7 @@ class LocalAnalysisDialog(QDialog):
         self._render_starter_and_spells(profile)
         self._render_situational_items(profile)
         self._update_damage_bar(profile)
-        self.bar.values = [(result.name, result.score, result.item_id) for result in ranked[:8]]
-        self.bar.update()
+        self.bar.set_values([(result.name, result.score, result.item_id) for result in ranked[:8]])
         self._render_matchups_panel(profile)
         self.item_table.setRowCount(len(ranked))
         self.item_table.setSortingEnabled(False)
@@ -1543,16 +1617,20 @@ class LocalAnalysisDialog(QDialog):
     def _recommendation_items_by_id(self) -> dict[str, dict[str, Any]]:
         catalog = self._catalog_items().get("items", {})
         result: dict[str, dict[str, Any]] = {}
+        seen_names: set[str] = set()
         for item in self.items:
-            item_id = str(item.get("id") or item.get("basic_info", {}).get("id") or "")
+            basic = item.get("basic_info", {})
+            name = str(basic.get("name", item.get("item", "")))
+            norm_name = self._normalise_item_name(name)
+            item_id = str(item.get("id") or basic.get("id") or "")
             if not item_id or item_id not in catalog:
-                basic = item.get("basic_info", {})
-                name = str(basic.get("name", item.get("item", "")))
                 item_id = self._catalog_id_for_name(name, catalog)
                 if not item_id and "name_en" in basic:
                     item_id = self._catalog_id_for_name(basic["name_en"], catalog)
             if item_id:
                 result[item_id] = item
+                if norm_name:
+                    seen_names.add(norm_name)
 
         # Asegurar que todos los objetos terminados o legendarios de Data Dragon estén disponibles
         for cid, cat_item in catalog.items():
@@ -1561,6 +1639,12 @@ class LocalAnalysisDialog(QDialog):
                 cost = int(gold.get("total", 0)) if isinstance(gold, dict) else 0
                 if cost >= 2200 and not cat_item.get("into"):
                     display_name = cat_item.get("name_es") or cat_item.get("name") or str(cid)
+                    norm_display = self._normalise_item_name(display_name)
+                    # Evitar duplicados: el mismo objeto puede existir ya con otro ID (strict vs Data Dragon)
+                    if norm_display and norm_display in seen_names:
+                        continue
+                    if norm_display:
+                        seen_names.add(norm_display)
                     result[cid] = {
                         "id": str(cid),
                         "item": display_name,
@@ -1896,8 +1980,10 @@ class LocalAnalysisDialog(QDialog):
         catalog = self._catalog_items().get("items", {})
         return self._catalog_id_for_name(name, catalog)
 
+    MATCHUP_CARD_LIMIT = 5
+
     def _render_matchups_panel(self, profile: dict[str, Any]) -> None:
-        """Renderiza las tarjetas de los 3 Counters y los 3 Bueno Contra con sus iconos, winrate en línea y winrate overall."""
+        """Renderiza las tarjetas de los 5 Counters y los 5 Bueno Contra con sus iconos, winrate en línea y winrate overall."""
         for layout in (self.counters_cards_layout, self.good_cards_layout):
             while layout.count():
                 item = layout.takeAt(0)
@@ -1908,8 +1994,8 @@ class LocalAnalysisDialog(QDialog):
         counters = matchups.get("counters", []) if isinstance(matchups, dict) else []
         good_against = matchups.get("good_against", []) if isinstance(matchups, dict) else []
 
-        # 3 Counters (Desventaja)
-        for entry in counters[:3]:
+        # 5 Counters (Desventaja)
+        for entry in counters[:self.MATCHUP_CARD_LIMIT]:
             name, wr_lane, wr_overall, tip, lg, og, role = self._extract_matchup_info(entry)
             card = self._create_matchup_card(name, wr_lane, wr_overall, tip, is_counter=True, lane_games=lg, overall_games=og, primary_role=role)
             self.counters_cards_layout.addWidget(card)
@@ -1918,8 +2004,8 @@ class LocalAnalysisDialog(QDialog):
             lbl.setObjectName("localMuted")
             self.counters_cards_layout.addWidget(lbl)
 
-        # 3 Bueno Contra (Ventaja)
-        for entry in good_against[:3]:
+        # 5 Bueno Contra (Ventaja)
+        for entry in good_against[:self.MATCHUP_CARD_LIMIT]:
             name, wr_lane, wr_overall, tip, lg, og, role = self._extract_matchup_info(entry)
             card = self._create_matchup_card(name, wr_lane, wr_overall, tip, is_counter=False, lane_games=lg, overall_games=og, primary_role=role)
             self.good_cards_layout.addWidget(card)
