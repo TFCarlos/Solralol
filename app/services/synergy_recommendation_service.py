@@ -1,8 +1,15 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from typing import Any
+
+from app.services.playstyle_service import (
+    item_emphasis,
+    primary_attributes,
+    resolve_playstyle,
+    stat_label,
+)
 
 
 @dataclass(frozen=True)
@@ -15,7 +22,18 @@ class ItemRecommendation:
 
 
 class SynergyRecommendationService:
-    """Puntua objetos usando identidad del campeon, estadisticas y amenazas LIVE."""
+    """Puntua objetos usando identidad del campeon, estadisticas y amenazas LIVE.
+
+    La afinidad se pondera con el playstyle modular de ``playstyle_service``:
+    buffs (+) para las estadísticas del rol, nerfs (−) para escalados
+    residuales no viables y penalizaciones por clase incompatible, todo ello
+    gateado por los escalados realmente principales del campeón.
+    """
+
+    # Puntos que resta cada unidad de énfasis × nerf de playstyle.
+    PENALTY_PER_NERF = 6.0
+    # Penalización plana cuando la clase del objeto es incompatible con el rol.
+    CLASS_PENALTY = 6.0
 
     STYLE_CLASSES = {
         "Diver": {"Bruiser", "Fighter", "Skirmisher", "Juggernaut"},
@@ -200,34 +218,80 @@ class SynergyRecommendationService:
         item: dict[str, Any],
         threats: list[tuple[str, str]],
     ) -> ItemRecommendation:
+        """Fórmula ponderada por playstyle y escalados reales del campeón.
+
+        score = base(8/2 por clase afín)
+              + Σ (atributo × énfasis × (1 + buff − nerf))   ← afinidad
+              − Σ (énfasis × nerf × PENALTY_PER_NERF)        ← stats incompatibles
+              − CLASS_PENALTY                                ← clase incompatible
+              + 3 por cada amenaza que responde el objeto
+        y se trunca a 0 como suelo (los objetos incompatibles no pueden quedar
+        con puntuación positiva solo por escalados residuales).
+        """
         attributes = self._champion_attributes(champion_profile)
         stats = item.get("stats", {}) if isinstance(item.get("stats"), dict) else {}
         text = self._text(item)
         classifications = item.get("classifications", {}) if isinstance(item.get("classifications"), dict) else {}
         intended = {str(value) for value in item.get("intended_classes", classifications.get("intended_classes", []))}
         intended.update(self._class_hints(text))
-        wanted = self.STYLE_CLASSES.get(style_key, set())
-        base = 8.0 if intended & wanted else 2.0
+
+        playstyle = resolve_playstyle(style_key)
+        primary = primary_attributes(attributes)
+        emphasis = item_emphasis(stats, self._multipliers(item))
+        nerfs = playstyle.effective_nerfs(primary)
+
+        # Base: clases afines al rol (fallback a STYLE_KEYS legacy si no hay playstyle).
+        wanted = playstyle.favored_classes or self.STYLE_CLASSES.get(style_key, set())
+        score = 8.0 if intended & wanted else 2.0
         reasons: list[str] = []
+        penalties: list[str] = []
         counters: list[str] = []
         if intended & wanted:
             reasons.append(f"encaja con el estilo {style_key}")
-        for stat, multiplier in self._multipliers(item).items():
+
+        # 1) Nerfs de playstyle: el objeto invierte en estadísticas incompatibles.
+        for stat, nerf in sorted(nerfs.items(), key=lambda pair: -pair[1]):
+            factor = emphasis.get(stat, 0.0)
+            if factor:
+                score -= factor * nerf * self.PENALTY_PER_NERF
+                penalties.append(f"{stat_label(stat)} incompatible con {playstyle.label}")
+
+        # 2) Clases incompatibles con el rol (exentas si el escalado que las
+        #    sustenta es principal en el campeón, p. ej. AP en Mordekaiser).
+        disfavored = playstyle.effective_disfavored(intended, primary)
+        if disfavored:
+            score -= self.CLASS_PENALTY
+            penalties.append(f"clase {'/'.join(sorted(disfavored))} fuera del rol {playstyle.label}")
+
+        # 3) Afinidad ponderada: atributo × énfasis × coeficiente de playstyle.
+        contributions: list[tuple[str, float]] = []
+        for stat, factor in emphasis.items():
             value = float(attributes.get(stat, 0))
-            if value and multiplier:
-                base += value * multiplier
-                reasons.append(f"sinergia con {stat.replace('_', ' ')}")
+            if not value or not factor:
+                continue
+            coefficient = 1.0 + playstyle.buff_for(stat, primary) - nerfs.get(stat, 0.0)
+            if coefficient:
+                contributions.append((stat, value * factor * coefficient))
+        contributions.sort(key=lambda pair: -abs(pair[1]))
+        for stat, contribution in contributions:
+            score += contribution
+            if contribution > 0:
+                reasons.append(f"sinergia con {stat_label(stat)}")
+
+        # 4) Respuestas a amenazas del equipo rival.
         for threat_key, label in threats:
             if self._counters(threat_key, text):
-                base += 3.0
+                score += 3.0
                 counters.append(label)
-        if not reasons:
-            reasons.append("aporta estadisticas utiles al estilo del campeon")
+
+        all_reasons = penalties + reasons
+        if not all_reasons:
+            all_reasons.append("aporta estadisticas utiles al estilo del campeon")
         return ItemRecommendation(
             item_id=str(item_id),
             name=self._name(item, item_id),
-            score=round(base, 1),
-            reasons=tuple(reasons[:3]),
+            score=round(max(0.0, score), 1),
+            reasons=tuple(all_reasons[:3]),
             counter_reasons=tuple(counters[:2]),
         )
 
@@ -251,6 +315,11 @@ class SynergyRecommendationService:
                         attributes[key] = float(value)
                     except (TypeError, ValueError):
                         continue
+        # Escalados defensivos clave en objetos de tanque pero ausentes como
+        # atributo propio del perfil: se derivan de survivability_overall.
+        overall = attributes.get("survivability_overall", 0.0)
+        attributes.setdefault("durability", overall)
+        attributes.setdefault("tankiness", overall)
         return attributes
 
     @staticmethod
