@@ -5,6 +5,8 @@ Verifica:
 2. Los conjuntos propios del jugador se conservan intactos.
 3. La página es general y se llama «Solralol - <Campeón> Build».
 4. Lleva 6 objetos + bloque de botas + bloques situacionales del campeón.
+   En jungla, el hueco de starter lo ocupan los 3 compañeros de jungla (1101-1103)
+   en un bloque inicial; en el resto de líneas no hay bloque starter.
 5. Reimportar no duplica la página: la anterior de Solralol se sustituye.
 6. Se admite que el cliente devuelva el contenedor {itemSets} o una lista suelta.
 7. Un error HTTP se comunica sin lanzar excepciones.
@@ -124,6 +126,14 @@ sets = fake.puts[-1][1]["itemSets"]
 briar = next(s for s in sets if str(s["uid"]).startswith("solralol-build-"))
 check("nuevo título con el campeón actual", briar["title"] == "Solralol - Briar Build",
       briar["title"])
+check("en jungla el hueco de starter lleva los 3 compañeros",
+      briar["blocks"][0]["type"].startswith("Objetos iniciales (starter)")
+      and briar["blocks"][0]["items"]
+      == [{"id": i, "count": 1} for i in ("1101", "1102", "1103")],
+      str(briar["blocks"][0]))
+check("fuera de jungla no hay bloque starter",
+      all(not b["type"].startswith("Objetos iniciales") for b in mine["blocks"]),
+      str([b["type"] for b in mine["blocks"]]))
 check("sin páginas huérfanas de Solralol",
       sum(1 for s in sets if str(s["uid"]).startswith("solralol-")) == 1)
 check("el conjunto del jugador sigue ahí", any(s["uid"] == "user-own" for s in sets))

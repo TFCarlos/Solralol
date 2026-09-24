@@ -3,10 +3,11 @@
 Verifica el camino completo (diálogo -> LCUService -> HTTP LCU) con una sesión
 HTTP simulada, porque el cliente real solo existe durante una partida:
 1. El botón existe y avisa de lo que hace.
-2. Con Briar seleccionada crea la página general «Solralol - Briar Build».
+2. Con Briar seleccionada (Jungle) crea la página general «Solralol - Briar Build».
 3. La página no queda ligada a ningún campeón (mapa y modo «any»).
 4. Lleva los 6 objetos de la build calculada, las botas recomendadas y los
-   bloques de objetos situacionales del campeón.
+   bloques de objetos situacionales del campeón. Al ser jungla, el hueco de
+   starter lo ocupan los 3 compañeros de jungla (bloque inicial).
 5. Se conserva el conjunto propio del jugador y se reemplaza el de Solralol.
 6. Se informa del éxito en pantalla.
 7. Sin campeón seleccionado no se toca el cliente.
@@ -68,8 +69,9 @@ class FakeSession:
 
 dialog = DraftToolDialog()
 check("botón de importar build presente", hasattr(dialog, "btn_import_build"))
-check("el botón anuncia la página general",
-      "Solralol - [campeón] Build" in dialog.btn_import_build.toolTip(),
+check("el botón anuncia la página general y el starter de jungla",
+      "Solralol - [campeón] Build" in dialog.btn_import_build.toolTip()
+      and "3 compañeros de jungla" in dialog.btn_import_build.toolTip(),
       dialog.btn_import_build.toolTip())
 
 # El diálogo usa su propia instancia de LCU; se simula la sesión HTTP del cliente.
@@ -114,13 +116,19 @@ build = dialog.analyzer.get_champion_build("Briar", ENEMIES)
 expected_items = [item["id"] for item in build["items"]]
 expected_boots = build["boots"]["id"] if build["boots"] else None
 expected_situational = build.get("situational", [])
-imported_items = [item["id"] for item in page["blocks"][0]["items"]]
+blocks = page["blocks"]
+# En jungla el hueco de starter lo ocupan los tres compañeros de jungla.
+check("bloque starter con los 3 compañeros de jungla",
+      blocks[0]["type"].startswith("Objetos iniciales (starter)")
+      and [item["id"] for item in blocks[0]["items"]] == ["1101", "1102", "1103"],
+      str(blocks[0]))
+imported_items = [item["id"] for item in blocks[1]["items"]]
 check("6 objetos de la build calculada", imported_items == expected_items,
       f"importados={imported_items} esperados={expected_items}")
 check("botas recomendadas incluidas",
-      page["blocks"][1]["items"] == [{"id": expected_boots, "count": 1}],
-      str(page["blocks"][1:2]))
-situational_blocks = page["blocks"][2:]
+      blocks[2]["items"] == [{"id": expected_boots, "count": 1}],
+      str(blocks[2:3]))
+situational_blocks = blocks[3:]
 check("bloques situacionales del campeón incluidos",
       [block["type"] for block in situational_blocks]
       == [group["label"] for group in expected_situational],
@@ -129,9 +137,9 @@ check("situacionales con los mismos objetos que la vista local",
       [[item["id"] for item in block["items"]] for block in situational_blocks]
       == [[item["id"] for item in group["items"]] for group in expected_situational],
       str([[item["id"] for item in block["items"]] for block in situational_blocks]))
-check("total de bloques (principales + botas + situacionales)",
-      len(page["blocks"]) == 2 + len(expected_situational),
-      str(len(page["blocks"])))
+check("total de bloques (starter + principales + botas + situacionales)",
+      len(blocks) == 3 + len(expected_situational),
+      str(len(blocks)))
 check("conjunto propio del jugador intacto", any(s.get("uid") == "user-own" for s in sets))
 
 # Reimportar no acumula páginas de Solralol.

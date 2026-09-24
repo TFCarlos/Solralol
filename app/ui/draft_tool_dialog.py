@@ -369,50 +369,140 @@ class DraftToolDialog(QDialog):
 
         # 2A. GRID DE EQUIPOS 5v5
         teams_frame = QFrame()
-        teams_frame.setStyleSheet("background-color: #1E293B; border-radius: 8px; border: 1px solid #334155;")
+        teams_frame.setObjectName("draftTeamsSection")
+        teams_frame.setStyleSheet("""
+            QFrame#draftTeamsSection {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #16213A, stop:1 #101B2D);
+                border: 1px solid #2C3D57; border-radius: 12px;
+            }
+            QLabel { background: transparent; border: none; padding: 0px; }
+            QFrame#draftAllyBanner {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #123129, stop:1 #141F35);
+                border: 1px solid #245C4C; border-left: 4px solid #10B981;
+                border-radius: 9px;
+            }
+            QFrame#draftEnemyBanner {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #141F35, stop:1 #30151B);
+                border: 1px solid #633342; border-left: 4px solid #F87171;
+                border-radius: 9px;
+            }
+            QFrame#draftAllySlot {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #16263C, stop:1 #131F33);
+                border: 1px solid #2C4260; border-left: 3px solid #10B981;
+                border-radius: 9px;
+            }
+            QFrame#draftAllySlot:hover {
+                border-color: #34D399;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #1A2F49, stop:1 #152438);
+            }
+            QFrame#draftEnemySlot {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #131F33, stop:1 #26171F);
+                border: 1px solid #4C3040; border-left: 3px solid #F87171;
+                border-radius: 9px;
+            }
+            QFrame#draftEnemySlot:hover {
+                border-color: #FB7185;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #152438, stop:1 #2E1A23);
+            }
+            QLabel#draftSlotIcon {
+                background: #0B1424; border: 2px solid #2E4A6B;
+                border-radius: 8px; padding: 1px;
+            }
+            QLabel#draftSlotWr {
+                background: #131E33; border: 1px solid #2C3D57;
+                border-radius: 9px; font-size: 12px; font-weight: 700;
+            }
+            QLabel#draftEnemyRole { font-size: 11px; padding-left: 8px; }
+            QLabel#draftColumnCaption {
+                color: #5B6E8A; font-size: 10px; font-weight: 700;
+                letter-spacing: 1px;
+            }
+            QComboBox#draftPickCombo { font-size: 12px; font-weight: 600; }
+            QComboBox#draftRoleCombo { font-size: 11px; font-weight: 700; }
+            QComboBox#draftPickCombo[empty="true"] { color: #64748B; font-style: italic; }
+        """)
         teams_layout = QVBoxLayout(teams_frame)
-        teams_layout.setContentsMargins(12, 12, 12, 12)
+        teams_layout.setContentsMargins(14, 14, 14, 14)
+        teams_layout.setSpacing(10)
+
+        teams_header = QHBoxLayout()
+        teams_title = QLabel("COMPOSICIONES 5v5")
+        teams_title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        teams_title.setStyleSheet("color: #93C5FD; letter-spacing: 1px;")
+        teams_header.addWidget(teams_title)
+        teams_header.addStretch()
+        teams_hint = QLabel("✓ pick confirmado · casilla sin marcar = pre-pick")
+        teams_hint.setStyleSheet("color: #9CAEC9; font-size: 11px;")
+        teams_header.addWidget(teams_hint)
+        teams_layout.addLayout(teams_header)
+
         teams_grid_layout = QHBoxLayout()
+        teams_grid_layout.setSpacing(12)
 
         # Columna Mi Equipo
         my_team_box = QVBoxLayout()
-        my_team_title_row = QHBoxLayout()
-        my_team_title = QLabel("🛡️ MI EQUIPO (Aliados)")
-        my_team_title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        my_team_title.setStyleSheet("color: #10B981;")
+        my_team_box.setSpacing(8)
+
+        my_banner = QFrame()
+        my_banner.setObjectName("draftAllyBanner")
+        my_team_title_row = QHBoxLayout(my_banner)
+        my_team_title_row.setContentsMargins(14, 8, 12, 8)
+        my_team_title_row.setSpacing(10)
+        my_team_title = QLabel("🛡️ MI EQUIPO")
+        my_team_title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        my_team_title.setStyleSheet("color: #6EE7B7;")
         self.my_team_overall_lbl = QLabel("WR —")
+        self.my_team_overall_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.my_team_overall_lbl.setToolTip(
             "Media de los win rates OVERALL de los campeones con al menos un pick/pre-pick. "
             "Referencia para estimar la probabilidad de victoria, no es una probabilidad calibrada."
         )
-        self.my_team_overall_lbl.setStyleSheet("color: #94A3B8; font-weight: 700;")
+        self.my_team_overall_lbl.setStyleSheet(
+            "color: #94A3B8; background: #131E33; border: 1px solid #2C3D57; "
+            "border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 800;"
+        )
         my_team_title_row.addWidget(my_team_title)
         my_team_title_row.addStretch()
         my_team_title_row.addWidget(self.my_team_overall_lbl)
-        my_team_box.addLayout(my_team_title_row)
+        my_team_box.addWidget(my_banner)
+        my_team_box.addLayout(self._slot_captions_layout())
 
         for i in range(5):
             slot_card = QFrame()
-            slot_card.setStyleSheet("background: #172338; border: 1px solid #2D405D; border-radius: 7px;")
+            slot_card.setObjectName("draftAllySlot")
             slot_h = QHBoxLayout(slot_card)
-            slot_h.setContentsMargins(6, 3, 6, 3)
-            slot_h.setSpacing(6)
+            slot_h.setContentsMargins(12, 8, 12, 8)
+            slot_h.setSpacing(8)
             role_cb = QComboBox()
+            role_cb.setObjectName("draftRoleCombo")
             role_cb.addItems(self.ROLES)
             role_cb.setCurrentIndex(i % 5)
             role_cb.setFixedWidth(80)
+            role_cb.setMinimumHeight(26)
             role_cb.currentIndexChanged.connect(self._on_draft_changed)
 
             champ_cb = QComboBox()
+            champ_cb.setObjectName("draftPickCombo")
+            champ_cb.setProperty("empty", True)
             champ_cb.addItems(["-- Vacío --"] + self.all_champion_names)
+            champ_cb.setMinimumHeight(26)
             champ_cb.currentIndexChanged.connect(self._on_draft_changed)
 
-            icon_lbl = QLabel()
-            icon_lbl.setFixedSize(30, 30)
-            icon_lbl.setStyleSheet("background: #0F172A; border: 1px solid #334155; border-radius: 15px;")
+            icon_lbl = QLabel("—")
+            icon_lbl.setObjectName("draftSlotIcon")
+            icon_lbl.setFixedSize(36, 36)
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             matchup_lbl = QLabel("—")
-            matchup_lbl.setFixedWidth(52)
+            matchup_lbl.setObjectName("draftSlotWr")
+            matchup_lbl.setFixedWidth(56)
             matchup_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             matchup_lbl.setToolTip("Win rate overall del campeón.")
 
@@ -429,49 +519,66 @@ class DraftToolDialog(QDialog):
 
             slot_h.addWidget(role_cb)
             slot_h.addWidget(icon_lbl)
-            slot_h.addWidget(champ_cb)
+            slot_h.addWidget(champ_cb, 1)
             slot_h.addWidget(matchup_lbl)
             slot_h.addWidget(state_cb)
             my_team_box.addWidget(slot_card)
 
         # Columna Enemigos
         enemy_team_box = QVBoxLayout()
-        enemy_team_title_row = QHBoxLayout()
+        enemy_team_box.setSpacing(8)
+
+        enemy_banner = QFrame()
+        enemy_banner.setObjectName("draftEnemyBanner")
+        enemy_team_title_row = QHBoxLayout(enemy_banner)
+        enemy_team_title_row.setContentsMargins(14, 8, 12, 8)
+        enemy_team_title_row.setSpacing(10)
         enemy_team_title = QLabel("⚔️ EQUIPO ENEMIGO")
-        enemy_team_title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        enemy_team_title.setStyleSheet("color: #EF4444;")
+        enemy_team_title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        enemy_team_title.setStyleSheet("color: #FCA5A5;")
         self.enemy_team_overall_lbl = QLabel("WR —")
+        self.enemy_team_overall_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.enemy_team_overall_lbl.setToolTip(
             "Media de los win rates OVERALL de los campeones enemigos con al menos un pick/pre-pick. "
             "Referencia para estimar la probabilidad de victoria, no es una probabilidad calibrada."
         )
-        self.enemy_team_overall_lbl.setStyleSheet("color: #94A3B8; font-weight: 700;")
+        self.enemy_team_overall_lbl.setStyleSheet(
+            "color: #94A3B8; background: #131E33; border: 1px solid #2C3D57; "
+            "border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 800;"
+        )
         enemy_team_title_row.addWidget(enemy_team_title)
         enemy_team_title_row.addStretch()
         enemy_team_title_row.addWidget(self.enemy_team_overall_lbl)
-        enemy_team_box.addLayout(enemy_team_title_row)
+        enemy_team_box.addWidget(enemy_banner)
+        enemy_team_box.addLayout(self._slot_captions_layout())
 
         for i in range(5):
             slot_card = QFrame()
-            slot_card.setStyleSheet("background: #172338; border: 1px solid #2D405D; border-radius: 7px;")
+            slot_card.setObjectName("draftEnemySlot")
             slot_h = QHBoxLayout(slot_card)
-            slot_h.setContentsMargins(6, 3, 6, 3)
-            slot_h.setSpacing(6)
+            slot_h.setContentsMargins(12, 8, 12, 8)
+            slot_h.setSpacing(8)
             role_lbl = QLabel("—")
-            role_lbl.setFixedWidth(72)
-            role_lbl.setStyleSheet("color: #64748B; font-weight: bold;")
+            role_lbl.setObjectName("draftEnemyRole")
+            role_lbl.setFixedWidth(80)
+            role_lbl.setStyleSheet("color: #64748B; font-weight: 700;")
             role_lbl.setToolTip("Línea del rival: el cliente no la publica.")
 
             champ_cb = QComboBox()
+            champ_cb.setObjectName("draftPickCombo")
+            champ_cb.setProperty("empty", True)
             champ_cb.addItems(["-- Vacío --"] + self.all_champion_names)
+            champ_cb.setMinimumHeight(26)
             champ_cb.currentIndexChanged.connect(self._on_draft_changed)
 
-            icon_lbl = QLabel()
-            icon_lbl.setFixedSize(30, 30)
-            icon_lbl.setStyleSheet("background: #0F172A; border: 1px solid #334155; border-radius: 15px;")
+            icon_lbl = QLabel("—")
+            icon_lbl.setObjectName("draftSlotIcon")
+            icon_lbl.setFixedSize(36, 36)
+            icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             matchup_lbl = QLabel("—")
-            matchup_lbl.setFixedWidth(52)
+            matchup_lbl.setObjectName("draftSlotWr")
+            matchup_lbl.setFixedWidth(56)
             matchup_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             matchup_lbl.setToolTip("Win rate overall del campeón.")
 
@@ -488,7 +595,7 @@ class DraftToolDialog(QDialog):
 
             slot_h.addWidget(role_lbl)
             slot_h.addWidget(icon_lbl)
-            slot_h.addWidget(champ_cb)
+            slot_h.addWidget(champ_cb, 1)
             slot_h.addWidget(matchup_lbl)
             slot_h.addWidget(state_cb)
             enemy_team_box.addWidget(slot_card)
@@ -706,7 +813,8 @@ class DraftToolDialog(QDialog):
             "Crea la página general «Solralol - [campeón] Build» en los conjuntos "
             "de objetos del cliente, disponible para cualquier campeón. Incluye los "
             "6 objetos principales, las botas recomendadas y los objetos "
-            "situacionales del campeón (Corta curas, Tanque, Asesino y Utilidad)."
+            "situacionales del campeón (Corta curas, Tanque, Asesino y Utilidad). "
+            "En jungla, el bloque inicial (starter) reúne los 3 compañeros de jungla."
         )
         self._style_import_button(self.btn_import_build, "blue")
         self.btn_import_build.clicked.connect(self._import_build)
@@ -861,6 +969,29 @@ class DraftToolDialog(QDialog):
         row.addWidget(self.enemy_damage_bar, 1)
         row.addWidget(enemy_title)
         return row
+
+    @staticmethod
+    def _slot_captions_layout() -> QHBoxLayout:
+        """Cabeceras de columna alineadas con el reparto interno de cada tarjeta."""
+        captions = QHBoxLayout()
+        captions.setSpacing(8)
+        captions.setContentsMargins(13, 2, 13, 0)
+        for text, width, align, stretch in (
+            ("LÍNEA", 80, Qt.AlignmentFlag.AlignLeft, False),
+            ("", 36, Qt.AlignmentFlag.AlignCenter, False),
+            ("CAMPEÓN", 0, Qt.AlignmentFlag.AlignLeft, True),
+            ("WR", 56, Qt.AlignmentFlag.AlignCenter, False),
+            ("✓", 26, Qt.AlignmentFlag.AlignCenter, False),
+        ):
+            caption = QLabel(text)
+            caption.setObjectName("draftColumnCaption")
+            caption.setAlignment(align)
+            if stretch:
+                captions.addWidget(caption, 1)
+            else:
+                caption.setFixedWidth(width)
+                captions.addWidget(caption)
+        return captions
 
     def _check_lcu_status(self) -> None:
         if self.lcu_service.is_connected():
@@ -1151,18 +1282,38 @@ class DraftToolDialog(QDialog):
         ):
             for icon_label, champion_combo in zip(icons, combos):
                 champion_name = champion_combo.currentText()
-                self._set_icon(icon_label, "champion", champion_name, 28)
+                empty = not champion_name or champion_name == "-- Vacío --"
+                if champion_combo.property("empty") != empty:
+                    # El selector estiliza las casillas vacías en gris/itálica.
+                    champion_combo.setProperty("empty", empty)
+                    champion_combo.style().unpolish(champion_combo)
+                    champion_combo.style().polish(champion_combo)
+                self._set_icon(icon_label, "champion", champion_name, 30)
 
         for index, (my_combo, enemy_combo) in enumerate(zip(self.my_team_combo_widgets, self.enemy_team_combo_widgets)):
-            my_champion = my_combo.currentText()
-            enemy_champion = enemy_combo.currentText()
-            my_rate = self.analyzer.get_champion_overall_win_rate(my_champion)
-            enemy_rate = self.analyzer.get_champion_overall_win_rate(enemy_champion)
-
-            for label, rate in ((self.my_team_matchup_labels[index], my_rate), (self.enemy_team_matchup_labels[index], enemy_rate)):
-                color = "#34D399" if rate > 50.0 else "#FB7185" if rate < 50.0 else "#94A3B8"
+            for label, champion in (
+                (self.my_team_matchup_labels[index], my_combo.currentText()),
+                (self.enemy_team_matchup_labels[index], enemy_combo.currentText()),
+            ):
+                if not champion or champion == "-- Vacío --":
+                    label.setText("—")
+                    label.setStyleSheet(
+                        "color: #64748B; background: #131E33; border: 1px solid #2C3D57; "
+                        "border-radius: 9px; font-size: 11px; font-weight: 700;"
+                    )
+                    continue
+                rate = self.analyzer.get_champion_overall_win_rate(champion)
+                if rate > 50.0:
+                    color, background, border = "#6EE7B7", "#0F2E24", "#1D6B54"
+                elif rate < 50.0:
+                    color, background, border = "#FECACA", "#2E1416", "#7F2F3F"
+                else:
+                    color, background, border = "#CBD5E1", "#131E33", "#2C3D57"
                 label.setText(f"{rate:.1f}%")
-                label.setStyleSheet(f"color: {color}; font-weight: 700;")
+                label.setStyleSheet(
+                    f"color: {color}; background: {background}; border: 1px solid {border}; "
+                    "border-radius: 9px; font-size: 11px; font-weight: 700;"
+                )
 
     def _update_header_bans(self, session: dict[str, Any]) -> None:
         """Muestra los diez bans reales de la sesión LCU, separados por equipo."""
@@ -1213,11 +1364,16 @@ class DraftToolDialog(QDialog):
         ):
             if rate is None:
                 label.setText("WR —")
-                label.setStyleSheet("color: #94A3B8; font-weight: 700;")
+                color, background, border = "#94A3B8", "#131E33", "#2C3D57"
             else:
-                color = "#34D399" if rate > 50.0 else "#FB7185" if rate < 50.0 else "#94A3B8"
+                color = "#6EE7B7" if rate > 50.0 else "#FECACA" if rate < 50.0 else "#CBD5E1"
+                background = "#0F2E24" if rate > 50.0 else "#2E1416" if rate < 50.0 else "#131E33"
+                border = "#1D6B54" if rate > 50.0 else "#7F2F3F" if rate < 50.0 else "#2C3D57"
                 label.setText(f"WR {rate:.1f}%")
-                label.setStyleSheet(f"color: {color}; font-weight: 700;")
+            label.setStyleSheet(
+                f"color: {color}; background: {background}; border: 1px solid {border}; "
+                "border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 800;"
+            )
 
     def _update_analytics(self) -> None:
         # Las líneas se recalculan antes de analizar: confirmadas o hipótesis.

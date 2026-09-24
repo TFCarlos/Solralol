@@ -363,6 +363,10 @@ class LCUService:
 
     ITEM_SET_TITLE_PREFIX = "Solralol - "
     ITEM_SET_UID_PREFIX = "solralol-"
+    # Compañeros de jungla (hueco de starter): se compran en lugar del objeto
+    # inicial de línea y solo uno termina completando la misión de jungla.
+    JUNGLE_STARTER_IDS = ("1101", "1102", "1103")
+    JUNGLE_ROLES = frozenset({"jungle", "jungla", "jgl"})
 
     @staticmethod
     def _item_set_container(payload: Any) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
@@ -418,13 +422,22 @@ class LCUService:
         como los expone ``DraftAnalyzerService.get_situational_items``; cada grupo
         se añade como un bloque adicional después de los objetos principales y las
         botas. Los grupos vacíos o con IDs inválidos se omiten.
+
+        Si ``role`` es jungla, el primer bloque (el hueco de starter) reúne los
+        tres compañeros de jungla (``JUNGLE_STARTER_IDS``) para que la partida
+        empiece eligiendo uno; el resto de líneas no llevan bloque starter.
         """
         name = str(champion_name or "").strip()
         if champion_id <= 0 or not name:
             return False, "Se necesita un campeón válido para crear la página de build."
         if len(item_ids) != 6 or len(set(item_ids)) != 6:
             return False, "Se necesitan seis objetos distintos para la página de build."
-        ids = [str(i) for i in item_ids] + ([str(boots_id)] if boots_id else [])
+        starter_ids = (
+            list(self.JUNGLE_STARTER_IDS)
+            if str(role or "").strip().casefold() in self.JUNGLE_ROLES
+            else []
+        )
+        ids = [str(i) for i in item_ids] + ([str(boots_id)] if boots_id else []) + starter_ids
         if not all(i.isdigit() and int(i) > 0 for i in ids):
             return False, "La build contiene IDs de objetos inválidos."
         if not self.is_connected():
@@ -451,8 +464,15 @@ class LCUService:
             uid = f"{self.ITEM_SET_UID_PREFIX}build-{champion_id}" + (
                 f"-{uid_role}" if uid_role else ""
             )
-            blocks = [{"type": "Objetos principales (6; última compra alternativa)",
-                       "items": [{"id": str(i), "count": 1} for i in item_ids]}]
+            blocks: list[dict[str, Any]] = []
+            if starter_ids:
+                # En jungla el hueco de starter lo ocupan los tres compañeros.
+                blocks.append({
+                    "type": "Objetos iniciales (starter): elige un compañero de jungla",
+                    "items": [{"id": str(i), "count": 1} for i in starter_ids],
+                })
+            blocks.append({"type": "Objetos principales (6; última compra alternativa)",
+                           "items": [{"id": str(i), "count": 1} for i in item_ids]})
             if boots_id:
                 blocks.append({"type": "Botas recomendadas contra este equipo",
                                "items": [{"id": str(boots_id), "count": 1}]})
@@ -481,6 +501,11 @@ class LCUService:
                     f" Incluye {len(situational_blocks)} bloques de objetos situacionales."
                     if situational_blocks else ""
                 )
+                if starter_ids:
+                    extra += (
+                        " El bloque inicial ocupa el hueco de starter con los "
+                        "3 compañeros de jungla."
+                    )
                 return True, (
                     f"Página general «{title}» creada en el cliente "
                     f"(disponible para cualquier campeón).{extra}"
