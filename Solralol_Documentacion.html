@@ -129,8 +129,8 @@ footer{color:var(--dim);text-align:center;font-size:13px;margin-top:34px}
 │       └── workers de UI: async_task · live_analysis_task · champ_select_worker
 │                          match_ai_worker · champion_ai_worker
 │                          champion_scraper_worker · winrate_worker
-├── web/ scratch/ build/ dist/          # Artefactos de desarrollo y build
-└── riot_live.py debug_*.py test_fase1.py scratch_test_parser.py   # Debug</pre>
+├── web/ build/ dist/                   # Artefactos de desarrollo y build
+└── scratch/                            # Tests, depuración y previews</pre>
 <div class="warn"><strong>¡Atención a la ubicación de los workers!</strong> No existen en <code>app/workers/</code>: los workers de interfaz/genéricos están en <strong><code>app/ui/</code></strong> y los de datos pesados en <strong><code>app/services/</code></strong>.</div>
 
 <h3>Mapa UI ↔ servicios</h3>
@@ -458,15 +458,12 @@ pyinstaller main.spec
 <h2>12. Scripts de desarrollo</h2>
 <table>
 <tr><th>Archivo / carpeta</th><th>Propósito</th></tr>
-<tr><td><code>riot_live.py</code></td><td>Prueba en consola de la Live Client Data API.</td></tr>
-<tr><td><code>debug_cs.py</code>, <code>debug_enemy_runes.py</code></td><td>Depuración de CS y runas enemigas.</td></tr>
-<tr><td><code>test_fase1.py</code>, <code>scratch_test_parser.py</code></td><td>Pruebas de fases y parsers.</td></tr>
+<tr><td><code>scratch/</code></td><td>Tests, depuración y previews: <code>riot_live.py</code> (Live Client API), <code>debug_cs.py</code>, <code>debug_enemy_runes.py</code>, <code>test_fase1.py</code>, <code>test_parser_items.py</code>, etc.</td></tr>
 <tr><td><code>data_dragon.py</code></td><td>Módulo compartido: <code>versions.json</code> y <code>load_item_catalog()</code>.</td></tr>
-<tr><td><code>scratch/</code></td><td>Pruebas sueltas (overlay, tracking, análisis…).</td></tr>
 <tr><td><code>web/</code>, <code>build/</code>, <code>dist/</code></td><td>Artefactos: web auxiliar, build intermedio y ejecutable final.</td></tr>
-<tr><td><code>.vscode/</code></td><td>Tareas y lanzamientos («Run Solralol») + ajustos del workspace.</td></tr>
+<tr><td><code>.vscode/</code></td><td>Tareas y lanzamientos («Run Solralol») + ajustes del workspace.</td></tr>
 </table>
-<p>No forman parte de la app; ejecútalos con <code>activate_env.bat</code> y <code>python &lt;script&gt;</code>.</p>
+<p>No forman parte de la app; ejecútalos con <code>activate_env.bat</code> y <code>python scratch/&lt;script&gt;</code>.</p>
 </section>
 
 <section id="faq">

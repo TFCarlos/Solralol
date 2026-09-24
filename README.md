@@ -120,8 +120,8 @@ Solralol/
 │       └── workers: async_task, live_analysis_task, champ_select_worker,
 │                    match_ai_worker, champion_ai_worker, champion_scraper_worker,
 │                    winrate_worker
-├── web/, scratch/, build/, dist/       # Artefactos de desarrollo/build (§12)
-└── riot_live.py, debug_*.py, test_fase1.py, scratch_test_parser.py  # Debug
+├── web/, build/, dist/              # Artefactos de desarrollo/build (§12)
+└── scratch/                         # Tests, depuración y previews (§12)
 ```
 
 > **Nota:** los workers **no** están en `app/workers/`: los de UI/genéricos están en
@@ -168,7 +168,7 @@ run.bat
 
 - `run.bat` lanza `python main.py` con el intérprete de `.venv`.
 - `activate_env.bat` abre una consola con el `.venv` activo para depurar a mano
-  (`python main.py`, `python riot_live.py`, etc.).
+  (`python main.py`, `python scratch/riot_live.py`, etc.).
 
 ### Opción B — manual
 
@@ -379,14 +379,11 @@ Detalles de `main.spec`:
 
 | Archivo/carpeta | Propósito |
 | --- | --- |
-| `riot_live.py` | Prueba rápida de la Live Client Data API en consola. |
-| `debug_cs.py`, `debug_enemy_runes.py` | Depuración de CS y runas enemigas. |
-| `test_fase1.py`, `scratch_test_parser.py` | Pruebas de fases y parsers. |
+| `scratch/` | Tests, depuración y previews: `riot_live.py` (Live Client API), `debug_cs.py`, `debug_enemy_runes.py`, `test_fase1.py`, `test_parser_items.py`, etc. |
 | `data_dragon.py` | Módulo compartido: `versions.json`, `load_item_catalog()`. |
-| `scratch/` | Pruebas sueltas (overlay, tracking, análisis…). |
 | `web/`, `build/`, `dist/` | Artefactos: web auxiliar, build intermedio y ejecutable. |
 
-No forman parte de la app; se ejecutan con `activate_env.bat` + `python <script>`.
+No forman parte de la app; se ejecutan con `activate_env.bat` + `python scratch/<script>`.
 
 ---
 

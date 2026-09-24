@@ -1,4 +1,14 @@
+"""Smoke test de la RecommendationPanel (Fase 1).
+
+Ejecutar:  python scratch/test_fase1.py
+"""
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 from PySide6.QtWidgets import QApplication
 from app.ui.recommendation_panel import RecommendationPanel
 

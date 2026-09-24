@@ -1,3 +1,7 @@
+"""Depuración de las runas recibidas por los enemigos en la Live Client Data API.
+
+Ejecutar durante una partida:  python scratch/debug_enemy_runes.py
+"""
 import json
 
 from riot_live import LiveClient

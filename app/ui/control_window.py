@@ -248,20 +248,16 @@ class SolralolWindow(QMainWindow):
             self.is_refreshing = True
             self.snapshot_requested.emit()
 
-
     def receive_snapshot(self, snapshot: dict | None) -> None:
         try:
             if snapshot is None:
-                print("[DEBUG] snapshot = None")
                 self.show_no_game_state()
             else:
-                print("[DEBUG] snapshot recibido:", snapshot)
                 self.show_game_state(snapshot)
         finally:
             self.is_refreshing = False
 
     def show_read_error(self, message: str) -> None:
-        print("[DEBUG] error de lectura:", message)
         self.status_label.setText(f"Error de lectura: {message}")
         self.is_refreshing = False
 
@@ -397,17 +393,6 @@ class SolralolWindow(QMainWindow):
 
     def show_game_state(self, snapshot: dict) -> None:
         game_time = snapshot["game_time"]
-
-        print("[DEBUG UI] show_game_state llamado")
-        print("[DEBUG UI] champion_id:", snapshot.get("champion_id"))
-        print(
-            "[DEBUG UI] all_players count:",
-            len(snapshot.get("all_players", [])),
-        )
-        print(
-            "[DEBUG UI] enemies count:",
-            len(snapshot.get("enemies", [])),
-        )
 
         self.was_in_game = True
 

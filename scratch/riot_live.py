@@ -1,3 +1,7 @@
+"""Cliente de solo lectura para la Live Client Data API local de LoL.
+
+Uso::  python scratch/riot_live.py   (define LiveClient para los scripts de debug)
+"""
 from __future__ import annotations
 
 import requests

@@ -1,3 +1,7 @@
+"""Prueba del parser de estadísticas de descripciones de objetos (ES/EN).
+
+Ejecutar:  python scratch/test_parser_items.py
+"""
 import json
 import re
 

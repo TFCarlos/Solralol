@@ -15,7 +15,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 TESTS = [
-    "test_fase1.py",
+    os.path.join("scratch", "test_fase1.py"),
     os.path.join("scratch", "test_draft_winrate_fix.py"),
     os.path.join("scratch", "test_draft_analyzer.py"),
     os.path.join("scratch", "test_draft_redesign.py"),

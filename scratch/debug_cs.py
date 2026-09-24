@@ -1,3 +1,7 @@
+"""Depuración de los campos de CS del jugador local en la Live Client Data API.
+
+Ejecutar durante una partida:  python scratch/debug_cs.py
+"""
 import json
 
 from riot_live import LiveClient
