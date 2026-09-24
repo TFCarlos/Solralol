@@ -1,5 +1,5 @@
 {
-  "version": "16.18.1",
+  "version": "16.19.1",
   "items": {
     "1001": {
       "name": "Botas",
@@ -18954,7 +18954,7 @@
     },
     "3174": {
       "name": "Avance blindado",
-      "description": "<mainText><stats><attention>35</attention> de armadura<br><attention>45</attention> de velocidad de movimiento</stats><br><br><passive>Placas</passive><br>Reduce un 10% el daño sufrido por ataques.<br><br><passive>Resistencia noxiana</passive> (0 s)<br>Tras recibir daño físico de un campeón, otorga un <shield>escudo</shield> <physicalDamage>físico</physicalDamage> de <shield>0</shield> durante 5 s.</mainText>",
+      "description": "<mainText><stats><attention>35</attention> de armadura<br><attention>45</attention> de velocidad de movimiento</stats><br><br><passive>Placas</passive><br>Reduce un 10% el daño sufrido por ataques.<br><br><passive>Resistencia noxiana</passive> (0 s)<br>Tras recibir daño físico de un campeón, otorga un <shield>escudo</shield> <physicalDamage>físico</physicalDamage> de <shield>0</shield> durante 5&nbsp;s.</mainText>",
       "colloq": ";Athene's Unholy Grail;;;Armored Advance;Avance blindado",
       "plaintext": "Inflige daño para potenciar tus curaciones y escudos.",
       "from": [
@@ -18993,7 +18993,7 @@
       "depth": 3,
       "id": "3174",
       "name_es": "Avance blindado",
-      "description_es": "<mainText><stats><attention>35</attention> de armadura<br><attention>45</attention> de velocidad de movimiento</stats><br><br><passive>Placas</passive><br>Reduce un 10% el daño sufrido por ataques.<br><br><passive>Resistencia noxiana</passive> (0 s)<br>Tras recibir daño físico de un campeón, otorga un <shield>escudo</shield> <physicalDamage>físico</physicalDamage> de <shield>0</shield> durante 5 s.</mainText>",
+      "description_es": "<mainText><stats><attention>35</attention> de armadura<br><attention>45</attention> de velocidad de movimiento</stats><br><br><passive>Placas</passive><br>Reduce un 10% el daño sufrido por ataques.<br><br><passive>Resistencia noxiana</passive> (0 s)<br>Tras recibir daño físico de un campeón, otorga un <shield>escudo</shield> <physicalDamage>físico</physicalDamage> de <shield>0</shield> durante 5&nbsp;s.</mainText>",
       "name_en": "Armored Advance",
       "description_en": "<mainText><stats><attention>35</attention> Armor<br><attention>45</attention> Move Speed</stats><br><br><passive>Plating</passive><br>Reduces incoming damage from Attacks by 10%.<br><br><passive>Noxian Endurance</passive> (0s)<br>After taking physical damage from a Champion, gain a <shield></shield> <physicalDamage>physical</physicalDamage> <shield>shield</shield> for 5 seconds.</mainText>"
     },
@@ -22446,9 +22446,7 @@
         "30": false,
         "453": true
       },
-      "stats": {
-        "FlatHPPoolMod": 30
-      },
+      "stats": {},
       "effect": {
         "Effect1Amount": "3"
       },
@@ -22460,7 +22458,7 @@
     },
     "3866": {
       "name": "Brújula rúnica",
-      "description": "<mainText><stats><attention>100</attention> de vida<br><attention>50%</attention> de regeneración de vida básica<br><attention>50%</attention> de regeneración de maná básica<br><attention>5</attention> de oro cada 10 segundos</stats><br><br><passive>Misión de apoyo</passive><br>Gana <keywordMajor>0</keywordMajor> de oro con este objeto para que se transforme en <rarityGeneric>Botín universal</rarityGeneric>. <br><br><passive>Riqueza compartida</passive> (0 s, 0 cargas como máximo)<br>Mientras estés cerca de un campeón aliado, inflige daño a campeones enemigos o asesina súbditos para obtener oro.<active>Activar</active> (3 cargas)<br>Coloca un guardián <keyword>invisible</keyword> que otorga visión.</mainText>",
+      "description": "<mainText><stats><attention>60</attention> de vida<br><attention>75%</attention> de regeneración de vida básica<br><attention>50%</attention> de regeneración de maná básica<br><attention>5</attention> de oro cada 10 segundos</stats><br><br><passive>Misión de apoyo</passive><br>Gana <keywordMajor>0</keywordMajor> de oro con este objeto para que se transforme en <rarityGeneric>Botín universal</rarityGeneric>. <br><br><passive>Riqueza compartida</passive> (0 s, 0 cargas como máximo)<br>Mientras estés cerca de un campeón aliado, inflige daño a campeones enemigos o asesina súbditos para obtener oro.<active>Activar</active> (3 cargas)<br>Coloca un guardián <keyword>invisible</keyword> que otorga visión.</mainText>",
       "colloq": "Runic Compass;Brújula rúnica",
       "plaintext": "",
       "specialRecipe": 3865,
@@ -22495,16 +22493,16 @@
         "453": true
       },
       "stats": {
-        "FlatHPPoolMod": 100
+        "FlatHPPoolMod": 60
       },
       "effect": {
         "Effect1Amount": "5"
       },
       "id": "3866",
       "name_es": "Brújula rúnica",
-      "description_es": "<mainText><stats><attention>100</attention> de vida<br><attention>50%</attention> de regeneración de vida básica<br><attention>50%</attention> de regeneración de maná básica<br><attention>5</attention> de oro cada 10 segundos</stats><br><br><passive>Misión de apoyo</passive><br>Gana <keywordMajor>0</keywordMajor> de oro con este objeto para que se transforme en <rarityGeneric>Botín universal</rarityGeneric>. <br><br><passive>Riqueza compartida</passive> (0 s, 0 cargas como máximo)<br>Mientras estés cerca de un campeón aliado, inflige daño a campeones enemigos o asesina súbditos para obtener oro.<active>Activar</active> (3 cargas)<br>Coloca un guardián <keyword>invisible</keyword> que otorga visión.</mainText>",
+      "description_es": "<mainText><stats><attention>60</attention> de vida<br><attention>75%</attention> de regeneración de vida básica<br><attention>50%</attention> de regeneración de maná básica<br><attention>5</attention> de oro cada 10 segundos</stats><br><br><passive>Misión de apoyo</passive><br>Gana <keywordMajor>0</keywordMajor> de oro con este objeto para que se transforme en <rarityGeneric>Botín universal</rarityGeneric>. <br><br><passive>Riqueza compartida</passive> (0 s, 0 cargas como máximo)<br>Mientras estés cerca de un campeón aliado, inflige daño a campeones enemigos o asesina súbditos para obtener oro.<active>Activar</active> (3 cargas)<br>Coloca un guardián <keyword>invisible</keyword> que otorga visión.</mainText>",
       "name_en": "Runic Compass",
-      "description_en": "<mainText><stats><attention>100</attention> Health<br><attention>50%</attention> Base Health Regen<br><attention>50%</attention> Base Mana Regen<br><attention>5</attention> Gold Per 10 Seconds</stats><br><br><passive>Support Quest</passive><br>Earn <keywordMajor>0</keywordMajor> gold from this item to transform it into <rarityGeneric>Bounty of Worlds</rarityGeneric>. <br><br><passive>Shared Riches</passive> (0s, max 0 charges)<br>While near an ally champion, damage enemy champions or kill minions to gain gold.<active>Active</active> (3 charges)<br>Places an <keyword>Invisible</keyword> Stealth Ward that grants vision.</mainText>"
+      "description_en": "<mainText><stats><attention>60</attention> Health<br><attention>75%</attention> Base Health Regen<br><attention>50%</attention> Base Mana Regen<br><attention>5</attention> Gold Per 10 Seconds</stats><br><br><passive>Support Quest</passive><br>Earn <keywordMajor>0</keywordMajor> gold from this item to transform it into <rarityGeneric>Bounty of Worlds</rarityGeneric>. <br><br><passive>Shared Riches</passive> (0s, max 0 charges)<br>While near an ally champion, damage enemy champions or kill minions to gain gold.<active>Active</active> (3 charges)<br>Places an <keyword>Invisible</keyword> Stealth Ward that grants vision.</mainText>"
     },
     "3867": {
       "name": "Botín universal",
@@ -29390,7 +29388,7 @@
     },
     "6695": {
       "name": "Colmillo de serpiente",
-      "description": "<mainText><stats><attention>55</attention> de daño de ataque<br><attention>15</attention> de letalidad</stats><br><br><passive>Siegaescudos</passive><br>Infligir daño a un campeón enemigo reduce los escudos que obtiene un 0% durante 3 s. <br>Si no está afectado por <passive>Siegaescudos</passive>, reduces todos sus escudos un 0%.</mainText>",
+      "description": "<mainText><stats><attention>55</attention> de daño de ataque<br><attention>15</attention> de letalidad</stats><br><br><passive>Siegaescudos</passive><br>Infligir daño a un campeón enemigo reduce los escudos que obtiene un 0% durante 3&nbsp;s. <br>Si no está afectado por <passive>Siegaescudos</passive>, reduces todos sus escudos un 0%.</mainText>",
       "colloq": "Serpent's Fang;Colmillo de serpiente",
       "plaintext": "",
       "from": [
@@ -29429,7 +29427,7 @@
       "depth": 3,
       "id": "6695",
       "name_es": "Colmillo de serpiente",
-      "description_es": "<mainText><stats><attention>55</attention> de daño de ataque<br><attention>15</attention> de letalidad</stats><br><br><passive>Siegaescudos</passive><br>Infligir daño a un campeón enemigo reduce los escudos que obtiene un 0% durante 3 s. <br>Si no está afectado por <passive>Siegaescudos</passive>, reduces todos sus escudos un 0%.</mainText>",
+      "description_es": "<mainText><stats><attention>55</attention> de daño de ataque<br><attention>15</attention> de letalidad</stats><br><br><passive>Siegaescudos</passive><br>Infligir daño a un campeón enemigo reduce los escudos que obtiene un 0% durante 3&nbsp;s. <br>Si no está afectado por <passive>Siegaescudos</passive>, reduces todos sus escudos un 0%.</mainText>",
       "name_en": "Serpent's Fang",
       "description_en": "<mainText><stats><attention>55</attention> Attack Damage<br><attention>15</attention> Lethality</stats><br><br><passive>Shield Reaver</passive><br>Damaging an enemy champion reduces Shields they gain by % for 3 seconds. <br>If they were not already affected by <passive>Shield Reaver</passive>, reduce Shields on them by %.</mainText>"
     },
@@ -30000,6 +29998,7 @@
       "colloq": "Cloak of Agility;Capa de agilidad",
       "plaintext": "",
       "into": [
+        "773162",
         "773046",
         "773031"
       ],
@@ -30527,6 +30526,7 @@
       "plaintext": "",
       "into": [
         "773114",
+        "773162",
         "773153",
         "773046",
         "773131",
@@ -30894,6 +30894,7 @@
       "colloq": "Negatron Cloak;Capa negatrón",
       "plaintext": "",
       "into": [
+        "773161",
         "773140",
         "773064",
         "773026",
@@ -36349,6 +36350,101 @@
       "name_en": "Feral Flare",
       "description_en": "<mainText><stats><attention>30%</attention> Attack Speed<br><attention>25</attention> Armor<br><attention>15%</attention> Life Steal</stats><br><br><jadeUnique>Feral Mark:</jadeUnique> Gain a Feral stack for each champion takedown scored and large monster killed. Basic Attacks deal <magicDamage>25 (+1 per Feral stack) bonus magic damage</magicDamage> on-hit. Minions and monsters have a 25% chance to take 425 more damage.<jadeUnique>Active</jadeUnique> 180s<br>Places an invisible Sight Ward that reveals the surrounding area for 180 seconds.</mainText>"
     },
+    "773161": {
+      "name": "Hoja encantada por la luna",
+      "description": "<mainText><stats><attention>50</attention> de poder de habilidad<br><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica</stats><br><br><jadeUnique>Tenacidad:</jadeUnique> Reduce la duración de los <status>aturdimientos, ralentizaciones, provocaciones, miedos, silencios, cegueras</status> e <status>inmovilizaciones</status> un <attention>35%</attention>.</mainText>",
+      "colloq": "Moonflair Spellblade;Hoja encantada por la luna",
+      "plaintext": "",
+      "from": [
+        "773191",
+        "771057"
+      ],
+      "image": {
+        "full": "773161.png",
+        "sprite": "item7.png",
+        "group": "item",
+        "x": 48,
+        "y": 384,
+        "w": 48,
+        "h": 48
+      },
+      "gold": {
+        "base": 720,
+        "purchasable": true,
+        "total": 2600,
+        "sell": 1820
+      },
+      "tags": [
+        "SpellBlock",
+        "Armor",
+        "SpellDamage",
+        "Tenacity"
+      ],
+      "maps": {
+        "11": false,
+        "12": false,
+        "22": false,
+        "30": false,
+        "453": true
+      },
+      "stats": {
+        "FlatSpellBlockMod": 50,
+        "FlatMagicDamageMod": 50,
+        "FlatArmorMod": 50
+      },
+      "depth": 3,
+      "id": "773161",
+      "name_es": "Hoja encantada por la luna",
+      "description_es": "<mainText><stats><attention>50</attention> de poder de habilidad<br><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica</stats><br><br><jadeUnique>Tenacidad:</jadeUnique> Reduce la duración de los <status>aturdimientos, ralentizaciones, provocaciones, miedos, silencios, cegueras</status> e <status>inmovilizaciones</status> un <attention>35%</attention>.</mainText>",
+      "name_en": "Moonflair Spellblade",
+      "description_en": "<mainText><stats><attention>50</attention> Ability Power<br><attention>50</attention> Armor<br><attention>50</attention> Magic Resist</stats><br><br><jadeUnique>Tenacity:</jadeUnique> Reduces the duration of <status>Stuns, Slows, Taunts, Fears, Silences, Blinds,</status> and <status>Immobilizes</status> by <attention>35%</attention>.</mainText>"
+    },
+    "773162": {
+      "name": "Capa y espada",
+      "description": "<mainText><stats><attention>20%</attention> de velocidad de ataque<br><attention>20%</attention> de probabilidad de impacto crítico</stats><br><br><jadeUnique>Tenacidad:</jadeUnique> Reduce la duración de los <status>aturdimientos, ralentizaciones, provocaciones, miedos, silencios, cegueras</status> e <status>inmovilizaciones</status> un <attention>35%</attention>.</mainText>",
+      "colloq": "Cloak and Dagger;Capa y espada",
+      "plaintext": "",
+      "from": [
+        "771018",
+        "771042"
+      ],
+      "image": {
+        "full": "773162.png",
+        "sprite": "item7.png",
+        "group": "item",
+        "x": 96,
+        "y": 384,
+        "w": 48,
+        "h": 48
+      },
+      "gold": {
+        "base": 200,
+        "purchasable": true,
+        "total": 1330,
+        "sell": 931
+      },
+      "tags": [
+        "CriticalStrike",
+        "AttackSpeed"
+      ],
+      "maps": {
+        "11": false,
+        "12": false,
+        "22": false,
+        "30": false,
+        "453": true
+      },
+      "stats": {
+        "FlatCritChanceMod": 0.2,
+        "PercentAttackSpeedMod": 0.2
+      },
+      "depth": 2,
+      "id": "773162",
+      "name_es": "Capa y espada",
+      "description_es": "<mainText><stats><attention>20%</attention> de velocidad de ataque<br><attention>20%</attention> de probabilidad de impacto crítico</stats><br><br><jadeUnique>Tenacidad:</jadeUnique> Reduce la duración de los <status>aturdimientos, ralentizaciones, provocaciones, miedos, silencios, cegueras</status> e <status>inmovilizaciones</status> un <attention>35%</attention>.</mainText>",
+      "name_en": "Cloak and Dagger",
+      "description_en": "<mainText><stats><attention>20%</attention> Attack Speed<br><attention>20%</attention> Critical Strike Chance</stats><br><br><jadeUnique>Tenacity:</jadeUnique> Reduces the duration of <status>Stuns, Slows, Taunts, Fears, Silences, Blinds,</status> and <status>Immobilizes</status> by <attention>35%</attention>.</mainText>"
+    },
     "773165": {
       "name": "Morellonomicón",
       "description": "<mainText><stats><attention>75</attention> de poder de habilidad<br><attention>12</attention> de regeneración de maná cada 5 s<br><attention>20%</attention> de reducción de enfriamiento</stats><br><br><jadeUnique>Odio de Morello:</jadeUnique> Infligir daño mágico a campeones enemigos con menos de un <scaleHealth>40% de vida</scaleHealth> les aplica <status>heridas graves</status> durante 4 s.<br><br><jadeRules>(<status>Heridas graves</status> reduce un 50% las curaciones y la regeneración recibidas).</jadeRules></mainText>",
@@ -36363,7 +36459,7 @@
         "full": "773165.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36409,7 +36505,7 @@
         "full": "773172.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36458,7 +36554,7 @@
         "full": "773173.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36504,7 +36600,7 @@
         "full": "773174.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36552,7 +36648,7 @@
         "full": "773178.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36599,7 +36695,7 @@
         "full": "773190.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36645,13 +36741,14 @@
         "771029"
       ],
       "into": [
+        "773161",
         "773157"
       ],
       "image": {
         "full": "773191.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 384,
         "w": 48,
         "h": 48
@@ -36697,8 +36794,8 @@
         "full": "773206.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 384,
-        "y": 384,
+        "x": 0,
+        "y": 432,
         "w": 48,
         "h": 48
       },
@@ -36745,8 +36842,8 @@
         "full": "773207.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 432,
-        "y": 384,
+        "x": 48,
+        "y": 432,
         "w": 48,
         "h": 48
       },
@@ -36796,7 +36893,7 @@
         "full": "773209.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 432,
         "w": 48,
         "h": 48
@@ -36849,7 +36946,7 @@
         "full": "773211.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 432,
         "w": 48,
         "h": 48
@@ -36896,7 +36993,7 @@
         "full": "773222.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 432,
         "w": 48,
         "h": 48
@@ -36939,7 +37036,7 @@
         "full": "773340.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 432,
         "w": 48,
         "h": 48
@@ -36980,7 +37077,7 @@
         "full": "773348.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 432,
         "w": 48,
         "h": 48
@@ -37027,7 +37124,7 @@
         "full": "773504.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 432,
         "w": 48,
         "h": 48
@@ -37064,7 +37161,7 @@
     },
     "773512": {
       "name": "Portal Zz'Rot",
-      "description": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Corredor entre puntos:</jadeUnique> Otorga un <speed>+30% de velocidad de movimiento adicional</speed> que se acumula a lo largo de 2 s al estar cerca de torretas o portales del Vacío.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera un portal en la ubicación objetivo durante 150 s (no se puede colocar cerca de las torretas). Cada 4 s, el portal genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.<br><br>Tras 4 s, la vida de la <keywordMajor>criatura del Vacío</keywordMajor> disminuirá rápidamente hasta llegar a 0. La cuarta <keywordMajor>criatura del Vacío</keywordMajor> y todas las posteriores infligirán daño adicional equivalente al 50% de tus resistencias.</mainText>",
+      "description": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Corredor entre puntos:</jadeUnique> Estar cerca de torretas o <keywordMajor>puertas del Vacío</keywordMajor> otorga hasta un <speed>30% de velocidad de movimiento</speed> que se acumula a lo largo de 2 s.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera una <keywordMajor>Puerta del Vacío</keywordMajor> en la ubicación objetivo durante 150 s. Cada 4 s, la puerta genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.</mainText>",
       "colloq": "Zz'Rot Portal;Portal Zz'Rot",
       "plaintext": "",
       "from": [
@@ -37076,7 +37173,7 @@
         "full": "773512.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 432,
         "w": 48,
         "h": 48
@@ -37099,29 +37196,19 @@
         "12": true,
         "22": false,
         "30": false,
-        "453": false
+        "453": true
       },
       "stats": {
         "FlatSpellBlockMod": 50,
         "FlatArmorMod": 50,
         "FlatHPRegenMod": 1
       },
-      "effect": {
-        "Effect1Amount": "30",
-        "Effect2Amount": "4",
-        "Effect3Amount": "50",
-        "Effect4Amount": "20",
-        "Effect5Amount": "150",
-        "Effect6Amount": "150",
-        "Effect7Amount": "0.5",
-        "Effect8Amount": "0.5"
-      },
       "depth": 2,
       "id": "773512",
       "name_es": "Portal Zz'Rot",
-      "description_es": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Corredor entre puntos:</jadeUnique> Otorga un <speed>+30% de velocidad de movimiento adicional</speed> que se acumula a lo largo de 2 s al estar cerca de torretas o portales del Vacío.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera un portal en la ubicación objetivo durante 150 s (no se puede colocar cerca de las torretas). Cada 4 s, el portal genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.<br><br>Tras 4 s, la vida de la <keywordMajor>criatura del Vacío</keywordMajor> disminuirá rápidamente hasta llegar a 0. La cuarta <keywordMajor>criatura del Vacío</keywordMajor> y todas las posteriores infligirán daño adicional equivalente al 50% de tus resistencias.</mainText>",
+      "description_es": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Corredor entre puntos:</jadeUnique> Estar cerca de torretas o <keywordMajor>puertas del Vacío</keywordMajor> otorga hasta un <speed>30% de velocidad de movimiento</speed> que se acumula a lo largo de 2 s.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera una <keywordMajor>Puerta del Vacío</keywordMajor> en la ubicación objetivo durante 150 s. Cada 4 s, la puerta genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.</mainText>",
       "name_en": "Zz'Rot Portal",
-      "description_en": "<mainText><stats><attention>50</attention> Armor<br><attention>50</attention> Magic Resist<br><attention>5</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Point Runner:</jadeUnique> Grants <speed>+30% bonus Move Speed</speed> that builds up over 2 seconds when near turrets or void gates.<jadeUnique>Active</jadeUnique> 150s<br>Spawns a gate at the target location for 150 seconds (Can't be placed near turrets). Every 4 seconds the gate spawns a volatile <keywordMajor>Voidspawn</keywordMajor> that travels down the nearest lane. <br><br>After 4 seconds, a <keywordMajor>Voidspawn's</keywordMajor> health will rapidly decay to 0. The fourth <keywordMajor>Voidspawn</keywordMajor> and every <keywordMajor>Voidspawn</keywordMajor> thereafter will deal bonus damage equal to 50% of your resistances.</mainText>"
+      "description_en": "<mainText><stats><attention>50</attention> Armor<br><attention>50</attention> Magic Resist<br><attention>5</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Point Runner:</jadeUnique> Standing near turrets or <keywordMajor>Void Gates</keywordMajor> grants up to <speed>30% Move Speed</speed> that builds up over 2 seconds.<jadeUnique>Active</jadeUnique> 150s<br>Spawn a <keywordMajor>Void Gate</keywordMajor> at the target location for 150 seconds. Every 4 seconds the gate spawns a volatile <keywordMajor>Voidspawn</keywordMajor> that travels down the nearest lane.</mainText>"
     },
     "773513": {
       "name": "Prototipo de núcleo hex",
@@ -37135,7 +37222,7 @@
         "full": "773513.png",
         "sprite": "item7.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 432,
         "w": 48,
         "h": 48
@@ -37182,10 +37269,10 @@
       ],
       "image": {
         "full": "773514.png",
-        "sprite": "item7.png",
+        "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 432,
+        "x": 0,
+        "y": 0,
         "w": 48,
         "h": 48
       },
@@ -37232,10 +37319,10 @@
       ],
       "image": {
         "full": "773515.png",
-        "sprite": "item7.png",
+        "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 432,
+        "x": 48,
+        "y": 0,
         "w": 48,
         "h": 48
       },
@@ -37281,7 +37368,7 @@
         "full": "773516.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37328,7 +37415,7 @@
         "full": "773517.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37371,7 +37458,7 @@
         "full": "773518.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37414,7 +37501,7 @@
         "full": "773519.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37456,7 +37543,7 @@
         "full": "773521.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37501,7 +37588,7 @@
         "full": "8001.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37548,7 +37635,7 @@
         "full": "8010.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37596,7 +37683,7 @@
         "full": "8020.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 0,
         "w": 48,
         "h": 48
@@ -37641,8 +37728,8 @@
         "full": "9168.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 0,
+        "x": 0,
+        "y": 48,
         "w": 48,
         "h": 48
       },
@@ -37676,8 +37763,8 @@
         "full": "9171.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 0,
+        "x": 48,
+        "y": 48,
         "w": 48,
         "h": 48
       },
@@ -37711,7 +37798,7 @@
         "full": "9172.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37746,7 +37833,7 @@
         "full": "9173.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37781,7 +37868,7 @@
         "full": "9174.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37816,7 +37903,7 @@
         "full": "9175.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37851,7 +37938,7 @@
         "full": "9176.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37886,7 +37973,7 @@
         "full": "9177.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37921,7 +38008,7 @@
         "full": "9178.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37956,7 +38043,7 @@
         "full": "9179.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 48,
         "w": 48,
         "h": 48
@@ -37991,8 +38078,8 @@
         "full": "9180.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 48,
+        "x": 0,
+        "y": 96,
         "w": 48,
         "h": 48
       },
@@ -38026,8 +38113,8 @@
         "full": "9181.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 48,
+        "x": 48,
+        "y": 96,
         "w": 48,
         "h": 48
       },
@@ -38061,7 +38148,7 @@
         "full": "9183.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38096,7 +38183,7 @@
         "full": "9184.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38131,7 +38218,7 @@
         "full": "9185.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38166,7 +38253,7 @@
         "full": "9187.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38201,7 +38288,7 @@
         "full": "9188.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38236,7 +38323,7 @@
         "full": "9189.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38271,7 +38358,7 @@
         "full": "9190.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38306,7 +38393,7 @@
         "full": "9192.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 96,
         "w": 48,
         "h": 48
@@ -38341,8 +38428,8 @@
         "full": "9193.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 96,
+        "x": 0,
+        "y": 144,
         "w": 48,
         "h": 48
       },
@@ -38377,8 +38464,8 @@
         "full": "9271.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 96,
+        "x": 48,
+        "y": 144,
         "w": 48,
         "h": 48
       },
@@ -38413,7 +38500,7 @@
         "full": "9272.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38449,7 +38536,7 @@
         "full": "9273.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38485,7 +38572,7 @@
         "full": "9274.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38521,7 +38608,7 @@
         "full": "9275.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38557,7 +38644,7 @@
         "full": "9276.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38593,7 +38680,7 @@
         "full": "9277.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38629,7 +38716,7 @@
         "full": "9278.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38665,7 +38752,7 @@
         "full": "9279.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 144,
         "w": 48,
         "h": 48
@@ -38701,8 +38788,8 @@
         "full": "9280.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 144,
+        "x": 0,
+        "y": 192,
         "w": 48,
         "h": 48
       },
@@ -38737,8 +38824,8 @@
         "full": "9281.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 144,
+        "x": 48,
+        "y": 192,
         "w": 48,
         "h": 48
       },
@@ -38773,7 +38860,7 @@
         "full": "9283.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 192,
         "w": 48,
         "h": 48
@@ -38809,7 +38896,7 @@
         "full": "9284.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 192,
         "w": 48,
         "h": 48
@@ -38845,7 +38932,7 @@
         "full": "9285.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 192,
         "w": 48,
         "h": 48
@@ -38881,7 +38968,7 @@
         "full": "9287.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 192,
         "w": 48,
         "h": 48
@@ -38917,7 +39004,7 @@
         "full": "9288.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 192,
         "w": 48,
         "h": 48
@@ -38953,7 +39040,7 @@
         "full": "9289.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 192,
         "w": 48,
         "h": 48
@@ -38989,7 +39076,7 @@
         "full": "9290.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 192,
         "w": 48,
         "h": 48
@@ -39025,7 +39112,7 @@
         "full": "9292.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 192,
         "w": 48,
         "h": 48
@@ -39061,8 +39148,8 @@
         "full": "9293.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 192,
+        "x": 0,
+        "y": 240,
         "w": 48,
         "h": 48
       },
@@ -39096,8 +39183,8 @@
         "full": "9300.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 192,
+        "x": 48,
+        "y": 240,
         "w": 48,
         "h": 48
       },
@@ -39131,7 +39218,7 @@
         "full": "9301.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39166,7 +39253,7 @@
         "full": "9302.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39201,7 +39288,7 @@
         "full": "9303.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39236,7 +39323,7 @@
         "full": "9304.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39271,7 +39358,7 @@
         "full": "9305.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39306,7 +39393,7 @@
         "full": "9306.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39341,7 +39428,7 @@
         "full": "9307.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39376,7 +39463,7 @@
         "full": "9308.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 240,
         "w": 48,
         "h": 48
@@ -39412,8 +39499,8 @@
         "full": "9400.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 384,
-        "y": 240,
+        "x": 0,
+        "y": 288,
         "w": 48,
         "h": 48
       },
@@ -39448,8 +39535,8 @@
         "full": "9401.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 432,
-        "y": 240,
+        "x": 48,
+        "y": 288,
         "w": 48,
         "h": 48
       },
@@ -39484,7 +39571,7 @@
         "full": "9402.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 0,
+        "x": 96,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39520,7 +39607,7 @@
         "full": "9403.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 48,
+        "x": 144,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39556,7 +39643,7 @@
         "full": "9404.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 96,
+        "x": 192,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39592,7 +39679,7 @@
         "full": "9405.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 144,
+        "x": 240,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39628,7 +39715,7 @@
         "full": "9406.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 192,
+        "x": 288,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39664,7 +39751,7 @@
         "full": "9407.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 240,
+        "x": 336,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39700,7 +39787,7 @@
         "full": "9408.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 288,
+        "x": 384,
         "y": 288,
         "w": 48,
         "h": 48
@@ -39735,7 +39822,7 @@
         "full": "994403.png",
         "sprite": "item8.png",
         "group": "item",
-        "x": 336,
+        "x": 432,
         "y": 288,
         "w": 48,
         "h": 48
