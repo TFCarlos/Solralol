@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from PySide6.QtCore import QThread, Signal
 
 from app.services.winrate_calculator_service import WinrateCalculatorService

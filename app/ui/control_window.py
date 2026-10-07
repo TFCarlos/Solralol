@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Qt, QTimer, Signal
-from app.services.live_data_worker import LiveDataWorker
+from typing import Any
 
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QPainter,
+    QRadialGradient,
+)
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -13,22 +17,19 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
 
-from PySide6.QtGui import (
-    QColor,
-    QPainter,
-    QRadialGradient,
-)
-
-from app.services.game_service import GameService
+from app.services.live_data_worker import LiveDataWorker
 from app.ui.champion_card import ChampionCard
 from app.ui.overlay_window import OverlayWindow
-from app.ui.styles import CONTROL_WINDOW_STYLE
+from app.ui.tema import (
+    aplicar_tema,
+    color_con_alfa,
+)
+
 
 class TeamBackground(QWidget):
     def __init__(
@@ -44,7 +45,8 @@ class TeamBackground(QWidget):
             True,
         )
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         painter = QPainter(self)
 
         painter.setRenderHint(
@@ -52,19 +54,9 @@ class TeamBackground(QWidget):
         )
 
         if self.team == "blue":
-            edge_color = QColor(
-                15,
-                86,
-                210,
-                155,
-            )
+            edge_color = color_con_alfa("teal", 155)
         else:
-            edge_color = QColor(
-                205,
-                30,
-                45,
-                155,
-            )
+            edge_color = color_con_alfa("desventaja", 155)
 
         center = self.rect().center()
 
@@ -78,7 +70,7 @@ class TeamBackground(QWidget):
 
         gradient.setColorAt(
             0.0,
-            QColor(0, 0, 0, 0),
+            color_con_alfa("base", 0),
         )
 
         gradient.setColorAt(
@@ -106,6 +98,7 @@ class SolralolWindow(QMainWindow):
     """Panel principal de Solralol y controlador del overlay."""
 
     def __init__(self, version: str, item_catalog: dict) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__()
 
         self.cards_built = False
@@ -125,7 +118,7 @@ class SolralolWindow(QMainWindow):
         self.setMinimumSize(600, 500)
 
         self.build_ui()
-        self.setStyleSheet(CONTROL_WINDOW_STYLE)
+        aplicar_tema(self)
 
         self.setup_live_data_worker()
 
@@ -424,12 +417,8 @@ class SolralolWindow(QMainWindow):
         self.panel_refresh_counter = 0
         self.rebuild_cards(snapshot)
 
-    def add_team_grid(
-        self,
-        team_title: str,
-        players: list[dict],
-        snapshot: dict,
-    ) -> None:
+    def add_team_grid(self, team_title: str, players: list[dict], snapshot: dict) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         grid_container = TeamBackground(
             "blue"
             if "ORDER" in team_title
@@ -479,7 +468,7 @@ class SolralolWindow(QMainWindow):
             shadow = QGraphicsDropShadowEffect(card)
             shadow.setBlurRadius(12)
             shadow.setOffset(2, 3)
-            shadow.setColor(QColor(0, 0, 0, 190))
+            shadow.setColor(color_con_alfa("base", 190))
 
             card.setGraphicsEffect(shadow)
 
@@ -487,10 +476,8 @@ class SolralolWindow(QMainWindow):
 
         self.cards_layout.addWidget(grid_container)
 
-    def paint_team_background(
-        self,
-        event,
-    ) -> None:
+    def paint_team_background(self, event: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         painter = QPainter(self)
         painter.setRenderHint(
             QPainter.RenderHint.Antialiasing
@@ -502,9 +489,9 @@ class SolralolWindow(QMainWindow):
         )
 
         color = (
-            QColor(12, 76, 180, 150)
+            color_con_alfa("teal", 150)
             if is_blue
-            else QColor(180, 22, 32, 150)
+            else color_con_alfa("desventaja", 150)
         )
 
         gradient = QRadialGradient(
@@ -517,7 +504,7 @@ class SolralolWindow(QMainWindow):
 
         gradient.setColorAt(
             0.0,
-            QColor(0, 0, 0, 0),
+            color_con_alfa("base", 0),
         )
 
         gradient.setColorAt(

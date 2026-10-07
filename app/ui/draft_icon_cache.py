@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from typing import Callable
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot, Qt
+from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel
 from shiboken6 import isValid

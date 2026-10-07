@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+
 from PySide6.QtCore import QThread, Signal
 
 from app.services.champion_ai_analyzer_service import ChampionAIAnalyzerService

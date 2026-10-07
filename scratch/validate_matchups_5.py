@@ -1,12 +1,14 @@
 """Validación de los matchups 5x5: disjunción, orden, cruce y tamaño."""
+
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.abspath("."))
 
-with open(os.path.join("data", "champions_strict.json"), encoding="utf-8") as fh:
-    champions = json.load(fh)
+from app.services.repositorio_campeones import RepositorioCampeones
+
+champions = RepositorioCampeones().perfiles()
 
 solapes = cruces = desordenes = cortos = 0
 for p in champions:
@@ -31,6 +33,10 @@ for p in champions:
         cortos += 1
         print(f"CORTO: {name} counters={len(cn)} good={len(gn)}")
 
-print(f"perfiles: {len(champions)} · solapes: {solapes} · cruces: {cruces} · desordenes: {desordenes} · con menos de 5: {cortos}")
-assert solapes == 0 and cruces == 0 and desordenes == 0 and cortos == 0, "Validación fallida"
+print(
+    f"perfiles: {len(champions)} · solapes: {solapes} · cruces: {cruces} · desordenes: {desordenes} · con menos de 5: {cortos}"
+)
+assert solapes == 0 and cruces == 0 and desordenes == 0 and cortos == 0, (
+    "Validación fallida"
+)
 print("VALIDACION OK")

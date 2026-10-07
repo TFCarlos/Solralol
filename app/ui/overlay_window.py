@@ -41,8 +41,11 @@ from app.services.overlay_sound_service import (
     OverlaySoundService,
 )
 from app.services.settings_service import SettingsService
+from app.ui.tema import (
+    aplicar_apariencia,
+    aplicar_tema,
+)
 from data_dragon import get_champion_icon_path, get_item_icon_path
-
 
 PANEL_KEYS = ("gold", "alerts", "threat")
 
@@ -78,150 +81,7 @@ ROLE_LABEL_WIDTH = 24
 THREAT_NAME_WIDTH = 84
 ALERT_TEXT_WIDTH = 150
 
-_PANEL_STYLE = """
-QWidget {
-    background: transparent;
-    font-family: "Segoe UI";
-}
 
-QFrame#overlayCard {
-    background: rgba(8, 15, 27, 238);
-    border: 1px solid rgba(97, 148, 211, 140);
-    border-radius: 10px;
-}
-
-QLabel#overlayRole {
-    color: #7d8fa8;
-    font-size: 9px;
-    font-weight: 800;
-}
-
-QLabel#overlayGold {
-    font-size: 12px;
-    font-weight: 800;
-    color: #cfe0f5;
-}
-
-QLabel#overlayGold[side="enemy"] {
-    color: #ffc6ce;
-}
-
-QLabel#overlayGold[kind="total"] {
-    color: #f0d491;
-    font-size: 13px;
-}
-
-QLabel#overlayDelta {
-    color: #8fa2bd;
-    font-size: 11px;
-    font-weight: 800;
-}
-
-QLabel#overlayDelta[state="ahead"] {
-    color: #70e0ad;
-}
-
-QLabel#overlayDelta[state="behind"] {
-    color: #ff8793;
-}
-
-QLabel#overlayDelta[kind="total"] {
-    font-size: 13px;
-}
-
-QLabel#overlayIcon {
-    border: 1px solid rgba(120, 160, 205, 120);
-    border-radius: 6px;
-    background: rgba(15, 30, 50, 190);
-    color: #dbe8f8;
-    font-size: 9px;
-    font-weight: 800;
-}
-
-QLabel#overlayIcon[state="empty"] {
-    border: 1px dashed rgba(128, 167, 215, 80);
-    background: rgba(5, 12, 24, 120);
-    color: #46586e;
-}
-
-QLabel#overlayIcon[state="transparent"] {
-    border: none;
-    background: transparent;
-}
-
-QLabel#overlayClock {
-    border: 1px solid rgba(217, 174, 79, 165);
-    border-radius: 6px;
-    background: rgba(58, 45, 20, 205);
-    color: #f3d276;
-    font-size: 11px;
-    font-weight: 800;
-}
-
-QLabel#overlayClock[urgent="true"] {
-    border-color: rgba(255, 135, 147, 200);
-    background: rgba(70, 22, 30, 215);
-    color: #ff9aa5;
-}
-
-QFrame#overlayAlertRow {
-    background: rgba(13, 25, 43, 205);
-    border-radius: 7px;
-}
-
-QFrame#overlayAccent {
-    border-radius: 2px;
-    background: rgba(255, 135, 147, 200);
-}
-
-QFrame#overlayAccent[side="ally"] {
-    background: rgba(112, 176, 255, 205);
-}
-
-QFrame#overlayAccent[kind="objective"] {
-    background: rgba(217, 174, 79, 215);
-}
-
-QLabel#overlayAlertText {
-    color: #dbe6f4;
-    font-size: 11px;
-    font-weight: 700;
-}
-
-QFrame#overlayRecordingRow {
-    background: rgba(74, 22, 30, 215);
-    border: 1px solid rgba(255, 135, 147, 200);
-    border-radius: 7px;
-}
-
-QLabel#overlayRecordingDot {
-    color: #ff8793;
-    font-size: 11px;
-    font-weight: 900;
-}
-
-QLabel#overlayRecordingText {
-    color: #ffdbe0;
-    font-size: 11px;
-    font-weight: 800;
-}
-
-QLabel#overlayMarker {
-    color: #ff8793;
-    font-size: 12px;
-    font-weight: 900;
-}
-
-QLabel#overlayMarker[role="weakest"] {
-    color: #70e0ad;
-}
-
-QLabel#overlayChampionName {
-    color: #e6eefb;
-    font-size: 11px;
-    font-weight: 700;
-}
-"""
 
 
 def _repolish(widget: QWidget) -> None:
@@ -260,7 +120,8 @@ def _icon_label(size: int) -> QLabel:
 class _FloatingPanel(QWidget):
     """Ventana sin marco, translúcida, arrastrable y opcionalmente ignorada."""
 
-    def __init__(self, key: str, item_catalog: dict | None = None) -> None:
+    def __init__(self, key: str, item_catalog: dict | None=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(None)
 
         self.key = key
@@ -292,7 +153,7 @@ class _FloatingPanel(QWidget):
         self.body.setContentsMargins(10, 8, 10, 9)
         self.body.setSpacing(3)
 
-        self.setStyleSheet(_PANEL_STYLE)
+        aplicar_tema(self)
 
     def _apply_window_flags(self) -> None:
         flags = (
@@ -566,7 +427,8 @@ class _GoldRow(QWidget):
 class GoldPanel(_FloatingPanel):
     """Panel 1: oro por rol aliado contra rival y total de cada equipo."""
 
-    def __init__(self, item_catalog: dict | None = None) -> None:
+    def __init__(self, item_catalog: dict | None=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__("gold", item_catalog)
 
         self.total = _GoldRow(total=True)
@@ -580,7 +442,7 @@ class GoldPanel(_FloatingPanel):
 
         separator = QFrame()
         separator.setFixedHeight(1)
-        separator.setStyleSheet("background: rgba(97, 148, 211, 70);")
+        aplicar_apariencia(separator, "separador")
         self.body.addWidget(separator)
 
         self.rows: list[_GoldRow] = []

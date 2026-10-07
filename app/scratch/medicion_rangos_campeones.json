@@ -1,0 +1,19 @@
+{
+  "archivos_verificados": 173,
+  "archivos_depurados": 8,
+  "aatrox_bytes_antes": 691318,
+  "aatrox_bytes_despues": 238873,
+  "total_bytes_antes": 6253035,
+  "total_bytes_despues": 2746037,
+  "parseo_aatrox_ms_antes": 5.630900000141992,
+  "parseo_aatrox_ms_despues": 1.9637000004877336,
+  "consulta_cache_ms_mediana": 0.3435499993429403,
+  "rangos": [
+    "diamond",
+    "diamond_plus",
+    "emerald",
+    "emerald_plus",
+    "master",
+    "master_plus"
+  ]
+}

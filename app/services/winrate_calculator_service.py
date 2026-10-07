@@ -11,6 +11,7 @@ Respeta el rate limit proactivo de Riot:
   - máx 19 peticiones / segundo
   - máx 99 peticiones / minuto
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from _paths import DATA_DIR
-from app.services.riot_api_service import RiotApiService, RiotApiError
+from app.services.repositorio_campeones import RepositorioCampeones
+from app.services.riot_api_service import RiotApiError, RiotApiService
 
 # Límites de la API key de desarrollo de Riot
 _MAX_PER_SECOND = 19
@@ -167,13 +169,12 @@ class WinrateCalculatorService:
         platform_region: str = "euw1",
         champions_path: Path | None = None,
     ) -> None:
+        """Recibe configuración Riot y raíz de perfiles locales; inicializa cliente opcional sin descargas."""
         self.api_key = api_key.strip()
         self.account_region = account_region.casefold()
         self.platform_region = platform_region.casefold()
         self._limiter = RateLimiter()
-        self.champions_path = champions_path or (
-            DATA_DIR / "champions_strict.json"
-        )
+        self.champions_path = champions_path or (DATA_DIR / "champion_data")
         if self.api_key:
             self._api: RiotApiService | None = RiotApiService(
                 api_key=self.api_key,
@@ -194,7 +195,7 @@ class WinrateCalculatorService:
         """
         Calcula y actualiza los 3 counters y 3 'bueno contra' de campeones.
         Si target_champion_name se especifica, solo actualiza ese campeón específico.
-        
+
         Devuelve (total_campeones_actualizados, total_matchups_actualizados).
         """
         champions = self._load_champions()
@@ -205,13 +206,21 @@ class WinrateCalculatorService:
         champions_to_update = champions
         if target_champion_name:
             target_norm = normalize_champion_key(target_champion_name)
-            filtered = [c for c in champions if normalize_champion_key(str(c.get("character", ""))) == target_norm]
+            filtered = [
+                c
+                for c in champions
+                if normalize_champion_key(str(c.get("character", ""))) == target_norm
+            ]
             if filtered:
                 champions_to_update = filtered
 
         # Dispositivos de almacenamiento para enfrentamientos observados
-        observed_lane: dict[tuple[str, str, str], list[int]] = {}     # (champ_key, pos, enemy_key) -> [wins, total]
-        observed_overall: dict[tuple[str, str], list[int]] = {}        # (champ_key, enemy_key) -> [wins, total]
+        observed_lane: dict[
+            tuple[str, str, str], list[int]
+        ] = {}  # (champ_key, pos, enemy_key) -> [wins, total]
+        observed_overall: dict[
+            tuple[str, str], list[int]
+        ] = {}  # (champ_key, enemy_key) -> [wins, total]
 
         if self._api and self.api_key:
             # 1. Recopilar partidas de Riot Match V5 (User + Esmeralda+)
@@ -252,10 +261,16 @@ class WinrateCalculatorService:
                     break
                 self._limiter.wait()
                 if progress_callback:
-                    progress_callback(idx + 1, max(1, total_matches_to_process), f"Partida {idx + 1}/{total_matches_to_process}")
+                    progress_callback(
+                        idx + 1,
+                        max(1, total_matches_to_process),
+                        f"Partida {idx + 1}/{total_matches_to_process}",
+                    )
                 try:
                     match_detail = self._api.get_match(match_id)
-                    self._extract_match_matchups(match_detail, observed_lane, observed_overall)
+                    self._extract_match_matchups(
+                        match_detail, observed_lane, observed_overall
+                    )
                 except Exception:
                     continue
 
@@ -272,7 +287,7 @@ class WinrateCalculatorService:
             if stop_check and stop_check():
                 break
 
-            champion_name = str(profile.get("character", f"Campeón #{idx+1}"))
+            champion_name = str(profile.get("character", f"Campeón #{idx + 1}"))
             if progress_callback:
                 progress_callback(idx + 1, total_to_update, champion_name)
 
@@ -333,7 +348,12 @@ class WinrateCalculatorService:
                 observed_overall[pair_ov2][1] += 1
 
                 # 2. Lane Matchup (misma línea/posición)
-                if pos1 and pos2 and pos1 == pos2 and pos1 in ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"):
+                if (
+                    pos1
+                    and pos2
+                    and pos1 == pos2
+                    and pos1 in ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY")
+                ):
                     pair_ln1 = (k1, pos1, k2)
                     if pair_ln1 not in observed_lane:
                         observed_lane[pair_ln1] = [0, 0]
@@ -380,23 +400,27 @@ class WinrateCalculatorService:
         evaluated: list[dict[str, Any]] = []
 
         for opp_name, opp_profile in candidate_map.items():
-            win_rate, overall_win_rate, tip, lane_games, overall_games = self._calculate_head_to_head(
-                profile,
-                opp_profile,
-                champ_key,
-                champ_positions,
-                observed_lane,
-                observed_overall,
+            win_rate, overall_win_rate, tip, lane_games, overall_games = (
+                self._calculate_head_to_head(
+                    profile,
+                    opp_profile,
+                    champ_key,
+                    champ_positions,
+                    observed_lane,
+                    observed_overall,
+                )
             )
-            evaluated.append({
-                "champion": opp_name,
-                "win_rate": win_rate,
-                "overall_win_rate": overall_win_rate,
-                "lane_games": lane_games,
-                "overall_games": overall_games,
-                "primary_role": primary_role,
-                "tip": tip,
-            })
+            evaluated.append(
+                {
+                    "champion": opp_name,
+                    "win_rate": win_rate,
+                    "overall_win_rate": overall_win_rate,
+                    "lane_games": lane_games,
+                    "overall_games": overall_games,
+                    "primary_role": primary_role,
+                    "tip": tip,
+                }
+            )
 
         if not evaluated:
             return 0
@@ -429,8 +453,16 @@ class WinrateCalculatorService:
                 total_champ_lane_wins += w
                 total_champ_lane_games += g
 
-        lane_wr_summary = round(total_champ_lane_wins / total_champ_lane_games, 3) if total_champ_lane_games > 0 else 0.500
-        overall_wr_summary = round(total_champ_overall_wins / total_champ_overall_games, 3) if total_champ_overall_games > 0 else 0.500
+        lane_wr_summary = (
+            round(total_champ_lane_wins / total_champ_lane_games, 3)
+            if total_champ_lane_games > 0
+            else 0.500
+        )
+        overall_wr_summary = (
+            round(total_champ_overall_wins / total_champ_overall_games, 3)
+            if total_champ_overall_games > 0
+            else 0.500
+        )
 
         profile["matchups"]["summary"] = {
             "total_games_analyzed": total_champ_overall_games,
@@ -490,34 +522,66 @@ class WinrateCalculatorService:
         scale_a = champ_a.get("power_curve_and_scaling", {})
         scale_b = champ_b.get("power_curve_and_scaling", {})
 
-        style_adv = _PLAYSTYLE_BIAS.get((style_a, style_b), 0.0) - _PLAYSTYLE_BIAS.get((style_b, style_a), 0.0)
+        style_adv = _PLAYSTYLE_BIAS.get((style_a, style_b), 0.0) - _PLAYSTYLE_BIAS.get(
+            (style_b, style_a), 0.0
+        )
 
         if dmg_type_a == "AP":
-            off_a_vs_def_b = float(combat_a.get("attack_power", 5)) - float(resist_b.get("magic_resistance", 5))
+            off_a_vs_def_b = float(combat_a.get("attack_power", 5)) - float(
+                resist_b.get("magic_resistance", 5)
+            )
         else:
-            off_a_vs_def_b = float(combat_a.get("attack_damage", 5)) - float(resist_b.get("armor", 5))
+            off_a_vs_def_b = float(combat_a.get("attack_damage", 5)) - float(
+                resist_b.get("armor", 5)
+            )
 
         if dmg_type_b == "AP":
-            off_b_vs_def_a = float(combat_b.get("attack_power", 5)) - float(resist_a.get("magic_resistance", 5))
+            off_b_vs_def_a = float(combat_b.get("attack_power", 5)) - float(
+                resist_a.get("magic_resistance", 5)
+            )
         else:
-            off_b_vs_def_a = float(combat_b.get("attack_damage", 5)) - float(resist_a.get("armor", 5))
+            off_b_vs_def_a = float(combat_b.get("attack_damage", 5)) - float(
+                resist_a.get("armor", 5)
+            )
 
         stat_delta = (off_a_vs_def_b - off_b_vs_def_a) * 0.007
-        cc_adv = (float(map_a.get("crowd_control", 5)) - float(resist_b.get("survivability_vs_cc", 5))) * 0.005
-        cc_vuln = (float(map_b.get("crowd_control", 5)) - float(resist_a.get("survivability_vs_cc", 5))) * 0.005
-        range_diff = (float(map_a.get("range", 3)) - float(map_b.get("range", 3))) * 0.004
-        mob_diff = (float(map_a.get("mobility", 5)) - float(map_b.get("mobility", 5))) * 0.004
-        early_diff = (float(scale_a.get("early_game", 5)) - float(scale_b.get("early_game", 5))) * 0.006
+        cc_adv = (
+            float(map_a.get("crowd_control", 5))
+            - float(resist_b.get("survivability_vs_cc", 5))
+        ) * 0.005
+        cc_vuln = (
+            float(map_b.get("crowd_control", 5))
+            - float(resist_a.get("survivability_vs_cc", 5))
+        ) * 0.005
+        range_diff = (
+            float(map_a.get("range", 3)) - float(map_b.get("range", 3))
+        ) * 0.004
+        mob_diff = (
+            float(map_a.get("mobility", 5)) - float(map_b.get("mobility", 5))
+        ) * 0.004
+        early_diff = (
+            float(scale_a.get("early_game", 5)) - float(scale_b.get("early_game", 5))
+        ) * 0.006
 
         pair_hash = (hash(f"{key_a}_{key_b}") % 41 - 20) / 1000.0
-        calculated_adv = style_adv + stat_delta + (cc_adv - cc_vuln) + range_diff + mob_diff + early_diff + pair_hash
+        calculated_adv = (
+            style_adv
+            + stat_delta
+            + (cc_adv - cc_vuln)
+            + range_diff
+            + mob_diff
+            + early_diff
+            + pair_hash
+        )
         base_winrate = max(0.405, min(0.595, 0.500 + calculated_adv))
 
         # Winrate en línea final
         if lane_games >= 5:
             obs_lane_wr = lane_wins / lane_games
             weight_lane = min(0.80, lane_games * 0.08)
-            final_lane_wr = round((1 - weight_lane) * base_winrate + weight_lane * obs_lane_wr, 3)
+            final_lane_wr = round(
+                (1 - weight_lane) * base_winrate + weight_lane * obs_lane_wr, 3
+            )
         elif lane_games > 0:
             obs_lane_wr = lane_wins / lane_games
             final_lane_wr = round(0.70 * base_winrate + 0.30 * obs_lane_wr, 3)
@@ -528,14 +592,28 @@ class WinrateCalculatorService:
         if overall_games >= 5:
             obs_overall_wr = overall_wins / overall_games
             weight_ov = min(0.80, overall_games * 0.08)
-            final_overall_wr = round((1 - weight_ov) * base_winrate + weight_ov * obs_overall_wr, 3)
+            final_overall_wr = round(
+                (1 - weight_ov) * base_winrate + weight_ov * obs_overall_wr, 3
+            )
         elif overall_games > 0:
             obs_overall_wr = overall_wins / overall_games
             final_overall_wr = round(0.70 * base_winrate + 0.30 * obs_overall_wr, 3)
         else:
-            final_overall_wr = round(max(0.40, min(0.60, final_lane_wr + (pair_hash * 0.4))), 3)
+            final_overall_wr = round(
+                max(0.40, min(0.60, final_lane_wr + (pair_hash * 0.4))), 3
+            )
 
-        tip = self._generate_tip(name_a, name_b, style_a, style_b, final_lane_wr, map_a, map_b, resist_a, resist_b)
+        tip = self._generate_tip(
+            name_a,
+            name_b,
+            style_a,
+            style_b,
+            final_lane_wr,
+            map_a,
+            map_b,
+            resist_a,
+            resist_b,
+        )
 
         return final_lane_wr, final_overall_wr, tip, lane_games, overall_games
 
@@ -563,7 +641,10 @@ class WinrateCalculatorService:
                 return f"El rango y hostigamiento de {name_b} castigan la fase de líneas antes de que puedas entrar."
             return f"{name_b} domina el emparejamiento gracias a su ventaja de kit y presión sostenida."
         else:
-            if float(map_a.get("crowd_control", 5)) >= 6 and float(resist_b.get("survivability_vs_cc", 5)) <= 5:
+            if (
+                float(map_a.get("crowd_control", 5)) >= 6
+                and float(resist_b.get("survivability_vs_cc", 5)) <= 5
+            ):
                 return f"Tus herramientas de CC anulan a {name_b} y facilitan su eliminación en ráfagas cortas."
             if float(map_a.get("mobility", 5)) > float(map_b.get("mobility", 5)):
                 return f"Tu superior movilidad te permite dictar cuándo pelear y evitar sus habilidades lentas."
@@ -572,15 +653,11 @@ class WinrateCalculatorService:
             return f"Ventaja estratégica en intercambios y control de línea frente a {name_b}."
 
     def _load_champions(self) -> list[dict[str, Any]]:
-        try:
-            with self.champions_path.open("r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            return data if isinstance(data, list) else []
-        except (OSError, json.JSONDecodeError):
-            return []
+        """Devuelve perfiles del repositorio local sin descargas."""
+        return RepositorioCampeones(self.champions_path).perfiles()
 
     def _save_champions(self, champions: list[dict[str, Any]]) -> None:
-        tmp = self.champions_path.with_suffix(".tmp")
-        with tmp.open("w", encoding="utf-8") as fh:
-            json.dump(champions, fh, ensure_ascii=False, indent=2)
-        tmp.replace(self.champions_path)
+        """Persiste perfiles recibidos conservando sus matrices; retorna None."""
+        repositorio = RepositorioCampeones(self.champions_path)
+        for perfil in champions:
+            repositorio.guardar_perfil(perfil)

@@ -1,26 +1,26 @@
 from __future__ import annotations
+
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import (
-    QUrl,
+    QSize,
     Qt,
     QThread,
     QTimer,
+    QUrl,
     Signal,
     Slot,
 )
-
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
     QPainter,
-    QRadialGradient,
+    QPainterPath,
+    QResizeEvent,
 )
-from app.ui.postgame_replay_window import PostgameReplayWindow
-
-
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -31,43 +31,34 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSlider,
     QStackedWidget,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from app.services.live_match_tracker import (
-    LiveMatchTracker,
-)
-
-from app.services.game_calculator import get_inventory_value
-
-from app.ui.live_match_analysis_dialog import (
-    LiveMatchAnalysisDialog,
-)
-from app.ui.local_analysis_dialog import LocalAnalysisDialog
-
-from app.ui.match_inspector_dialog import (
-    MatchInspectorDialog,
-)
 from app.services.data_dragon_assets import (
     DataDragonAssetService,
 )
-from app.services.settings_service import SettingsService
-from app.services.tab_hotkey_service import TabHotkeyService
-from app.services.live_data_worker import LiveDataWorker
-from app.services.match_history_worker import (
-    MatchHistoryWorker,
+from app.services.game_calculator import get_inventory_value
+from app.services.home_history_service import (
+    HomeHistoryRepository,
+    LCUHomeProvider,
+    analyze_home_history,
+    cross_reference_saved_matches,
 )
-
+from app.services.live_data_worker import LiveDataWorker
+from app.services.live_match_tracker import (
+    LiveMatchTracker,
+)
 from app.services.postgame_sync_worker import (
     PostgameSyncWorker,
 )
-
 from app.services.recording_service import (
     AUDIO_MODE_LABELS,
     AUDIO_MODES,
@@ -76,15 +67,13 @@ from app.services.recording_service import (
     LIMIT_DEFAULT_GB,
     LIMIT_MAX_GB,
     LIMIT_MIN_GB,
-    QUALITY_PRESETS,
     RecordingConfig,
     RecordingLibrary,
     RecordingService,
+    audio_mode_label,
     audio_mode_uses_game,
     audio_mode_uses_mic,
     audio_mode_uses_system,
-    audio_mode_uses_full_system,
-    audio_mode_label,
     bitrate_label,
     find_ffmpeg,
     find_video_for_session,
@@ -97,44 +86,222 @@ from app.services.recording_service import (
     quality_label,
     recording_settings_defaults,
 )
+from app.services.settings_service import SettingsService
+from app.services.tab_hotkey_service import TabHotkeyService
 from app.ui.async_task import AsyncTask, run_async
-from app.ui.champion_card import ChampionCard
-from app.ui.recordings_page import RecordingsPage  # noqa: E402
-from app.ui.postgame_replay_window import PostgameReplayWindow  # noqa: E402
-from app.ui.overlay_window import OverlayWindow
-from app.ui.styles import CONTROL_WINDOW_STYLE
+from app.ui.barra_lateral import BarraLateral
 from app.ui.champ_select_worker import ChampSelectWorker
+from app.ui.champion_card import CARD_MAX_HEIGHT, ChampionCard
+from app.ui.componentes_visuales import Interruptor, PaginaDesplazable
 from app.ui.draft_tool_dialog import DraftToolDialog
+from app.ui.live_match_analysis_dialog import (
+    LiveMatchAnalysisDialog,
+)
+from app.ui.local_analysis_dialog import LocalAnalysisDialog
+from app.ui.overlay_window import OverlayWindow
+from app.ui.postgame_replay_window import PostgameReplayWindow  # noqa: E402
+from app.ui.recordings_page import RecordingsPage  # noqa: E402
+from app.ui.sistema_visual import PALETA
+from app.ui.superficies_analisis import FondoTecnologico, IconoRedondeado
+from app.ui.tema import aplicar_tema
 
 #: Ancho común para todos los botones de acción de una fila de
 #: «Partidas guardadas»: así los cuatro ocupan exactamente lo mismo.
 ROW_BUTTON_WIDTH = 145
 
 
-class Backdrop(QWidget):
-    """Fondo oscuro general de la aplicación."""
+class Backdrop(FondoTecnologico):
+    """Fondo abstracto compartido del shell, sin ilustraciones de fondo."""
 
-    def paintEvent(self, event) -> None:
+
+class TarjetaPartidaGuardada(QFrame):
+    """Contenedor de partida guardada con barra de acento semántica y fondo sutil."""
+
+    def __init__(
+        self, result_state: str = "unknown", parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self.result_state = result_state
+        self.setObjectName("savedGameRow")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event: Any) -> None:
+        super().paintEvent(event)
+        if self.result_state not in ("win", "loss"):
+            return
+
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(7, 11, 20))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        blue = QRadialGradient(
-            self.width() * 0.10,
-            -30,
-            max(self.width(), self.height()) * 0.72,
+        color_hex = (
+            PALETA["ventaja"] if self.result_state == "win" else PALETA["desventaja"]
         )
-        blue.setColorAt(0.0, QColor(25, 104, 220, 58))
-        blue.setColorAt(1.0, QColor(25, 104, 220, 0))
-        painter.fillRect(self.rect(), blue)
+        accent_color = QColor(color_hex)
+        accent_color.setAlpha(200)
 
-        red = QRadialGradient(
-            self.width() * 0.96,
-            0,
-            max(self.width(), self.height()) * 0.56,
+        rect = self.rect()
+        path = QPainterPath()
+        # Dibuja solo la barra izquierda de 4px respetando el radio del borde
+        path.addRoundedRect(0, 0, 4, rect.height(), 16, 16)
+        painter.fillPath(path, accent_color)
+
+    @staticmethod
+    def extraer_oponente_linea(session: dict[str, Any]) -> str:
+        """Resuelve el campeón enemigo de línea (matchup) según la posición del jugador local."""
+        if not isinstance(session, dict):
+            return "—"
+
+        local_key = session.get("local_player_key")
+        players = session.get("players") or {}
+
+        if not local_key or local_key not in players:
+            return "—"
+
+        local_player = players[local_key]
+        local_side = local_player.get("side")
+        local_role = str(local_player.get("role") or "").upper()
+
+        if not local_side or not local_role:
+            return "—"
+
+        # Buscar en los enfrentamientos de línea precalculados
+        lane_matchups = session.get("lane_matchups") or {}
+        if local_role in lane_matchups:
+            matchup = lane_matchups[local_role]
+            opp_key = (
+                matchup.get("enemy_key")
+                if local_side == "ally"
+                else matchup.get("ally_key")
+            )
+            if opp_key and opp_key in players:
+                champ = players[opp_key].get("champion_name")
+                if champ and champ != "Desconocido":
+                    return str(champ)
+
+        # Búsqueda directa entre los jugadores del equipo contrario con la misma posición
+        enemy_side = "enemy" if local_side == "ally" else "ally"
+        for p in players.values():
+            if not isinstance(p, dict):
+                continue
+            if p.get("side") == enemy_side:
+                p_role = str(p.get("role") or "").upper()
+                if p_role and p_role == local_role:
+                    champ = p.get("champion_name")
+                    if champ and champ != "Desconocido":
+                        return str(champ)
+
+        return "—"
+
+
+class RejillaTarjetasEquipo(QWidget):
+    """Distribuye hasta cinco tarjetas según el ancho útil del equipo."""
+
+    ANCHO_MINIMO_TARJETA = 200
+
+    def __init__(self, tarjetas: list[ChampionCard]) -> None:
+        """Crea una fila de tarjetas que comparte el alto disponible.
+
+        Args:
+            tarjetas: Tarjetas del equipo que se distribuiran en columnas.
+        Returns:
+            None.
+        """
+        super().__init__()
+        self._tarjetas = tarjetas
+        self._columnas = 0
+        self._filas = 0
+        self.setObjectName("teamCardsRow")
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._rejilla = QGridLayout(self)
+        self._rejilla.setContentsMargins(0, 0, 0, 0)
+        self._rejilla.setHorizontalSpacing(10)
+        self._rejilla.setVerticalSpacing(10)
+        self._rejilla.setRowStretch(0, 1)
+        self._redistribuir(max(1, len(tarjetas)))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Reorganiza las tarjetas al cambiar el ancho disponible.
+
+        Args:
+            event: Evento de redimensionado de la fila.
+        Returns:
+            None.
+        """
+        super().resizeEvent(event)
+        columnas = max(
+            1,
+            min(
+                len(self._tarjetas),
+                (self.width() + self._rejilla.horizontalSpacing())
+                // (self.ANCHO_MINIMO_TARJETA + self._rejilla.horizontalSpacing()),
+            ),
         )
-        red.setColorAt(0.0, QColor(208, 45, 62, 30))
-        red.setColorAt(1.0, QColor(208, 45, 62, 0))
-        painter.fillRect(self.rect(), red)
+        self._redistribuir(columnas)
+
+    def _redistribuir(self, columnas: int) -> None:
+        """Coloca las tarjetas en columnas iguales manteniendo su instancia.
+
+        Args:
+            columnas: Número de columnas disponibles.
+        Returns:
+            None.
+        """
+        if columnas == self._columnas and self._rejilla.count() == len(self._tarjetas):
+            return
+        for columna_anterior in range(self._columnas):
+            self._rejilla.setColumnStretch(columna_anterior, 0)
+        for fila_anterior in range(self._filas):
+            self._rejilla.setRowStretch(fila_anterior, 0)
+        while self._rejilla.count():
+            self._rejilla.takeAt(0)
+        self._columnas = columnas
+        for indice, tarjeta in enumerate(self._tarjetas):
+            fila, columna = divmod(indice, columnas)
+            self._rejilla.addWidget(tarjeta, fila, columna)
+        for columna in range(columnas):
+            self._rejilla.setColumnStretch(columna, 1)
+        filas = (len(self._tarjetas) + columnas - 1) // columnas
+        self._filas = filas
+        for fila in range(filas):
+            self._rejilla.setRowStretch(fila, 1)
+        self._actualizar_alto_minimo()
+
+    def _actualizar_alto_minimo(self) -> None:
+        """Reserva el alto mínimo y máximo de las filas refluídas.
+
+        Args:
+            None.
+        Returns:
+            None.
+        """
+        columnas = max(1, self._columnas)
+        filas = (len(self._tarjetas) + columnas - 1) // columnas
+        alto_fila = max(
+            (tarjeta.minimumHeight() for tarjeta in self._tarjetas), default=0
+        )
+        alto = filas * alto_fila + max(0, filas - 1) * self._rejilla.verticalSpacing()
+        self.setMinimumHeight(alto)
+        alto_maximo = (
+            filas * CARD_MAX_HEIGHT
+            + max(0, filas - 1) * self._rejilla.verticalSpacing()
+        )
+        self.setMaximumHeight(max(alto, alto_maximo))
+
+    def sizeHint(self) -> QSize:
+        """Devuelve el alto natural sin imponer cinco columnas al contenedor."""
+        columnas = max(1, self._columnas)
+        filas = (len(self._tarjetas) + columnas - 1) // columnas
+        alto_fila = max(
+            (tarjeta.sizeHint().height() for tarjeta in self._tarjetas), default=0
+        )
+        alto = filas * alto_fila + max(0, filas - 1) * self._rejilla.verticalSpacing()
+        return QSize(0, alto)
+
+    def minimumSizeHint(self) -> QSize:
+        """Permite que el área de scroll reduzca el ancho para activar el reflujo."""
+        return QSize(0, 0)
+
 
 class MainWindow(QMainWindow):
     """Ventana única de Solralol."""
@@ -161,33 +328,8 @@ class MainWindow(QMainWindow):
         str,
     )
 
-    history_requested = Signal(
-        str,
-        str,
-        str,
-        str,
-        str,
-        int,
-    )
-
-    match_detail_requested = Signal(
-        str,
-        str,
-        str,
-        str,
-        str,
-        str,
-    )
-
-    profile_requested = Signal(
-        str,
-        str,
-        str,
-        str,
-        str,
-    )
-        
     def __init__(self, version: str, item_catalog: dict) -> None:
+        """Inicializa servicios y shell con versión y catálogo recibidos; retorna None."""
         super().__init__()
 
         self.version = version
@@ -207,6 +349,22 @@ class MainWindow(QMainWindow):
         self._recording_size_cache: tuple[float, int] | None = None
         self.settings_service = SettingsService()
         self.settings = self.settings_service.load()
+        self.home_history_repository = HomeHistoryRepository()
+        self.home_lcu_provider = LCUHomeProvider()
+        self.home_profile = self.home_history_repository.load_last_profile()
+        self.home_collection = (self.home_profile or {}).get("collection", {})
+        self.home_history_error = False
+        try:
+            self.home_history = (
+                self.home_history_repository.load(self.home_profile)
+                if self.home_profile
+                else {"matches": [], "last_sync": None}
+            )
+        except (OSError, TypeError, ValueError):
+            self.home_history = {"matches": [], "last_sync": None}
+            self.home_history_error = True
+        self._home_sync_in_progress = False
+        self._home_collection_generation = 0
         self.riot_api_key = self.settings.get(
             "riot_api_key",
             "",
@@ -256,12 +414,8 @@ class MainWindow(QMainWindow):
         for key, value in recording_settings_defaults().items():
             self.settings.setdefault(key, value)
 
-        self.recording_config = RecordingConfig.from_settings(
-            self.settings
-        )
-        self.recording_library = RecordingLibrary(
-            self.recording_config.output_dir
-        )
+        self.recording_config = RecordingConfig.from_settings(self.settings)
+        self.recording_library = RecordingLibrary(self.recording_config.output_dir)
         self.recording_service = RecordingService(
             self.recording_library,
             self,
@@ -274,21 +428,12 @@ class MainWindow(QMainWindow):
         self._devices_task: AsyncTask | None = None
         self._system_devices_task: AsyncTask | None = None
         self._start_background_ffmpeg_check()
-        self.recording_service.failed.connect(
-            self._on_recording_failed
-        )
-        self.recording_service.finished.connect(
-            self._on_recording_finished
-        )
-        self.recording_service.state_changed.connect(
-            self._sync_overlay_recording
-        )
+        self.recording_service.failed.connect(self._on_recording_failed)
+        self.recording_service.finished.connect(self._on_recording_finished)
+        self.recording_service.state_changed.connect(self._sync_overlay_recording)
         self.recording_system_audio_combo = None
         self.recording_system_audio_button = None
         self.recording_mic_capture_enabled = False
-
-        self.match_history: list[dict] = []
-        self.history_is_loading = False
 
         self.last_snapshot: dict | None = None
         self.is_refreshing = False
@@ -296,6 +441,10 @@ class MainWindow(QMainWindow):
         self.was_in_game = False
         self.panel_refresh_counter = 0
         self.panel_refresh_every_seconds = 10
+        self.live_team_cards: dict[str, list[ChampionCard]] = {}
+        self.live_team_summaries: dict[str, QLabel] = {}
+        self.live_team_signatures: dict[str, tuple[tuple[str, ...], ...]] = {}
+        self.live_team_order: tuple[str, ...] = ()
         self.live_match_tracker = LiveMatchTracker(
             item_catalog,
             game_version=self.version,
@@ -333,19 +482,18 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Solralol")
         self.resize(1600, 1000)
-        self.setMinimumSize(1400, 900)
+        self.setMinimumSize(1000, 700)
 
         self.build_ui()
-        self.data_dragon_assets = (
-            DataDragonAssetService(self)
-        )
+        self.data_dragon_assets = DataDragonAssetService(self)
         self.overlay.set_assets(self.data_dragon_assets)
         self.overlay.state_changed.connect(self.sync_overlay_settings_ui)
-        self.setStyleSheet(CONTROL_WINDOW_STYLE)
+        aplicar_tema(self)
         self.setup_live_data_worker()
-        self.setup_match_history_worker()
         self.setup_postgame_sync_worker()
         self.setup_champ_select_worker()
+        self.refresh_home_dashboard("Historial local · sincronizando…")
+        self.synchronize_home_history()
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.request_snapshot)
@@ -359,72 +507,58 @@ class MainWindow(QMainWindow):
         self.backdrop.adjustSize()
         self.pages.adjustSize()
 
-
     def build_ui(self) -> None:
+        """Construye la ventana con navegación lateral y páginas; retorna None."""
         self.backdrop = Backdrop()
         self.setCentralWidget(self.backdrop)
 
         root = QVBoxLayout(self.backdrop)
-        root.setContentsMargins(28, 24, 28, 24)
+        root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(18)
 
-        root.addWidget(self.create_header())
-        root.addWidget(self.create_navigation())
+        cabecera = self.create_header()
+        cuerpo = QHBoxLayout()
+        cuerpo.setSpacing(18)
+        cuerpo.addWidget(self.create_navigation())
+        root.addLayout(cuerpo, 1)
 
         self.pages = QStackedWidget()
         self.pages.setObjectName("mainPages")
         self.pages.currentChanged.connect(self._handle_page_changed)
-        self.pages.addWidget(
-            self.create_home_page()
-        )
-        self.pages.addWidget(
-            self.create_analysis_page()
-        )
-        self.pages.addWidget(
-            self.create_live_page()
-        )
-        self.pages.addWidget(
-            self.create_saved_games_page()
-        )
+        self.pages.addWidget(PaginaDesplazable(self.create_home_page()))
+        self.pages.addWidget(self.create_analysis_page())
+        self.pages.addWidget(self.create_live_page())
+        self.pages.addWidget(self.create_saved_games_page())
         self.recordings_page = RecordingsPage(
             self.recording_library,
             self.recording_service,
             self,
         )
-        self.recordings_page.open_folder_requested.connect(
-            self.open_recordings_folder
-        )
+        self.recordings_page.open_folder_requested.connect(self.open_recordings_folder)
         self.recordings_page.stop_recording_requested.connect(
             self.stop_recording_manually
         )
         self.recordings_page.open_window_requested.connect(
             self.open_replay_window_for_video
         )
-        self.recordings_page.recordings_changed.connect(
-            self.refresh_saved_games
-        )
+        self.recordings_page.recordings_changed.connect(self.refresh_saved_games)
         self.pages.addWidget(self.recordings_page)
-        self.pages.addWidget(
-            self.create_settings_page()
-        )
+        self.pages.addWidget(self.create_settings_page())
+        self.pages.addWidget(QWidget())
 
-        root.addWidget(self.pages, 1)
+        contenido = QVBoxLayout()
+        contenido.setSpacing(12)
+        contenido.addWidget(cabecera)
+        contenido.addWidget(self.pages, 1)
+        cuerpo.addLayout(contenido, 1)
         self.showMaximized()
 
     def create_header(self) -> QWidget:
+        """Construye estado de conexión y cierre junto al contenido; devuelve la cabecera."""
         header = QWidget()
         layout = QHBoxLayout(header)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
-
-        mark = QLabel()
-        mark.setObjectName("brandMark")
-        mark.setFixedSize(13, 13)
-        layout.addWidget(mark)
-
-        title = QLabel("SOLRALOL")
-        title.setObjectName("brandTitle")
-        layout.addWidget(title)
 
         subtitle = QLabel("Panel de control")
         subtitle.setObjectName("brandSubtitle")
@@ -443,13 +577,7 @@ class MainWindow(QMainWindow):
         return header
 
     def create_navigation(self) -> QFrame:
-        navigation = QFrame()
-        navigation.setObjectName("navigation")
-
-        layout = QHBoxLayout(navigation)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
-
+        """Crea la barra plegable con los destinos existentes; retorna su marco."""
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
@@ -481,331 +609,47 @@ class MainWindow(QMainWindow):
         self.home_button.setChecked(True)
         self.live_button.setEnabled(False)
 
-        self.draft_nav_button = QPushButton("⚔️ Herramienta de Draft")
-        self.draft_nav_button.setObjectName("navButton")
-        self.draft_nav_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.draft_nav_button = self.create_nav_button("Herramienta de Draft", 6)
         self.draft_nav_button.clicked.connect(self.open_draft_tool_dialog)
 
-        layout.addWidget(self.home_button)
-        layout.addWidget(self.analysis_button)
-        layout.addWidget(self.live_button)
-        layout.addWidget(self.saved_games_button)
-        layout.addWidget(self.recordings_button)
-        layout.addWidget(self.settings_button)
-        layout.addWidget(self.draft_nav_button)
-        layout.addStretch(1)
-
-        return navigation
-
+        return BarraLateral(
+            [
+                self.home_button,
+                self.analysis_button,
+                self.live_button,
+                self.saved_games_button,
+                self.recordings_button,
+                self.settings_button,
+                self.draft_nav_button,
+            ],
+            self,
+        )
 
     def create_nav_button(self, text: str, index: int) -> QPushButton:
         button = QPushButton(text)
         button.setObjectName("navButton")
         button.setCheckable(True)
-        button.clicked.connect(
-            lambda checked=False: self.pages.setCurrentIndex(index)
-        )
+        button.clicked.connect(lambda checked=False: self.pages.setCurrentIndex(index))
         self.nav_group.addButton(button)
         return button
 
     def create_home_page(self) -> QWidget:
-        page = QWidget()
-        page.setObjectName("homePage")
+        """Crea el dashboard persistente y conserva indicadores del estado en vivo."""
+        from app.ui.home_dashboard import HomeDashboard
 
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(18)
-
-    def create_home_page(self) -> QWidget:
-        page = QWidget()
-        page.setObjectName("homePage")
-
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(18)
-
-        # 1. Card Izquierda: Perfil del Invocador
-        self.summoner_card = QFrame()
-        self.summoner_card.setObjectName("summonerCard")
-        self.summoner_card.setMinimumWidth(260)
-        self.summoner_card.setMinimumHeight(220)
-        self.summoner_card.setMaximumHeight(245)
-        summoner_layout = QVBoxLayout(self.summoner_card)
-        summoner_layout.setContentsMargins(16, 14, 16, 14)
-        summoner_layout.setSpacing(8)
-
-        header_hbox = QHBoxLayout()
-        header_hbox.setSpacing(12)
-
-        self.profile_icon_label = QLabel("Icono")
-        self.profile_icon_label.setObjectName("profileIconLabel")
-        self.profile_icon_label.setFixedSize(48, 48)
-        self.profile_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.profile_icon_label.setStyleSheet("border: 2px solid #d9ae4f; border-radius: 9px; background: rgba(5, 12, 24, 180); color: #d9ae4f; font-weight: bold; font-size: 11px;")
-        header_hbox.addWidget(self.profile_icon_label)
-
-        id_vbox = QVBoxLayout()
-        id_vbox.setSpacing(2)
-        self.summoner_riot_id_label = QLabel(f"{self.riot_game_name}#{self.riot_tag_line}" if self.riot_game_name else "Invocador")
-        self.summoner_riot_id_label.setObjectName("summonerRiotId")
-        self.summoner_riot_id_label.setStyleSheet("color: #f4f7ff; font-size: 15px; font-weight: 800;")
-        id_vbox.addWidget(self.summoner_riot_id_label)
-
-        self.summoner_level_label = QLabel(f"Nivel — · {self.riot_platform_region.upper()}")
-        self.summoner_level_label.setObjectName("summonerLevel")
-        self.summoner_level_label.setStyleSheet("color: #8fa2bd; font-size: 11px;")
-        id_vbox.addWidget(self.summoner_level_label)
-
-        header_hbox.addLayout(id_vbox, 1)
-        summoner_layout.addLayout(header_hbox)
-
-        # Rango SoloQ Badge
-        self.soloq_tier_badge = QLabel("🏆 RANKED SOLOQ · UNRANKED")
-        self.soloq_tier_badge.setObjectName("soloqTierBadge")
-        self.soloq_tier_badge.setStyleSheet("padding: 5px 10px; border: 1px solid rgba(217, 174, 79, 150); border-radius: 6px; color: #f0cf78; background: rgba(76, 60, 30, 160); font-size: 11px; font-weight: 800;")
-        summoner_layout.addWidget(self.soloq_tier_badge)
-
-        self.soloq_winrate_label = QLabel("Winrate SoloQ: — (0V / 0D)")
-        self.soloq_winrate_label.setStyleSheet("color: #c9d9ee; font-size: 11px; font-weight: 600;")
-        summoner_layout.addWidget(self.soloq_winrate_label)
-
-        # Personaje más jugado
-        most_played_box = QFrame()
-        most_played_box.setStyleSheet("border: 1px solid rgba(97, 148, 211, 70); border-radius: 6px; background: rgba(10, 20, 36, 170);")
-        mp_layout = QHBoxLayout(most_played_box)
-        mp_layout.setContentsMargins(8, 6, 8, 6)
-        mp_layout.setSpacing(8)
-
-        self.most_played_icon = QLabel("M")
-        self.most_played_icon.setFixedSize(48, 48)
-        self.most_played_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.most_played_icon.setStyleSheet(
-            "border-radius: 6px; background: rgba(5, 12, 24, 180); color: #8fa2bd; font-size: 13px;"
+        self.home_dashboard = HomeDashboard(
+            item_catalog=self.item_catalog, version=getattr(self, "version", "")
         )
-        mp_layout.addWidget(self.most_played_icon)
+        self.home_dashboard.sync_requested.connect(self.synchronize_home_history)
+        self.home_dashboard.clear_requested.connect(self.confirm_clear_home_history)
+        self.home_dashboard.saved_match_requested.connect(self.open_home_saved_match)
+        return self.home_dashboard
 
-        mp_text_vbox = QVBoxLayout()
-        mp_text_vbox.setSpacing(1)
-        self.most_played_title = QLabel("Más Jugado: —")
-        self.most_played_title.setStyleSheet("color: #e2e8f0; font-size: 11px; font-weight: 700;")
-        mp_text_vbox.addWidget(self.most_played_title)
-
-        self.most_played_stats = QLabel("0 partidas (0% WR)")
-        self.most_played_stats.setStyleSheet("color: #94a3b8; font-size: 10px;")
-        mp_text_vbox.addWidget(self.most_played_stats)
-
-        mp_layout.addLayout(mp_text_vbox, 1)
-        summoner_layout.addWidget(most_played_box)
-
-        # 2. Card Central: Contenedor con Título Externo + Gráfica de evolución SoloQ
-        soloq_card = QFrame()
-        soloq_card.setObjectName("soloqGraphCard")
-        soloq_card.setStyleSheet("QFrame#soloqGraphCard { border: 1px solid rgba(80, 118, 171, 95); border-radius: 12px; background: rgba(8, 19, 34, 220); }")
-        soloq_card.setMinimumHeight(220)
-        soloq_card.setMaximumHeight(245)
-        soloq_card_layout = QVBoxLayout(soloq_card)
-        soloq_card_layout.setContentsMargins(14, 12, 14, 12)
-        soloq_card_layout.setSpacing(6)
-
-        graph_header_label = QLabel("📈 TENDENCIA DE SOLOQ")
-        graph_header_label.setStyleSheet(
-            "color: #edd175; font-weight: 800; font-size: 10px; letter-spacing: 1px;"
-        )
-        soloq_card_layout.addWidget(graph_header_label)
-
-        from app.ui.soloq_graph_widget import SoloQGraphWidget
-        self.soloq_graph = SoloQGraphWidget()
-        soloq_card_layout.addWidget(self.soloq_graph, 1)
-
-        # 3. Card Derecha: Estado del Cliente
-        hero = QFrame()
-        hero.setObjectName("heroCard")
-        hero.setMinimumWidth(250)
-        hero.setMinimumHeight(220)
-        hero.setMaximumHeight(245)
-        hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(18, 16, 18, 16)
-        hero_layout.setSpacing(6)
-
-        eyebrow = QLabel("ESTADO DEL CLIENTE")
-        eyebrow.setObjectName("eyebrow")
-        eyebrow.setStyleSheet("font-size: 11px;")
-        hero_layout.addWidget(eyebrow)
-
-        self.home_title = QLabel("Esperando una partida")
-        self.home_title.setObjectName("heroTitle")
-        self.home_title.setStyleSheet("font-size: 18px; font-weight: 800;")
-        hero_layout.addWidget(self.home_title)
-
-        self.home_text = QLabel(
-            "Abre League of Legends y entra en una partida para activar el panel en vivo."
-        )
-        self.home_text.setObjectName("heroText")
-        self.home_text.setStyleSheet("font-size: 12px;")
-        self.home_text.setWordWrap(True)
-        hero_layout.addWidget(self.home_text)
-        hero_layout.addStretch(1)
-
-        # Disposición horizontal superior: [JUGADOR] [TENDENCIA] [ESTADO CLIENTE]
-        top_section = QHBoxLayout()
-        top_section.setSpacing(14)
-        top_section.addWidget(self.summoner_card, 2)
-        top_section.addWidget(soloq_card, 4)
-        top_section.addWidget(hero, 2)
-        layout.addLayout(top_section)
-
-        metrics = QHBoxLayout()
-        metrics.setSpacing(14)
-
-        self.player_metric = self.create_metric_card(
-            "INVOCADOR",
-            "Sin datos",
-            "La API local aún no ha devuelto un jugador activo.",
-        )
-        self.mode_metric = self.create_metric_card(
-            "MODO",
-            "—",
-            "Se muestra al detectar una partida.",
-        )
-        self.session_metric = self.create_metric_card(
-            "ESTADO",
-            "En espera",
-            "El panel se actualiza automáticamente.",
-        )
-
-        metrics.addWidget(self.player_metric)
-        metrics.addWidget(self.mode_metric)
-        metrics.addWidget(self.session_metric)
-        layout.addLayout(metrics)
-
-        activity = QFrame()
-        activity.setObjectName("sectionCard")
-
-        activity_layout = QVBoxLayout(activity)
-        activity_layout.setContentsMargins(22, 20, 22, 20)
-        activity_layout.setSpacing(12)
-
-        activity_header = QHBoxLayout()
-        activity_header.setSpacing(12)
-
-        heading = QLabel("Actividad reciente")
-        heading.setObjectName("sectionTitle")
-        activity_header.addWidget(heading)
-
-        activity_header.addStretch(1)
-
-        self.refresh_history_button = QPushButton(
-            "Actualizar historial"
-        )
-        self.refresh_history_button.setObjectName(
-            "primaryButton"
-        )
-        self.refresh_history_button.clicked.connect(
-            self.request_match_history
-        )
-        activity_header.addWidget(self.refresh_history_button)
-
-        activity_layout.addLayout(activity_header)
-
-        riot_id_row = QHBoxLayout()
-        riot_id_row.setSpacing(10)
-
-        self.riot_game_name_input = QLineEdit()
-        self.riot_game_name_input.setObjectName(
-            "riotIdInput"
-        )
-        self.riot_game_name_input.setPlaceholderText(
-            "Nombre de Riot ID"
-        )
-        self.riot_game_name_input.setText(
-            self.riot_game_name
-        )
-        riot_id_row.addWidget(self.riot_game_name_input, 3)
-
-        tag_prefix = QLabel("#")
-        tag_prefix.setObjectName("riotTagPrefix")
-        riot_id_row.addWidget(tag_prefix)
-
-        self.riot_tag_line_input = QLineEdit()
-        self.riot_tag_line_input.setObjectName(
-            "riotIdInput"
-        )
-        self.riot_tag_line_input.setPlaceholderText(
-            "TAG"
-        )
-        self.riot_tag_line_input.setMaxLength(5)
-        self.riot_tag_line_input.setText(
-            self.riot_tag_line
-        )
-        riot_id_row.addWidget(self.riot_tag_line_input, 1)
-
-        activity_layout.addLayout(riot_id_row)
-
-        self.history_status = QLabel(
-            "Introduce tu Riot ID y pulsa “Actualizar historial”."
-        )
-        self.history_status.setObjectName("historyStatus")
-        self.history_status.setWordWrap(True)
-        self.history_status.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.history_status.setMaximumHeight(24)
-        activity_layout.addWidget(self.history_status)
-
-        self.history_scroll = QScrollArea()
-        self.history_scroll.setObjectName("historyScrollArea")
-        self.history_scroll.setWidgetResizable(True)
-        self.history_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.history_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; } QWidget { background: transparent; }")
-        self.history_scroll.setMinimumHeight(300)
-
-        history_scroll_widget = QWidget()
-        self.history_list_layout = QVBoxLayout(history_scroll_widget)
-        self.history_list_layout.setContentsMargins(0, 0, 0, 0)
-        self.history_list_layout.setSpacing(8)
-
-        self.history_scroll.setWidget(history_scroll_widget)
-        activity_layout.addWidget(self.history_scroll, 1)
-
-        layout.addWidget(activity)
-
-        return page
-
-    def create_metric_card(
-        self,
-        label: str,
-        value: str,
-        detail: str,
-    ) -> QFrame:
-        card = QFrame()
-        card.setObjectName("metricCard")
-        card.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(5)
-
-        label_widget = QLabel(label)
-        label_widget.setObjectName("metricLabel")
-        layout.addWidget(label_widget)
-
-        value_widget = QLabel(value)
-        value_widget.setObjectName("metricValue")
-        value_widget.setWordWrap(True)
-        layout.addWidget(value_widget)
-
-        detail_widget = QLabel(detail)
-        detail_widget.setObjectName("metricDetail")
-        detail_widget.setWordWrap(True)
-        layout.addWidget(detail_widget)
-
-        card.metric_value = value_widget
-        card.metric_detail = detail_widget
-        return card
+    def open_home_saved_match(self, session_id: str) -> None:
+        """Abre desde Home una sesión mediante el mismo análisis de Partidas guardadas."""
+        session = self.find_saved_session(session_id) if session_id else None
+        if isinstance(session, dict):
+            self.open_saved_game_analysis(session)
 
     def create_analysis_page(self) -> QWidget:
         page = LocalAnalysisDialog(
@@ -826,7 +670,151 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _handle_page_changed(self, index: int) -> None:
-        return
+        """Sincroniza el destino activo con el índice recibido; retorna None."""
+        botones = (
+            self.home_button,
+            self.analysis_button,
+            self.live_button,
+            self.saved_games_button,
+            self.recordings_button,
+            self.settings_button,
+            self.draft_nav_button,
+        )
+        if 0 <= index < len(botones):
+            botones[index].setChecked(True)
+        if index == 0:
+            self.refresh_home_dashboard("Cliente local · listo para sincronizar")
+
+    def refresh_home_dashboard(self, status: str) -> None:
+        """Actualiza Home desde la copia persistida sin realizar llamadas de red."""
+        if not hasattr(self, "home_dashboard"):
+            return
+        analytics = analyze_home_history(self.home_history.get("matches", []))
+        self.home_dashboard.set_dashboard_data(
+            self.home_profile,
+            self.home_history,
+            analytics,
+            status,
+            collection=self.home_collection,
+            syncing=self._home_sync_in_progress,
+        )
+        icon_id = (self.home_profile or {}).get("profileIconId")
+        if icon_id and hasattr(self, "data_dragon_assets"):
+            self.data_dragon_assets.set_label_image(
+                self.home_dashboard.profile_icon,
+                self.data_dragon_assets.profile_icon_url(icon_id),
+                f"profileicon:{icon_id}:home",
+                62,
+            )
+
+    def synchronize_home_history(self) -> None:
+        """Sincroniza historial LCU en segundo plano y combina datos persistidos."""
+        if self._home_sync_in_progress:
+            return
+        self._home_sync_in_progress = True
+        self.refresh_home_dashboard(
+            "Historial incompatible o dañado · conservado sin cambios"
+            if self.home_history_error
+            else "Sincronizando con League Client…"
+        )
+        run_async(
+            self.synchronize_home_background,
+            on_finished=self._home_sync_finished,
+            on_progress=self._home_sync_progress,
+            token="home_lcu_sync",
+        )
+
+    def _home_sync_progress(self, _current: int, _total: int, message: str) -> None:
+        """Muestra en Home el progreso comunicado por la sincronización LCU."""
+        if hasattr(self, "home_dashboard"):
+            self.home_dashboard.connection.setText(message)
+
+    def synchronize_home_background(
+        self, progress_callback: Any = None
+    ) -> dict[str, Any]:
+        """Importa partidas LCU y las cruza con sesiones guardadas en disco."""
+        repository = HomeHistoryRepository()
+        result = LCUHomeProvider().synchronize(repository, progress_callback)
+        try:
+            tracker = LiveMatchTracker(
+                self.item_catalog, game_version=self.version, persist=False
+            )
+            sessions = tracker.load_saved_sessions()
+        except (OSError, TypeError, ValueError):
+            sessions = []
+        matches = cross_reference_saved_matches(
+            result["history"].get("matches", []), sessions
+        )
+        result["history"] = repository.merge(result["profile"], matches)
+        return result
+
+    def _home_sync_finished(self, _token: Any, result: Any, error: str | None) -> None:
+        """Aplica el resultado del worker y conserva el último estado offline."""
+        self._home_sync_in_progress = False
+        if error or not isinstance(result, dict):
+            self.refresh_home_dashboard(
+                "Historial incompatible o dañado · conservado sin cambios"
+                if self.home_history_error
+                else "League cerrado · mostrando historial local"
+            )
+            return
+        self.home_profile = result["profile"]
+        self.home_history = result["history"]
+        self.home_collection = result.get("collection", {})
+        self.home_history_error = False
+        self.refresh_home_dashboard("League conectado · historial sincronizado")
+        profile = dict(self.home_profile)
+        self._home_collection_generation += 1
+        token = (
+            HomeHistoryRepository.account_key(profile),
+            self._home_collection_generation,
+        )
+        run_async(
+            lambda: LCUHomeProvider().synchronize_collection(
+                profile, HomeHistoryRepository()
+            ),
+            on_finished=self._home_collection_finished,
+            token=token,
+        )
+
+    def _home_collection_finished(
+        self, token: Any, result: Any, error: str | None
+    ) -> None:
+        """Aplica los módulos de colección si siguen perteneciendo a la cuenta activa."""
+        if error or not isinstance(result, dict) or not self.home_profile:
+            return
+        if token != (
+            HomeHistoryRepository.account_key(self.home_profile),
+            self._home_collection_generation,
+        ):
+            return
+        self.home_collection = result
+        self.home_profile["collection"] = result
+        self.refresh_home_dashboard("League conectado · colección actualizada")
+
+    def confirm_clear_home_history(self) -> None:
+        """Confirma y elimina únicamente el historial local de la cuenta activa."""
+        if not self.home_profile:
+            return
+        confirmation = QMessageBox(self)
+        confirmation.setIcon(QMessageBox.Icon.Warning)
+        confirmation.setWindowTitle("Borrar historial local")
+        confirmation.setText(
+            "Se eliminarán las partidas recordadas y sus estadísticas de este perfil."
+        )
+        confirmation.setInformativeText(
+            "Partidas guardadas, grabaciones, análisis y ajustes se conservarán."
+        )
+        confirmation.setStandardButtons(
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes
+        )
+        confirmation.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if confirmation.exec() != QMessageBox.StandardButton.Yes:
+            return
+        self.home_history_repository.clear(self.home_profile)
+        self.home_history = {"matches": [], "last_sync": None}
+        self.home_history_error = False
+        self.refresh_home_dashboard("Historial local borrado")
 
     def toggle_analysis_adblock(
         self,
@@ -871,9 +859,7 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(text_layout, 1)
 
-        button = QPushButton(
-            f"Abrir {name}"
-        )
+        button = QPushButton(f"Abrir {name}")
         button.setObjectName("primaryButton")
         button.clicked.connect(callback)
         layout.addWidget(button)
@@ -881,22 +867,12 @@ class MainWindow(QMainWindow):
         return row
 
     def save_analysis_preferences(self) -> None:
-        champion = (
-            self.analysis_champion_input
-            .text()
-            .strip()
-        )
+        champion = self.analysis_champion_input.text().strip()
 
         self.analysis_champion = champion
-        self.analysis_role = (
-            self.analysis_role_combo.currentData()
-        )
-        self.analysis_rank = (
-            self.analysis_rank_combo.currentData()
-        )
-        self.analysis_region = (
-            self.analysis_region_combo.currentData()
-        )
+        self.analysis_role = self.analysis_role_combo.currentData()
+        self.analysis_rank = self.analysis_rank_combo.currentData()
+        self.analysis_region = self.analysis_region_combo.currentData()
 
         self.settings.update(
             {
@@ -907,9 +883,7 @@ class MainWindow(QMainWindow):
             }
         )
 
-        self.settings_service.save(
-            self.settings
-        )
+        self.settings_service.save(self.settings)
 
         self.set_analysis_status(
             "Selección guardada localmente.",
@@ -917,11 +891,7 @@ class MainWindow(QMainWindow):
         )
 
     def analysis_values(self) -> tuple[str, str, str, str] | None:
-        champion = (
-            self.analysis_champion_input
-            .text()
-            .strip()
-        )
+        champion = self.analysis_champion_input.text().strip()
 
         if not champion:
             self.set_analysis_status(
@@ -935,10 +905,7 @@ class MainWindow(QMainWindow):
         region = self.analysis_region_combo.currentData()
 
         champion_slug = (
-            champion.casefold()
-            .replace(" ", "")
-            .replace("'", "")
-            .replace(".", "")
+            champion.casefold().replace(" ", "").replace("'", "").replace(".", "")
         )
 
         return champion_slug, role, rank, region
@@ -971,7 +938,6 @@ class MainWindow(QMainWindow):
     ) -> None:
         return
 
-
     def set_combo_value(
         self,
         combo: QComboBox,
@@ -993,6 +959,13 @@ class MainWindow(QMainWindow):
             combo.setCurrentIndex(index)
 
     def create_live_page(self) -> QWidget:
+        """Construye la página LIVE con una zona de equipos adaptable.
+
+        Args:
+            None.
+        Returns:
+            Página Qt con estado de partida y paneles de equipo.
+        """
         page = QWidget()
         page.setObjectName("livePage")
 
@@ -1033,20 +1006,12 @@ class MainWindow(QMainWindow):
         info_layout.addWidget(self.live_status)
         status_layout.addLayout(info_layout, 1)
 
-        self.open_live_analysis_button = QPushButton(
-            "Abrir análisis LIVE"
-        )
-        self.open_live_analysis_button.setObjectName(
-            "primaryButton"
-        )
+        self.open_live_analysis_button = QPushButton("Abrir análisis LIVE")
+        self.open_live_analysis_button.setObjectName("primaryButton")
         self.open_live_analysis_button.setEnabled(False)
-        self.open_live_analysis_button.clicked.connect(
-            self.open_live_analysis
-        )
+        self.open_live_analysis_button.clicked.connect(self.open_live_analysis)
 
-        status_layout.addWidget(
-            self.open_live_analysis_button
-        )
+        status_layout.addWidget(self.open_live_analysis_button)
 
         status_layout.addWidget(self.create_live_clock())
 
@@ -1097,13 +1062,11 @@ class MainWindow(QMainWindow):
 
         self.live_time_label = QLabel("—")
         self.live_time_label.setObjectName("liveTime")
-        self.live_time_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
+        self.live_time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.live_time_label)
 
         return clock
-    
+
     def create_saved_games_page(self) -> QWidget:
         page = QWidget()
         page.setObjectName("savedGamesPage")
@@ -1141,27 +1104,15 @@ class MainWindow(QMainWindow):
 
         header_layout.addLayout(text_layout, 1)
 
-        self.refresh_saved_games_button = QPushButton(
-            "Actualizar lista"
-        )
-        self.refresh_saved_games_button.setObjectName(
-            "secondaryButton"
-        )
-        self.refresh_saved_games_button.clicked.connect(
-            self.refresh_saved_games
-        )
-        header_layout.addWidget(
-            self.refresh_saved_games_button
-        )
+        self.refresh_saved_games_button = QPushButton("Actualizar lista")
+        self.refresh_saved_games_button.setObjectName("secondaryButton")
+        self.refresh_saved_games_button.clicked.connect(self.refresh_saved_games)
+        header_layout.addWidget(self.refresh_saved_games_button)
 
         layout.addWidget(header)
 
-        self.saved_games_status = QLabel(
-            "Cargando partidas guardadas..."
-        )
-        self.saved_games_status.setObjectName(
-            "savedGamesStatus"
-        )
+        self.saved_games_status = QLabel("Cargando partidas guardadas...")
+        self.saved_games_status.setObjectName("savedGamesStatus")
         layout.addWidget(self.saved_games_status)
 
         scroll = QScrollArea()
@@ -1171,9 +1122,7 @@ class MainWindow(QMainWindow):
 
         self.saved_games_content = QWidget()
         self.saved_games_content.setObjectName("savedGamesContent")
-        self.saved_games_layout = QVBoxLayout(
-            self.saved_games_content
-        )
+        self.saved_games_layout = QVBoxLayout(self.saved_games_content)
         self.saved_games_layout.setContentsMargins(
             0,
             0,
@@ -1314,9 +1263,7 @@ class MainWindow(QMainWindow):
                 "Por ahora se guarda la telemetría LIVE local."
             )
             empty.setObjectName("savedGamesEmpty")
-            empty.setAlignment(
-                Qt.AlignmentFlag.AlignCenter
-            )
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setWordWrap(True)
 
             self.saved_games_layout.addWidget(empty)
@@ -1324,18 +1271,17 @@ class MainWindow(QMainWindow):
             return
 
         self.saved_games_status.setText(
-            f"{len(self.saved_live_sessions)} "
-            "partida(s) guardada(s)."
+            f"{len(self.saved_live_sessions)} partida(s) guardada(s)."
         )
 
-        for session in reversed(
-            self.saved_live_sessions
-        ):
+        for session in reversed(self.saved_live_sessions):
             # El vídeo de cada sesión ya viene resuelto del worker: construir
             # la fila no vuelve a tocar el disco.
-            session_id = str(
-                session.get("session_id") or ""
-            ) if isinstance(session, dict) else ""
+            session_id = (
+                str(session.get("session_id") or "")
+                if isinstance(session, dict)
+                else ""
+            )
 
             self.saved_games_layout.addWidget(
                 self.create_saved_game_row(
@@ -1495,16 +1441,14 @@ class MainWindow(QMainWindow):
         refresco) y evita que pintar la fila toque el disco; ``None`` hace que
         se resuelva aquí mismo, para quien construya una fila suelta.
         """
-        row = QFrame()
-        row.setObjectName("savedGameRow")
-        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
         # Un resultado ausente no equivale a una derrota.
         local_key = session.get("local_player_key")
         players = session.get("players") or {}
         local_player = (players.get(local_key) or {}) if local_key else {}
         win = local_player.get("win")
         result_state = "win" if win is True else "loss" if win is False else "unknown"
+
+        row = TarjetaPartidaGuardada(result_state=result_state)
         row.setProperty("result", result_state)
 
         layout = QHBoxLayout(row)
@@ -1516,12 +1460,16 @@ class MainWindow(QMainWindow):
             "Desconocido",
         )
 
-        champ_icon = QLabel(str(champion or "?")[:1].upper())
+        champ_icon = IconoRedondeado(str(champion or "?")[:1].upper(), radio=12)
         champ_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         champ_icon.setFixedSize(60, 60)
         champ_icon.setObjectName("savedGameChampIcon")
         champ_icon.setToolTip(str(champion))
-        if champion and champion != "Desconocido" and hasattr(self, "data_dragon_assets"):
+        if (
+            champion
+            and champion != "Desconocido"
+            and hasattr(self, "data_dragon_assets")
+        ):
             icon_url = self.data_dragon_assets.champion_url(champion)
             self.data_dragon_assets.set_label_image(
                 champ_icon, icon_url, f"champ:{champion}", 56
@@ -1537,25 +1485,58 @@ class MainWindow(QMainWindow):
         )
 
         title_row = QHBoxLayout()
-        title_row.setSpacing(8)
+        title_row.setSpacing(12)
 
         title = QLabel(str(champion))
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setObjectName("savedGameTitle")
         title_row.addWidget(title)
 
-        result = QLabel({
-            "win": "VICTORIA",
-            "loss": "DERROTA",
-            "unknown": "Sin resultado",
-        }[result_state])
+        # Matchup de línea: Mi campeón VS [Icono] Campeón enemigo
+        opponent_champ = TarjetaPartidaGuardada.extraer_oponente_linea(session)
+        matchup_label = QLabel("VS")
+        matchup_label.setObjectName("savedGameMatchup")
+        title_row.addWidget(matchup_label)
+
+        if opponent_champ != "—":
+            enemy_icon = IconoRedondeado(
+                str(opponent_champ or "?")[:1].upper(), radio=6
+            )
+            enemy_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            enemy_icon.setFixedSize(28, 28)
+            enemy_icon.setObjectName("savedGameEnemyIcon")
+            enemy_icon.setToolTip(str(opponent_champ))
+            if hasattr(self, "data_dragon_assets"):
+                icon_url = self.data_dragon_assets.champion_url(opponent_champ)
+                self.data_dragon_assets.set_label_image(
+                    enemy_icon, icon_url, f"champ:{opponent_champ}", 26
+                )
+            title_row.addWidget(enemy_icon)
+
+            enemy_name = QLabel(str(opponent_champ))
+            enemy_name.setTextFormat(Qt.TextFormat.PlainText)
+            enemy_name.setObjectName("savedGameMatchup")
+            title_row.addWidget(enemy_name)
+        else:
+            dash_label = QLabel("—")
+            dash_label.setObjectName("savedGameMatchup")
+            title_row.addWidget(dash_label)
+
+        result = QLabel(
+            {
+                "win": "VICTORIA",
+                "loss": "DERROTA",
+                "unknown": "Sin resultado",
+            }[result_state]
+        )
         result.setObjectName("savedGameResult")
         result.setProperty("result", result_state)
+
         result.setToolTip(
             "Resultado del jugador local."
             if result_state != "unknown"
             else "No se ha registrado el resultado del jugador local. "
-                 "Si está disponible, sincroniza la partida con Riot."
+            "Si está disponible, sincroniza la partida con Riot."
         )
         title_row.addWidget(result)
         title_row.addStretch(1)
@@ -1605,9 +1586,7 @@ class MainWindow(QMainWindow):
             [],
         )
 
-        subtitle = QLabel(
-            f"{game_mode}   ·   {started_at}   ·   {duration}"
-        )
+        subtitle = QLabel(f"{game_mode}   ·   {started_at}   ·   {duration}")
         subtitle.setTextFormat(Qt.TextFormat.PlainText)
         subtitle.setObjectName("savedGameDetail")
         subtitle.setWordWrap(True)
@@ -1637,20 +1616,13 @@ class MainWindow(QMainWindow):
 
         if session_id:
             if sync_status == "synced":
-                resync_button = QPushButton(
-                    "Re-sincronizar"
-                )
-                resync_button.setObjectName(
-                    "secondaryButton"
-                )
+                resync_button = QPushButton("Re-sincronizar")
+                resync_button.setObjectName("secondaryButton")
                 resync_button.setFixedWidth(ROW_BUTTON_WIDTH)
                 resync_button.setFixedHeight(36)
-                resync_button.setEnabled(
-                    not self.postgame_sync_in_progress
-                )
+                resync_button.setEnabled(not self.postgame_sync_in_progress)
                 resync_button.clicked.connect(
-                    lambda checked=False, value=session_id:
-                    self.request_resync_session(
+                    lambda checked=False, value=session_id: self.request_resync_session(
                         value
                     )
                 )
@@ -1672,7 +1644,9 @@ class MainWindow(QMainWindow):
                 }
                 _is_local_only = str(game_mode).upper() in _practice_modes
 
-                button_label = "Reintentar Riot" if sync_status == "not_found" else "Buscar Riot"
+                button_label = (
+                    "Reintentar Riot" if sync_status == "not_found" else "Buscar Riot"
+                )
                 sync_button = QPushButton(button_label)
 
                 # Las partidas locales usan objectName diferente para mostrarse
@@ -1696,8 +1670,9 @@ class MainWindow(QMainWindow):
                     not self.postgame_sync_in_progress and not _is_local_only
                 )
                 sync_button.clicked.connect(
-                    lambda checked=False, value=session_id:
-                    self.request_saved_session_sync(value)
+                    lambda checked=False, value=session_id: (
+                        self.request_saved_session_sync(value)
+                    )
                 )
                 actions.addWidget(sync_button, 1, 0)
 
@@ -1726,24 +1701,18 @@ class MainWindow(QMainWindow):
                 "partida y desglose construido con la telemetría local."
             )
             replay_button.clicked.connect(
-                lambda checked=False, value=session:
-                self.open_replay_window(session=value)
+                lambda checked=False, value=session: self.open_replay_window(
+                    session=value
+                )
             )
             actions.addWidget(replay_button, 0, 0, Qt.AlignmentFlag.AlignRight)
 
-        open_button = QPushButton(
-            "Abrir análisis"
-        )
-        open_button.setObjectName(
-            "primaryButton"
-        )
+        open_button = QPushButton("Abrir análisis")
+        open_button.setObjectName("primaryButton")
         open_button.setFixedWidth(ROW_BUTTON_WIDTH)
         open_button.setFixedHeight(36)
         open_button.clicked.connect(
-            lambda checked=False, value=session:
-            self.open_saved_game_analysis(
-                value
-            )
+            lambda checked=False, value=session: self.open_saved_game_analysis(value)
         )
         actions.addWidget(open_button, 0, 1, Qt.AlignmentFlag.AlignRight)
 
@@ -1753,7 +1722,9 @@ class MainWindow(QMainWindow):
         delete_button.setFixedHeight(36)
         if session_id:
             delete_button.clicked.connect(
-                lambda checked=False, val=session_id: self.delete_saved_game_session(val)
+                lambda checked=False, val=session_id: self.delete_saved_game_session(
+                    val
+                )
             )
         delete_button.setEnabled(bool(session_id))
         actions.addWidget(delete_button, 1, 1)
@@ -1774,9 +1745,7 @@ class MainWindow(QMainWindow):
         except ValueError:
             return value
 
-        return date.astimezone().strftime(
-            "%d/%m/%Y %H:%M"
-        )
+        return date.astimezone().strftime("%d/%m/%Y %H:%M")
 
     def request_saved_session_sync(
         self,
@@ -1797,11 +1766,7 @@ class MainWindow(QMainWindow):
         sessions = self.live_match_tracker.load_saved_sessions()
 
         session = next(
-            (
-                value
-                for value in sessions
-                if value.get("session_id") == session_id
-            ),
+            (value for value in sessions if value.get("session_id") == session_id),
             None,
         )
 
@@ -1841,26 +1806,20 @@ class MainWindow(QMainWindow):
             self.update_saved_session_sync_status(
                 session_id,
                 "failed",
-                (
-                    "Configura una Riot API key válida "
-                    "antes de buscar datos."
-                ),
+                ("Configura una Riot API key válida antes de buscar datos."),
             )
 
             self.refresh_saved_games()
             return
 
-        game_name = self.riot_game_name_input.text().strip()
-        tag_line = self.riot_tag_line_input.text().strip()
+        game_name = self.riot_game_name
+        tag_line = self.riot_tag_line
 
         if not game_name or not tag_line:
             self.update_saved_session_sync_status(
                 session_id,
                 "failed",
-                (
-                    "Configura tu Riot ID en Inicio "
-                    "antes de buscar datos."
-                ),
+                ("Configura tu Riot ID en Ajustes antes de buscar datos."),
             )
 
             self.refresh_saved_games()
@@ -1897,11 +1856,7 @@ class MainWindow(QMainWindow):
         sessions = self.live_match_tracker.load_saved_sessions()
 
         session = next(
-            (
-                value
-                for value in sessions
-                if value.get("session_id") == session_id
-            ),
+            (value for value in sessions if value.get("session_id") == session_id),
             None,
         )
 
@@ -1962,9 +1917,7 @@ class MainWindow(QMainWindow):
             break
 
         if changed:
-            self.live_match_tracker._save_sessions(
-                sessions
-            )
+            self.live_match_tracker._save_sessions(sessions)
 
     def open_saved_game_analysis(
         self,
@@ -1979,34 +1932,30 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def create_settings_page(self) -> QWidget:
+        """Agrupa los ajustes existentes en pestañas desplazables; devuelve la página."""
         page = QWidget()
         page.setObjectName("settingsPage")
-
-        scroll = QScrollArea()
-        scroll.setObjectName("settingsScrollArea")
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(scroll)
-
-        content = QWidget()
-        content.setObjectName("settingsContent")
-        scroll.setWidget(content)
-
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(18)
-
-        for card in self._settings_cards():
-            content_layout.addWidget(card)
-
-        content_layout.addStretch(1)
-
+        pestanas = QTabWidget()
+        pestanas.setObjectName("settingsTabs")
+        for titulo, tarjeta in zip(
+            (
+                "Cuenta y Riot",
+                "Análisis con IA",
+                "Grabación y almacenamiento",
+                "Overlay y avisos",
+            ),
+            self._settings_cards(),
+        ):
+            contenido = QWidget()
+            disposicion = QVBoxLayout(contenido)
+            disposicion.setContentsMargins(18, 18, 18, 18)
+            disposicion.setSpacing(12)
+            disposicion.addWidget(tarjeta)
+            disposicion.addStretch(1)
+            pestanas.addTab(PaginaDesplazable(contenido), titulo)
+        layout.addWidget(pestanas)
         return page
 
     def _settings_cards(self) -> list[QWidget]:
@@ -2078,9 +2027,7 @@ class MainWindow(QMainWindow):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setToolTip(url)
         button.clicked.connect(
-            lambda checked=False, target=url: QDesktopServices.openUrl(
-                QUrl(target)
-            )
+            lambda checked=False, target=url: QDesktopServices.openUrl(QUrl(target))
         )
 
         return button
@@ -2123,33 +2070,21 @@ class MainWindow(QMainWindow):
         self.api_key_input.setPlaceholderText(
             "RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
         )
-        self.api_key_input.setEchoMode(
-            QLineEdit.EchoMode.Password
-        )
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key_input.setText(self.riot_api_key)
         card_layout.addWidget(self.api_key_input)
 
         api_actions = QHBoxLayout()
         api_actions.setSpacing(10)
 
-        self.save_api_key_button = QPushButton(
-            "Guardar y comprobar"
-        )
+        self.save_api_key_button = QPushButton("Guardar y comprobar")
         self.save_api_key_button.setObjectName("primaryButton")
-        self.save_api_key_button.clicked.connect(
-            self.save_and_validate_api_key
-        )
+        self.save_api_key_button.clicked.connect(self.save_and_validate_api_key)
         api_actions.addWidget(self.save_api_key_button)
 
-        self.clear_api_key_button = QPushButton(
-            "Eliminar clave"
-        )
-        self.clear_api_key_button.setObjectName(
-            "secondaryButton"
-        )
-        self.clear_api_key_button.clicked.connect(
-            self.clear_api_key
-        )
+        self.clear_api_key_button = QPushButton("Eliminar clave")
+        self.clear_api_key_button.setObjectName("secondaryButton")
+        self.clear_api_key_button.clicked.connect(self.clear_api_key)
         api_actions.addWidget(self.clear_api_key_button)
 
         api_actions.addWidget(
@@ -2171,9 +2106,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _settings_gemini_card(self) -> QWidget:
-        card, card_layout = self._settings_card(
-            "IA Gemini (Google AI Studio)"
-        )
+        card, card_layout = self._settings_card("IA Gemini (Google AI Studio)")
 
         card_layout.addWidget(
             self._settings_description(
@@ -2201,33 +2134,23 @@ class MainWindow(QMainWindow):
         self.gemini_api_key_input = QLineEdit()
         self.gemini_api_key_input.setObjectName("apiKeyInput")
         self.gemini_api_key_input.setPlaceholderText("AIzaSy...")
-        self.gemini_api_key_input.setEchoMode(
-            QLineEdit.EchoMode.Password
-        )
+        self.gemini_api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.gemini_api_key_input.setText(self.gemini_api_key)
         card_layout.addWidget(self.gemini_api_key_input)
 
         gemini_actions = QHBoxLayout()
         gemini_actions.setSpacing(10)
 
-        self.save_gemini_api_key_button = QPushButton(
-            "Guardar y comprobar Gemini Key"
-        )
+        self.save_gemini_api_key_button = QPushButton("Guardar y comprobar Gemini Key")
         self.save_gemini_api_key_button.setObjectName("primaryButton")
         self.save_gemini_api_key_button.clicked.connect(
             self.save_and_validate_gemini_api_key
         )
         gemini_actions.addWidget(self.save_gemini_api_key_button)
 
-        self.clear_gemini_api_key_button = QPushButton(
-            "Eliminar clave Gemini"
-        )
-        self.clear_gemini_api_key_button.setObjectName(
-            "secondaryButton"
-        )
-        self.clear_gemini_api_key_button.clicked.connect(
-            self.clear_gemini_api_key
-        )
+        self.clear_gemini_api_key_button = QPushButton("Eliminar clave Gemini")
+        self.clear_gemini_api_key_button.setObjectName("secondaryButton")
+        self.clear_gemini_api_key_button.clicked.connect(self.clear_gemini_api_key)
         gemini_actions.addWidget(self.clear_gemini_api_key_button)
 
         gemini_actions.addWidget(
@@ -2250,6 +2173,7 @@ class MainWindow(QMainWindow):
         return card
 
     def _settings_recordings_card(self) -> QWidget:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         card, card_layout = self._settings_card("Grabaciones")
 
         card_layout.addWidget(
@@ -2261,15 +2185,13 @@ class MainWindow(QMainWindow):
             )
         )
 
-        self.recording_auto_checkbox = QCheckBox(
+        self.recording_auto_checkbox = Interruptor(
             "Grabar cada partida automáticamente"
         )
         self.recording_auto_checkbox.setChecked(
             bool(self.settings.get("recording_auto", True))
         )
-        self.recording_auto_checkbox.toggled.connect(
-            self._on_recording_auto_toggled
-        )
+        self.recording_auto_checkbox.toggled.connect(self._on_recording_auto_toggled)
         card_layout.addWidget(self.recording_auto_checkbox)
 
         quality_row = QHBoxLayout()
@@ -2294,9 +2216,7 @@ class MainWindow(QMainWindow):
             "480",
             "420",
         ):
-            self.recording_quality_combo.addItem(
-                quality_label(key), key
-            )
+            self.recording_quality_combo.addItem(quality_label(key), key)
 
         self.set_combo_value(
             self.recording_quality_combo,
@@ -2320,9 +2240,7 @@ class MainWindow(QMainWindow):
         self.recording_bitrate_combo.setObjectName("analysisCombo")
 
         for value in sorted(BITRATE_PRESETS):
-            self.recording_bitrate_combo.addItem(
-                bitrate_label(value), value
-            )
+            self.recording_bitrate_combo.addItem(bitrate_label(value), value)
 
         self.set_combo_value(
             self.recording_bitrate_combo,
@@ -2354,9 +2272,7 @@ class MainWindow(QMainWindow):
         self.recording_audio_mode_combo.setObjectName("analysisCombo")
 
         for mode in AUDIO_MODES:
-            self.recording_audio_mode_combo.addItem(
-                AUDIO_MODE_LABELS[mode], mode
-            )
+            self.recording_audio_mode_combo.addItem(AUDIO_MODE_LABELS[mode], mode)
 
         self.set_combo_value(
             self.recording_audio_mode_combo,
@@ -2385,9 +2301,7 @@ class MainWindow(QMainWindow):
         game_input_layout.setContentsMargins(0, 0, 0, 0)
         game_input_layout.setSpacing(10)
 
-        self.recording_game_audio_caption = QLabel(
-            "Sonido del juego"
-        )
+        self.recording_game_audio_caption = QLabel("Sonido del juego")
         self.recording_game_audio_caption.setObjectName("settingsLabel")
         self.recording_game_audio_caption.setMinimumWidth(150)
         game_input_layout.addWidget(self.recording_game_audio_caption)
@@ -2492,16 +2406,12 @@ class MainWindow(QMainWindow):
 
         self.recording_dir_button = QPushButton("Cambiar…")
         self.recording_dir_button.setObjectName("secondaryButton")
-        self.recording_dir_button.clicked.connect(
-            self.choose_recordings_folder
-        )
+        self.recording_dir_button.clicked.connect(self.choose_recordings_folder)
         folder_row.addWidget(self.recording_dir_button)
 
         self.recording_folder_button = QPushButton("Abrir")
         self.recording_folder_button.setObjectName("secondaryButton")
-        self.recording_folder_button.clicked.connect(
-            self.open_recordings_folder
-        )
+        self.recording_folder_button.clicked.connect(self.open_recordings_folder)
         folder_row.addWidget(self.recording_folder_button)
 
         card_layout.addLayout(folder_row)
@@ -2552,12 +2462,8 @@ class MainWindow(QMainWindow):
 
     def _save_recording_settings(self) -> None:
         self.settings_service.save(self.settings)
-        self.recording_config = RecordingConfig.from_settings(
-            self.settings
-        )
-        self.recording_library.set_directory(
-            self.recording_config.output_dir
-        )
+        self.recording_config = RecordingConfig.from_settings(self.settings)
+        self.recording_library.set_directory(self.recording_config.output_dir)
 
     def _on_recording_auto_toggled(self, checked: bool) -> None:
         self.settings["recording_auto"] = bool(checked)
@@ -2713,9 +2619,7 @@ class MainWindow(QMainWindow):
 
         def scan() -> tuple[str | None, list[str]]:
             found = find_ffmpeg(configured)
-            devices = (
-                list_audio_devices(found or "", force=True) if found else []
-            )
+            devices = list_audio_devices(found or "", force=True) if found else []
 
             return found, devices
 
@@ -2778,9 +2682,7 @@ class MainWindow(QMainWindow):
         )
 
         if audio_mode_uses_system(
-            normalize_audio_mode(
-                self.settings.get("recording_audio_mode", "")
-            )
+            normalize_audio_mode(self.settings.get("recording_audio_mode", ""))
         ):
             self.settings["recording_mic_capture_enabled"] = True
 
@@ -2794,9 +2696,7 @@ class MainWindow(QMainWindow):
         self.sync_recording_controls()
 
     @staticmethod
-    def _unpack_device_scan(
-        result, error: str | None
-    ) -> tuple[str | None, list[str]]:
+    def _unpack_device_scan(result, error: str | None) -> tuple[str | None, list[str]]:
         """Normaliza lo que devuelve un worker de sondeo de dispositivos.
 
         Un error del worker (o un resultado inesperado) se trata como «no hay
@@ -2830,22 +2730,18 @@ class MainWindow(QMainWindow):
 
         def scan() -> tuple[str | None, list[str]]:
             found = find_ffmpeg(configured)
-            devices = (
-                list_audio_devices(found or "", force=force) if found else []
-            )
+            devices = list_audio_devices(found or "", force=force) if found else []
 
             return found, devices
 
         self._devices_task = run_async(
             scan,
-            on_finished=lambda token, result, error: (
-                self._apply_recording_devices(result, error, silent)
+            on_finished=lambda token, result, error: self._apply_recording_devices(
+                result, error, silent
             ),
         )
 
-    def _apply_recording_devices(
-        self, result, error: str | None, silent: bool
-    ) -> None:
+    def _apply_recording_devices(self, result, error: str | None, silent: bool) -> None:
         """Rellena los desplegables de juego y micrófono con el sondeo."""
         self._devices_task = None
 
@@ -2871,15 +2767,11 @@ class MainWindow(QMainWindow):
             self.sync_recording_controls()
 
             if not silent and hasattr(self, "recording_status"):
-                self.recording_status.setText(
-                    self.recording_service.ffmpeg_hint
-                )
+                self.recording_status.setText(self.recording_service.ffmpeg_hint)
 
             return
 
-        saved_game = str(
-            self.settings.get("recording_game_audio_device") or ""
-        )
+        saved_game = str(self.settings.get("recording_game_audio_device") or "")
         saved_mic = str(self.settings.get("recording_mic_device") or "")
 
         if not saved_game:
@@ -2898,11 +2790,15 @@ class MainWindow(QMainWindow):
             combo.setEnabled(True)
 
         self._fill_audio_combo(
-            self.recording_game_audio_combo, devices, saved_game,
+            self.recording_game_audio_combo,
+            devices,
+            saved_game,
             "Automático (mejor capturador disponible)",
         )
         self._fill_audio_combo(
-            self.recording_mic_combo, devices, saved_mic,
+            self.recording_mic_combo,
+            devices,
+            saved_mic,
             "Automático (mejor micrófono disponible)",
         )
         self._save_recording_settings()
@@ -2994,9 +2890,7 @@ class MainWindow(QMainWindow):
             # Si se abre en caliente durante la partida, se usa la sesión
             # viva del diálogo LIVE (la más fresca) antes que la copia que
             # llegue por parámetro o la de disco.
-            live_session = getattr(
-                self.live_analysis_dialog, "session", None
-            )
+            live_session = getattr(self.live_analysis_dialog, "session", None)
             live_id = ""
             wanted_id = ""
             if isinstance(live_session, dict):
@@ -3087,25 +2981,13 @@ class MainWindow(QMainWindow):
             widget.blockSignals(True)
 
         self.recording_auto_checkbox.setChecked(config.enabled)
-        self.set_combo_value(
-            self.recording_quality_combo, config.quality
-        )
-        self.set_combo_value(
-            self.recording_bitrate_combo, config.video_bitrate
-        )
-        self.set_combo_value(
-            self.recording_audio_mode_combo, config.audio_mode
-        )
-        self.set_combo_value(
-            self.recording_game_audio_combo, config.game_audio_device
-        )
-        self.set_combo_value(
-            self.recording_mic_combo, config.mic_device
-        )
+        self.set_combo_value(self.recording_quality_combo, config.quality)
+        self.set_combo_value(self.recording_bitrate_combo, config.video_bitrate)
+        self.set_combo_value(self.recording_audio_mode_combo, config.audio_mode)
+        self.set_combo_value(self.recording_game_audio_combo, config.game_audio_device)
+        self.set_combo_value(self.recording_mic_combo, config.mic_device)
         self.recording_limit_slider.setValue(int(config.size_limit_gb))
-        self.recording_limit_value.setText(
-            f"{int(config.size_limit_gb)} GB"
-        )
+        self.recording_limit_value.setText(f"{int(config.size_limit_gb)} GB")
         self.recording_dir_input.setText(
             str(self.settings.get("recording_output_dir", ""))
         )
@@ -3138,18 +3020,13 @@ class MainWindow(QMainWindow):
         # compatibilidad también se acepta la antigua
         # ``recording_mic_capture_device``.
         if show_system:
-            system_value = (
-                config.system_audio_device or config.mic_capture_device or ""
-            )
-            self.set_combo_value(
-                self.recording_system_audio_combo, system_value
-            )
+            system_value = config.system_audio_device or config.mic_capture_device or ""
+            self.set_combo_value(self.recording_system_audio_combo, system_value)
 
         pieces = []
 
         searching = (
-            self._refresh_ffmpeg_task is not None
-            or self._devices_task is not None
+            self._refresh_ffmpeg_task is not None or self._devices_task is not None
         )
 
         if service.ffmpeg_available:
@@ -3159,32 +3036,23 @@ class MainWindow(QMainWindow):
             # hecho que falte ffmpeg (sería un aviso falso de un instante).
             pieces.append("Comprobando ffmpeg…")
         else:
-            pieces.append(
-                service.ffmpeg_hint or "ffmpeg no encontrado"
-            )
+            pieces.append(service.ffmpeg_hint or "ffmpeg no encontrado")
 
         pieces.append(audio_mode_label(config.audio_mode))
 
         if audio_mode_uses_game(mode) and config.game_audio_device:
-            pieces.append(
-                f"Juego: {config.game_audio_device}"
-            )
+            pieces.append(f"Juego: {config.game_audio_device}")
 
         if audio_mode_uses_mic(mode):
-            pieces.append(
-                f"Micro: {config.mic_device or 'automático'}"
-            )
+            pieces.append(f"Micro: {config.mic_device or 'automático'}")
 
         if show_system:
-            system_value = (
-                config.system_audio_device or config.mic_capture_device or ""
-            )
+            system_value = config.system_audio_device or config.mic_capture_device or ""
             pieces.append(f"Resto: {system_value or 'automático'}")
 
         total = self.recording_folder_size()
         pieces.append(
-            f"Carpeta: {format_size(total)} de "
-            f"{int(config.size_limit_gb)} GB"
+            f"Carpeta: {format_size(total)} de {int(config.size_limit_gb)} GB"
         )
 
         if service.is_recording:
@@ -3212,9 +3080,7 @@ class MainWindow(QMainWindow):
         if not isinstance(local_player, dict):
             local_player = {}
 
-        champion = str(
-            local_player.get("championName", "Desconocido")
-        )
+        champion = str(local_player.get("championName", "Desconocido"))
         game_mode = str(snapshot.get("game_mode", "UNKNOWN"))
 
         try:
@@ -3230,9 +3096,7 @@ class MainWindow(QMainWindow):
         )
         self.sync_recording_controls()
 
-    def stop_match_recording(
-        self, reason: str, session: dict | None = None
-    ) -> None:
+    def stop_match_recording(self, reason: str, session: dict | None = None) -> None:
         """Para la grabación al terminar la partida."""
         if not self.recording_service.is_recording:
             return
@@ -3255,12 +3119,11 @@ class MainWindow(QMainWindow):
             "manual", session if isinstance(session, dict) else None
         )
         self.sync_recording_controls()
+
     def _on_recording_failed(self, message: str) -> None:
         if hasattr(self, "recording_status"):
             current = self.recording_status.text()
-            self.recording_status.setText(
-                f"{message} {current}".strip()
-            )
+            self.recording_status.setText(f"{message} {current}".strip())
 
         if hasattr(self, "recordings_page"):
             self.recordings_page.refresh()
@@ -3280,19 +3143,16 @@ class MainWindow(QMainWindow):
             return
 
         active = self.recording_service.is_recording
-        elapsed = (
-            self.recording_service.elapsed_seconds() if active else 0.0
-        )
+        elapsed = self.recording_service.elapsed_seconds() if active else 0.0
         self.overlay.set_recording(active, elapsed)
 
     def _settings_overlay_card(self) -> QWidget:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         card, card_layout = self._settings_card("Overlay en partida")
 
         self.show_overlay_button = QPushButton("Mostrar overlay")
         self.show_overlay_button.setObjectName("primaryButton")
-        self.show_overlay_button.clicked.connect(
-            self.toggle_overlay_visibility
-        )
+        self.show_overlay_button.clicked.connect(self.toggle_overlay_visibility)
         card_layout.addWidget(self.show_overlay_button)
 
         overlay_group_title = QLabel("Paneles del overlay")
@@ -3324,9 +3184,7 @@ class MainWindow(QMainWindow):
             button.setObjectName("analysisSourceButton")
             button.setCheckable(True)
             button.clicked.connect(
-                lambda _checked=False, key=panel_key: (
-                    self.toggle_overlay_panel(key)
-                )
+                lambda _checked=False, key=panel_key: self.toggle_overlay_panel(key)
             )
             panels_row.addWidget(button)
             self.overlay_panel_buttons[panel_key] = button
@@ -3350,15 +3208,14 @@ class MainWindow(QMainWindow):
             ("alerts", "Alertas"),
             ("threat", "Rivales"),
         ):
-            checkbox = QCheckBox(f"Solo TAB: {panel_name}")
+            checkbox = Interruptor(f"Solo TAB: {panel_name}")
             checkbox.setChecked(self.overlay.is_tab_only(panel_key))
             checkbox.setToolTip(
-                f"El panel {panel_name} solo aparece mientras "
-                "mantienes pulsado TAB."
+                f"El panel {panel_name} solo aparece mientras mantienes pulsado TAB."
             )
             checkbox.toggled.connect(
-                lambda checked, key=panel_key: (
-                    self.toggle_overlay_tab_only(key, checked)
+                lambda checked, key=panel_key: self.toggle_overlay_tab_only(
+                    key, checked
                 )
             )
             tab_only_row.addWidget(checkbox)
@@ -3369,9 +3226,7 @@ class MainWindow(QMainWindow):
 
         self.lock_overlay_button = QPushButton("Bloquear clics: NO")
         self.lock_overlay_button.setObjectName("secondaryButton")
-        self.lock_overlay_button.clicked.connect(
-            self.toggle_overlay_click_through
-        )
+        self.lock_overlay_button.clicked.connect(self.toggle_overlay_click_through)
         card_layout.addWidget(self.lock_overlay_button)
 
         opacity_row, self.opacity_slider, self.opacity_value = (
@@ -3384,9 +3239,7 @@ class MainWindow(QMainWindow):
             )
         )
         self.opacity_value.setText(f"{self.overlay.opacity}%")
-        self.opacity_slider.valueChanged.connect(
-            self.change_overlay_opacity
-        )
+        self.opacity_slider.valueChanged.connect(self.change_overlay_opacity)
         card_layout.addLayout(opacity_row)
 
         lead_row, self.alert_lead_slider, self.alert_lead_value = (
@@ -3398,12 +3251,8 @@ class MainWindow(QMainWindow):
                 self.overlay.alert_lead_seconds,
             )
         )
-        self.alert_lead_value.setText(
-            f"{self.overlay.alert_lead_seconds} s"
-        )
-        self.alert_lead_slider.valueChanged.connect(
-            self.change_overlay_alert_lead
-        )
+        self.alert_lead_value.setText(f"{self.overlay.alert_lead_seconds} s")
+        self.alert_lead_slider.valueChanged.connect(self.change_overlay_alert_lead)
         card_layout.addLayout(lead_row)
 
         # Controles de sonido
@@ -3420,14 +3269,12 @@ class MainWindow(QMainWindow):
             )
         )
 
-        self.sound_enabled_checkbox = QCheckBox("Activar sonidos del overlay")
+        self.sound_enabled_checkbox = Interruptor("Activar sonidos del overlay")
         self.sound_enabled_checkbox.setChecked(self.overlay.is_sound_enabled())
-        self.sound_enabled_checkbox.toggled.connect(
-            self.toggle_overlay_sound_enabled
-        )
+        self.sound_enabled_checkbox.toggled.connect(self.toggle_overlay_sound_enabled)
         card_layout.addWidget(self.sound_enabled_checkbox)
 
-        self.sound_objective_checkbox = QCheckBox(
+        self.sound_objective_checkbox = Interruptor(
             "Pitido: objetivos (Grumos, Heraldo, Barón)"
         )
         self.sound_objective_checkbox.setChecked(
@@ -3440,20 +3287,16 @@ class MainWindow(QMainWindow):
         )
         card_layout.addWidget(self.sound_objective_checkbox)
 
-        self.sound_dragon_checkbox = QCheckBox("Pitido: Dragón")
+        self.sound_dragon_checkbox = Interruptor("Pitido: Dragón")
         self.sound_dragon_checkbox.setChecked(
             self.overlay.sound_service.kind_enabled("dragon")
         )
         self.sound_dragon_checkbox.toggled.connect(
-            lambda checked, kind="dragon": self.toggle_overlay_sound_kind(
-                kind, checked
-            )
+            lambda checked, kind="dragon": self.toggle_overlay_sound_kind(kind, checked)
         )
         card_layout.addWidget(self.sound_dragon_checkbox)
 
-        self.sound_enemy_buy_checkbox = QCheckBox(
-            "Pitido: compra de objeto rival"
-        )
+        self.sound_enemy_buy_checkbox = Interruptor("Pitido: compra de objeto rival")
         self.sound_enemy_buy_checkbox.setChecked(
             self.overlay.sound_service.kind_enabled("enemy_buy")
         )
@@ -3476,9 +3319,7 @@ class MainWindow(QMainWindow):
         self.sound_volume_value.setText(
             f"{int(round(self.overlay.sound_service.volume * 100))}%"
         )
-        self.sound_volume_slider.valueChanged.connect(
-            self.change_overlay_sound_volume
-        )
+        self.sound_volume_slider.valueChanged.connect(self.change_overlay_sound_volume)
         card_layout.addLayout(volume_row)
 
         self.overlay_status = QLabel()
@@ -3509,46 +3350,29 @@ class MainWindow(QMainWindow):
                 "saved",
             )
         else:
-            self.api_key_status.setText(
-                "No hay una Riot API key configurada."
-            )
+            self.api_key_status.setText("No hay una Riot API key configurada.")
             self.api_key_status.setProperty(
                 "state",
                 "missing",
             )
 
-        self.api_key_status.style().unpolish(
-            self.api_key_status
-        )
-        self.api_key_status.style().polish(
-            self.api_key_status
-        )
-
+        self.api_key_status.style().unpolish(self.api_key_status)
+        self.api_key_status.style().polish(self.api_key_status)
 
     def save_and_validate_api_key(self) -> None:
         api_key = self.api_key_input.text().strip()
 
         self.save_api_key_button.setEnabled(False)
-        self.api_key_status.setText(
-            "Comprobando Riot API key..."
-        )
+        self.api_key_status.setText("Comprobando Riot API key...")
         self.api_key_status.setProperty(
             "state",
             "checking",
         )
 
-        self.api_key_status.style().unpolish(
-            self.api_key_status
-        )
-        self.api_key_status.style().polish(
-            self.api_key_status
-        )
+        self.api_key_status.style().unpolish(self.api_key_status)
+        self.api_key_status.style().polish(self.api_key_status)
 
-        valid, message = (
-            self.settings_service.validate_riot_api_key(
-                api_key
-            )
-        )
+        valid, message = self.settings_service.validate_riot_api_key(api_key)
 
         self.save_api_key_button.setEnabled(True)
 
@@ -3573,13 +3397,8 @@ class MainWindow(QMainWindow):
                 "invalid",
             )
 
-        self.api_key_status.style().unpolish(
-            self.api_key_status
-        )
-        self.api_key_status.style().polish(
-            self.api_key_status
-        )
-
+        self.api_key_status.style().unpolish(self.api_key_status)
+        self.api_key_status.style().polish(self.api_key_status)
 
     def clear_api_key(self) -> None:
         self.riot_api_key = ""
@@ -3588,24 +3407,20 @@ class MainWindow(QMainWindow):
 
         self.api_key_input.clear()
 
-        self.api_key_status.setText(
-            "Riot API key eliminada de la configuración local."
-        )
+        self.api_key_status.setText("Riot API key eliminada de la configuración local.")
         self.api_key_status.setProperty(
             "state",
             "missing",
         )
 
-        self.api_key_status.style().unpolish(
-            self.api_key_status
-        )
-        self.api_key_status.style().polish(
-            self.api_key_status
-        )
+        self.api_key_status.style().unpolish(self.api_key_status)
+        self.api_key_status.style().polish(self.api_key_status)
 
     def update_gemini_api_key_status(self) -> None:
         if self.gemini_api_key:
-            self.gemini_api_key_status.setText("Hay una Gemini API key guardada. Pulsa 'Guardar y comprobar' para validarla.")
+            self.gemini_api_key_status.setText(
+                "Hay una Gemini API key guardada. Pulsa 'Guardar y comprobar' para validarla."
+            )
             self.gemini_api_key_status.setProperty("state", "saved")
         else:
             self.gemini_api_key_status.setText("No hay una Gemini API key configurada.")
@@ -3648,7 +3463,9 @@ class MainWindow(QMainWindow):
         self.settings.pop("gemini_api_key", None)
         self.settings_service.save(self.settings)
         self.gemini_api_key_input.clear()
-        self.gemini_api_key_status.setText("Gemini API key eliminada de la configuración local.")
+        self.gemini_api_key_status.setText(
+            "Gemini API key eliminada de la configuración local."
+        )
         self.gemini_api_key_status.setProperty("state", "missing")
         self.gemini_api_key_status.style().unpolish(self.gemini_api_key_status)
         self.gemini_api_key_status.style().polish(self.gemini_api_key_status)
@@ -3670,7 +3487,7 @@ class MainWindow(QMainWindow):
         style = self.analysis_status.style()
         style.unpolish(self.analysis_status)
         style.polish(self.analysis_status)
-        
+
     def setup_live_data_worker(self) -> None:
         self.worker_thread = QThread(self)
         self.live_data_worker = LiveDataWorker(
@@ -3678,68 +3495,18 @@ class MainWindow(QMainWindow):
             game_version=self.version,
         )
 
-        self.live_data_worker.moveToThread(
-            self.worker_thread
-        )
+        self.live_data_worker.moveToThread(self.worker_thread)
 
-        self.snapshot_requested.connect(
-            self.live_data_worker.read_snapshot
-        )
+        self.snapshot_requested.connect(self.live_data_worker.read_snapshot)
 
-        self.live_data_worker.snapshot_ready.connect(
-            self.receive_snapshot
-        )
+        self.live_data_worker.snapshot_ready.connect(self.receive_snapshot)
 
-        self.live_data_worker.live_analysis_ready.connect(
-            self.receive_live_analysis
-        )
+        self.live_data_worker.live_analysis_ready.connect(self.receive_live_analysis)
 
-        self.live_data_worker.read_failed.connect(
-            self.show_read_error
-        )
+        self.live_data_worker.read_failed.connect(self.show_read_error)
 
-        self.live_data_worker.game_ended.connect(
-            self.handle_game_ended
-        )
+        self.live_data_worker.game_ended.connect(self.handle_game_ended)
         self.worker_thread.start()
-
-    def setup_match_history_worker(self) -> None:
-        self.history_thread = QThread(self)
-        self.match_history_worker = MatchHistoryWorker()
-        self.match_history_worker.moveToThread(
-            self.history_thread
-        )
-
-        self.history_requested.connect(
-            self.match_history_worker.load_history
-        )
-        self.match_history_worker.history_ready.connect(
-            self.receive_match_history
-        )
-        self.match_history_worker.history_failed.connect(
-            self.show_match_history_error
-        )
-
-        self.profile_requested.connect(
-            self.match_history_worker.load_profile
-        )
-        self.match_history_worker.profile_ready.connect(
-            self.receive_summoner_profile
-        )
-
-        self.history_thread.start()
-
-        self.match_detail_requested.connect(
-            self.match_history_worker.load_match_detail
-        )
-
-        self.match_history_worker.detail_ready.connect(
-            self.open_match_inspector
-        )
-
-        self.match_history_worker.detail_failed.connect(
-            self.show_match_detail_error
-        )
 
     def setup_postgame_sync_worker(
         self,
@@ -3751,501 +3518,19 @@ class MainWindow(QMainWindow):
         """
         self.postgame_sync_thread = QThread(self)
 
-        self.postgame_sync_worker = (
-            PostgameSyncWorker()
-        )
+        self.postgame_sync_worker = PostgameSyncWorker()
 
-        self.postgame_sync_worker.moveToThread(
-            self.postgame_sync_thread
-        )
+        self.postgame_sync_worker.moveToThread(self.postgame_sync_thread)
 
-        self.postgame_sync_requested.connect(
-            self.postgame_sync_worker.sync_session
-        )
+        self.postgame_sync_requested.connect(self.postgame_sync_worker.sync_session)
 
-        self.postgame_sync_worker.sync_ready.connect(
-            self.receive_postgame_sync
-        )
+        self.postgame_sync_worker.sync_ready.connect(self.receive_postgame_sync)
 
-        self.postgame_sync_worker.sync_failed.connect(
-            self.receive_postgame_sync_error
-        )
+        self.postgame_sync_worker.sync_failed.connect(self.receive_postgame_sync_error)
 
-        self.postgame_sync_worker.sync_progress.connect(
-            self.on_postgame_sync_progress
-        )
+        self.postgame_sync_worker.sync_progress.connect(self.on_postgame_sync_progress)
 
         self.postgame_sync_thread.start()
-
-    def request_match_detail(
-        self,
-        match_id: str,
-    ) -> None:
-        if self.history_is_loading:
-            return
-
-        if not match_id:
-            return
-
-        if not self.riot_api_key:
-            self.set_history_status(
-                "Configura una Riot API key válida "
-                "en Ajustes antes de abrir partidas.",
-                "error",
-            )
-            return
-
-        game_name = self.riot_game_name_input.text().strip()
-        tag_line = self.riot_tag_line_input.text().strip()
-
-        if not game_name or not tag_line:
-            self.set_history_status(
-                "Indica tu Riot ID antes de abrir partidas.",
-                "error",
-            )
-            return
-
-        self.history_is_loading = True
-        self.refresh_history_button.setEnabled(False)
-
-        self.set_history_status(
-            "Abriendo detalle de partida…",
-            "loading",
-        )
-
-        self.match_detail_requested.emit(
-            self.riot_api_key,
-            game_name,
-            tag_line,
-            self.riot_account_region,
-            self.riot_platform_region,
-            match_id,
-        )
-
-
-    @Slot(dict)
-    def open_match_inspector(
-        self,
-        match_detail: dict,
-    ) -> None:
-        self.history_is_loading = False
-        self.refresh_history_button.setEnabled(True)
-
-        self.set_history_status(
-            "Detalle de partida cargado.",
-            "success",
-        )
-
-        dialog = MatchInspectorDialog(
-            match_detail,
-            self.item_catalog,
-            self.data_dragon_assets,
-            self,
-        )
-        dialog.exec()
-
-    @Slot(str, int)
-    def show_match_detail_error(
-        self,
-        message: str,
-        retry_after: int,
-    ) -> None:
-        self.history_is_loading = False
-        self.refresh_history_button.setEnabled(True)
-
-        if retry_after:
-            message = (
-                f"{message} El botón volverá a estar "
-                f"disponible en {retry_after} s."
-            )
-
-            self.refresh_history_button.setEnabled(False)
-
-            QTimer.singleShot(
-                retry_after * 1000,
-                self.enable_history_refresh,
-            )
-
-        self.set_history_status(message, "error")
-
-    def request_match_history(self) -> None:
-        if self.history_is_loading:
-            return
-
-        if not self.riot_api_key:
-            self.set_history_status(
-                "Configura primero una Riot API key válida "
-                "en Ajustes.",
-                "error",
-            )
-            return
-
-        game_name = self.riot_game_name_input.text().strip()
-        tag_line = self.riot_tag_line_input.text().strip()
-
-        if not game_name or not tag_line:
-            self.set_history_status(
-                "Indica tu Riot ID en formato Nombre#TAG.",
-                "error",
-            )
-            return
-
-        self.save_riot_id(
-            game_name,
-            tag_line,
-        )
-
-        self.match_history = []
-        self.render_match_history()
-
-        self.history_is_loading = True
-        self.refresh_history_button.setEnabled(False)
-
-        self.set_history_status(
-            "Actualizando historial…",
-            "loading",
-        )
-
-        self.history_requested.emit(
-            self.riot_api_key,
-            game_name,
-            tag_line,
-            self.riot_account_region,
-            self.riot_platform_region,
-            30,
-        )
-
-        self.profile_requested.emit(
-            self.riot_api_key,
-            game_name,
-            tag_line,
-            self.riot_account_region,
-            self.riot_platform_region,
-        )
-
-    @Slot(dict)
-    def receive_summoner_profile(self, profile_data: dict[str, Any]) -> None:
-        if not profile_data:
-            return
-
-        riot_id = profile_data.get("riot_id", f"{self.riot_game_name}#{self.riot_tag_line}")
-        if hasattr(self, "summoner_riot_id_label"):
-            self.summoner_riot_id_label.setText(riot_id)
-
-        level = profile_data.get("summoner_level", 0)
-        if hasattr(self, "summoner_level_label"):
-            self.summoner_level_label.setText(f"Nivel {level} · {self.riot_platform_region.upper()}")
-
-        icon_id = profile_data.get("profile_icon_id")
-        if icon_id and hasattr(self, "profile_icon_label"):
-            icon_url = self.data_dragon_assets.profile_icon_url(icon_id)
-            self.data_dragon_assets.set_label_image(
-                self.profile_icon_label,
-                icon_url,
-                f"profileicon:{icon_id}",
-                54,
-            )
-
-        ranked_solo = profile_data.get("ranked_solo", {})
-        self.current_ranked_solo = ranked_solo
-        if ranked_solo and ranked_solo.get("tier_formatted") and hasattr(self, "soloq_tier_badge"):
-            tier_str = ranked_solo["tier_formatted"]
-            wr = ranked_solo.get("winrate", 0.0)
-            wins = ranked_solo.get("wins", 0)
-            losses = ranked_solo.get("losses", 0)
-            total = ranked_solo.get("total_games", wins + losses)
-
-            self.soloq_tier_badge.setText(f"🏆 {tier_str}")
-            self.soloq_winrate_label.setText(
-                f"Season Record: {wins}V / {losses}D ({total} partidas) · {wr}% WR Total"
-            )
-        elif hasattr(self, "soloq_tier_badge"):
-            self.soloq_tier_badge.setText("🏆 RANKED SOLOQ · UNRANKED")
-            self.soloq_winrate_label.setText("Season Record: Sin partidas de clasificatoria")
-
-        if hasattr(self, "match_history") and self.match_history:
-            self.update_soloq_dashboard_from_history(self.match_history)
-
-    @Slot(str)
-    def show_summoner_profile_error(self, message: str) -> None:
-        pass
-
-    @Slot(list)
-    def receive_match_history(
-        self,
-        history: list,
-    ) -> None:
-        self.history_is_loading = False
-        self.refresh_history_button.setEnabled(True)
-
-        self.match_history = history
-        self.render_match_history()
-        self.update_soloq_dashboard_from_history(history)
-
-        if history:
-            self.set_history_status(
-                f"Historial actualizado: "
-                f"{len(history)} partidas.",
-                "success",
-            )
-        else:
-            self.set_history_status(
-                "No se encontraron partidas recientes.",
-                "empty",
-            )
-
-    @staticmethod
-    def calculate_elo_points(tier: str, rank: str, lp: int) -> int:
-        tier_bases = {
-            "IRON": 0,
-            "BRONZE": 400,
-            "SILVER": 800,
-            "GOLD": 1200,
-            "PLATINUM": 1600,
-            "EMERALD": 2000,
-            "DIAMOND": 2400,
-            "MASTER": 2800,
-            "GRANDMASTER": 3200,
-            "CHALLENGER": 3600,
-        }
-        rank_offsets = {"IV": 0, "III": 100, "II": 200, "I": 300}
-        base = tier_bases.get(tier.upper(), 1200)
-        offset = rank_offsets.get(rank.upper(), 0)
-        return base + offset + max(0, lp)
-
-    @staticmethod
-    def elo_to_rank_label(elo: int) -> str:
-        if elo >= 2800:
-            if elo >= 3600:
-                return f"Aspirante ({elo - 3600} LP)"
-            elif elo >= 3200:
-                return f"Gran Máster ({elo - 3200} LP)"
-            else:
-                return f"Máster ({elo - 2800} LP)"
-        tier_bases = [
-            ("Hierro", 0),
-            ("Bronce", 400),
-            ("Plata", 800),
-            ("Oro", 1200),
-            ("Platino", 1600),
-            ("Esmeralda", 2000),
-            ("Diamante", 2400),
-        ]
-        tier_name = "Hierro"
-        base_val = 0
-        for name, val in tier_bases:
-            if elo >= val:
-                tier_name = name
-                base_val = val
-        rem = elo - base_val
-        div_idx = min(3, max(0, int(rem // 100)))
-        divs = ["IV", "III", "II", "I"]
-        lp = int(rem % 100)
-        return f"{tier_name} {divs[div_idx]} ({lp} LP)"
-
-    def update_soloq_dashboard_from_history(self, history: list[dict]) -> None:
-        if not history or not hasattr(self, "soloq_graph"):
-            return
-
-        from collections import Counter
-        champs = [h.get("champion_name") for h in history if h.get("champion_name")]
-        if champs:
-            counter = Counter(champs)
-            most_common_champ, count = counter.most_common(1)[0]
-            champ_wins = sum(1 for h in history if h.get("champion_name") == most_common_champ and h.get("win"))
-            champ_wr = round((champ_wins / count) * 100, 1)
-
-            if hasattr(self, "most_played_title"):
-                self.most_played_title.setText(f"Más Jugado: {most_common_champ}")
-            if hasattr(self, "most_played_stats"):
-                self.most_played_stats.setText(f"{count} partidas en historial ({champ_wr}% WR)")
-            if hasattr(self, "most_played_icon"):
-                self.data_dragon_assets.set_label_image(
-                    self.most_played_icon,
-                    self.data_dragon_assets.champion_url(most_common_champ),
-                    f"champion:{most_common_champ}:48",
-                    48,
-                )
-
-        # Filter history for Ranked Solo/Duo matches only (queue_id == 420 or missing queue_id as fallback)
-        ranked_matches = [
-            m for m in history
-            if m.get("queue_id") is None or m.get("queue_id") == 420
-        ]
-
-        if not ranked_matches:
-            self.soloq_graph.set_data([])
-            return
-
-        base_elo = 1200
-        if hasattr(self, "current_ranked_solo") and self.current_ranked_solo:
-            tier = str(self.current_ranked_solo.get("tier", "")).upper()
-            rank = str(self.current_ranked_solo.get("rank", "")).upper()
-            lp = int(self.current_ranked_solo.get("league_points", 0))
-            base_elo = self.calculate_elo_points(tier, rank, lp)
-
-        n = len(ranked_matches)
-        match_elos = [0] * n
-        curr = base_elo
-        for idx, match in enumerate(ranked_matches):
-            match_elos[idx] = curr
-            is_win = bool(match.get("win", False))
-            curr = curr - 25 if is_win else curr + 25
-
-        points = []
-        for i, match in enumerate(reversed(ranked_matches)):
-            orig_idx = n - 1 - i
-            elo_val = match_elos[orig_idx]
-            is_win = bool(match.get("win", False))
-            champ = match.get("champion_name", "Campeón")
-            elo_lbl = self.elo_to_rank_label(elo_val)
-
-            label_name = "Partida SoloQ (Última)" if i == n - 1 else f"Partida SoloQ #{i + 1}"
-
-            points.append({
-                "time_label": label_name,
-                "elo": elo_val,
-                "elo_label": elo_lbl,
-                "champion": champ,
-                "win": is_win,
-            })
-
-        self.soloq_graph.set_data(points)
-
-    @Slot(str, int)
-    def show_match_history_error(
-        self,
-        message: str,
-        retry_after: int,
-    ) -> None:
-        self.history_is_loading = False
-        self.refresh_history_button.setEnabled(True)
-
-        if retry_after:
-            message = (
-                f"{message} El botón volverá a estar "
-                f"disponible en {retry_after} s."
-            )
-            self.refresh_history_button.setEnabled(False)
-
-            QTimer.singleShot(
-                retry_after * 1000,
-                self.enable_history_refresh,
-            )
-
-        self.set_history_status(message, "error")
-
-    def enable_history_refresh(self) -> None:
-        if not self.history_is_loading:
-            self.refresh_history_button.setEnabled(True)
-
-    def save_riot_id(
-        self,
-        game_name: str,
-        tag_line: str,
-    ) -> None:
-        self.riot_game_name = game_name
-        self.riot_tag_line = tag_line
-
-        self.settings.update(
-            {
-                "riot_game_name": game_name,
-                "riot_tag_line": tag_line,
-                "riot_account_region": (
-                    self.riot_account_region
-                ),
-                "riot_platform_region": (
-                    self.riot_platform_region
-                ),
-            }
-        )
-
-        self.settings_service.save(self.settings)
-
-    def render_match_history(self) -> None:
-        while self.history_list_layout.count():
-            item = self.history_list_layout.takeAt(0)
-            widget = item.widget()
-
-            if widget is not None:
-                widget.deleteLater()
-
-        for match in self.match_history:
-            self.history_list_layout.addWidget(
-                self.create_match_history_row(match)
-            )
-
-    def create_match_history_row(
-        self,
-        match: dict,
-    ) -> QWidget:
-        row = QFrame()
-        row.setObjectName("matchHistoryRow")
-        row.setMinimumHeight(50)
-
-        result = "Victoria" if match.get("win") else "Derrota"
-        result_state = (
-            "victory"
-            if match.get("win")
-            else "defeat"
-        )
-
-        kills = match.get("kills", 0)
-        deaths = match.get("deaths", 0)
-        assists = match.get("assists", 0)
-        cs = match.get("cs", 0)
-
-        duration = self.format_match_duration(
-            match.get("game_duration", 0)
-        )
-
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(14, 11, 14, 11)
-        row_layout.setSpacing(16)
-
-        result_label = QLabel(result)
-        result_label.setObjectName("matchResult")
-        result_label.setProperty("result", result_state)
-        result_label.setMinimumWidth(72)
-        row_layout.addWidget(result_label)
-
-        champion_label = QLabel(
-            match.get("champion_name") or "Desconocido"
-        )
-        champion_label.setObjectName("matchChampion")
-        champion_label.setMinimumWidth(130)
-        row_layout.addWidget(champion_label)
-
-        kda_label = QLabel(
-            f"{kills} / {deaths} / {assists}"
-        )
-        kda_label.setObjectName("matchKda")
-        kda_label.setMinimumWidth(92)
-        row_layout.addWidget(kda_label)
-
-        cs_label = QLabel(f"{cs} CS")
-        cs_label.setObjectName("matchCs")
-        cs_label.setMinimumWidth(70)
-        row_layout.addWidget(cs_label)
-
-        duration_label = QLabel(duration)
-        duration_label.setObjectName("matchDuration")
-        duration_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight
-            | Qt.AlignmentFlag.AlignVCenter
-        )
-        row_layout.addWidget(duration_label, 1)
-
-        row.setCursor(
-            Qt.CursorShape.PointingHandCursor
-        )
-        row.mousePressEvent = (
-            lambda event, match_id=match.get("match_id", ""):
-            self.request_match_detail(match_id)
-        )
-
-        return row
-
 
     @staticmethod
     def format_match_duration(
@@ -4258,22 +3543,6 @@ class MainWindow(QMainWindow):
         )
 
         return f"{minutes}:{remaining_seconds:02d}"
-
-
-    def set_history_status(
-        self,
-        text: str,
-        state: str,
-    ) -> None:
-        self.history_status.setText(text)
-        self.history_status.setProperty("state", state)
-
-        self.history_status.style().unpolish(
-            self.history_status
-        )
-        self.history_status.style().polish(
-            self.history_status
-        )
 
     def set_live_badge(
         self,
@@ -4315,8 +3584,6 @@ class MainWindow(QMainWindow):
 
     def show_read_error(self, message: str) -> None:
         self.connection_label.setText("League no disponible")
-        self.home_title.setText("No se pudo leer el cliente")
-        self.home_text.setText(message)
         self.live_button.setEnabled(False)
         self.is_refreshing = False
 
@@ -4393,26 +3660,7 @@ class MainWindow(QMainWindow):
         self.show_no_game()
 
     def show_no_game(self) -> None:
-        self.connection_label.setText(
-            "League abierto · sin partida"
-        )
-        self.home_title.setText("Esperando una partida")
-        self.home_text.setText(
-            "El cliente está disponible. Entra en una partida para habilitar el panel en vivo."
-        )
-
-        self.player_metric.metric_value.setText("Disponible")
-        self.player_metric.metric_detail.setText(
-            "Se detectó la API local de League."
-        )
-        self.mode_metric.metric_value.setText("—")
-        self.mode_metric.metric_detail.setText(
-            "Se mostrará al detectar una partida."
-        )
-        self.session_metric.metric_value.setText("En espera")
-        self.session_metric.metric_detail.setText(
-            "El panel se actualiza automáticamente."
-        )
+        self.connection_label.setText("League abierto · sin partida")
 
         self.live_button.setEnabled(False)
         if hasattr(self, "open_live_analysis_button"):
@@ -4442,15 +3690,10 @@ class MainWindow(QMainWindow):
             self.clear_cards()
 
             self.live_empty_label = QLabel(
-                "La pestaña se habilitará automáticamente "
-                "al comenzar una partida."
+                "La pestaña se habilitará automáticamente al comenzar una partida."
             )
-            self.live_empty_label.setObjectName(
-                "liveSummary"
-            )
-            self.live_empty_label.setAlignment(
-                Qt.AlignmentFlag.AlignCenter
-            )
+            self.live_empty_label.setObjectName("liveSummary")
+            self.live_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.live_empty_label.setWordWrap(True)
 
             self.cards_layout.addWidget(
@@ -4463,20 +3706,13 @@ class MainWindow(QMainWindow):
             self.panel_refresh_counter = 0
 
     def show_game(self, snapshot: dict) -> None:
-        game_time = float(
-            snapshot.get("game_time", 0)
-        )
+        game_time = float(snapshot.get("game_time", 0))
         minutes = int(game_time // 60)
         seconds = int(game_time % 60)
 
         local_player = snapshot.get(
             "local_player",
             {},
-        )
-        player_name = (
-            local_player.get("riotId")
-            or local_player.get("summonerName")
-            or "Jugador local"
         )
         champion = local_player.get(
             "championName",
@@ -4503,37 +3739,9 @@ class MainWindow(QMainWindow):
             mode_text = str(game_mode).replace("_", " ").title()
 
         self.connection_label.setText("Partida en curso")
-        self.home_title.setText(
-            f"En partida con {champion}"
-        )
-        self.home_text.setText(
-            "Los datos en vivo se están actualizando. "
-            "Consulta la pestaña Partida en vivo para ver ambos equipos."
-        )
-
-        self.player_metric.metric_value.setText(
-            player_name
-        )
-        self.player_metric.metric_detail.setText(
-            f"Campeón actual: {champion}"
-        )
-        self.mode_metric.metric_value.setText(
-            game_mode
-        )
-        self.mode_metric.metric_detail.setText(
-            f"Tiempo: {minutes:02d}:{seconds:02d}"
-        )
-        self.session_metric.metric_value.setText(
-            "En curso"
-        )
-        self.session_metric.metric_detail.setText(
-            f"{len(snapshot.get('all_players', []))} jugadores detectados."
-        )
 
         self.live_button.setEnabled(True)
-        self.open_live_analysis_button.setEnabled(
-            self.current_live_session is not None
-        )
+        self.open_live_analysis_button.setEnabled(self.current_live_session is not None)
 
         # La partida ya está en curso (la pantalla de carga terminó): si el draft
         # acaba de terminar, el panel se coloca en "Partida en vivo".
@@ -4542,12 +3750,9 @@ class MainWindow(QMainWindow):
             self.navigate_to_live_page()
 
         self.live_status.setText(
-            f"{mode_text} · {champion} · "
-            f"{total_players} jugadores"
+            f"{mode_text} · {champion} · {total_players} jugadores"
         )
-        self.live_time_label.setText(
-            f"{minutes:02d}:{seconds:02d}"
-        )
+        self.live_time_label.setText(f"{minutes:02d}:{seconds:02d}")
         self.set_live_badge("live", "EN VIVO")
 
         self.overlay.update_snapshot(snapshot)
@@ -4569,10 +3774,7 @@ class MainWindow(QMainWindow):
 
         self.panel_refresh_counter += 1
 
-        if (
-            self.panel_refresh_counter
-            < self.panel_refresh_every_seconds
-        ):
+        if self.panel_refresh_counter < self.panel_refresh_every_seconds:
             return
 
         self.panel_refresh_counter = 0
@@ -4619,7 +3821,6 @@ class MainWindow(QMainWindow):
             except RuntimeError:
                 self.replay_window = None
 
-
     def open_live_analysis(self) -> None:
         """Abre un único diálogo que se refresca mientras juegas."""
         session = self.current_live_session
@@ -4648,9 +3849,7 @@ class MainWindow(QMainWindow):
 
         self.live_analysis_dialog = dialog
 
-        dialog.finished.connect(
-            self.clear_live_analysis_dialog
-        )
+        dialog.finished.connect(self.clear_live_analysis_dialog)
 
         dialog.show()
         dialog.raise_()
@@ -4661,10 +3860,9 @@ class MainWindow(QMainWindow):
         except RuntimeError:
             self.live_analysis_dialog = None
 
-
     def clear_live_analysis_dialog(self, *args) -> None:
         """Elimina la referencia al cerrar el diálogo."""
-        self.live_analysis_dialog = None   
+        self.live_analysis_dialog = None
 
     def schedule_postgame_sync(
         self,
@@ -4679,8 +3877,8 @@ class MainWindow(QMainWindow):
         if not self.riot_api_key:
             return
 
-        game_name = self.riot_game_name_input.text().strip()
-        tag_line = self.riot_tag_line_input.text().strip()
+        game_name = self.riot_game_name
+        tag_line = self.riot_tag_line
 
         if not game_name or not tag_line:
             return
@@ -4711,11 +3909,8 @@ class MainWindow(QMainWindow):
 
         QTimer.singleShot(
             20_000,
-            lambda value=session_id: self.start_postgame_sync(
-                value
-            ),
+            lambda value=session_id: self.start_postgame_sync(value),
         )
-
 
     def start_postgame_sync(
         self,
@@ -4739,19 +3934,15 @@ class MainWindow(QMainWindow):
         sessions = self.live_match_tracker.load_saved_sessions()
 
         session = next(
-            (
-                value
-                for value in sessions
-                if value.get("session_id") == session_id
-            ),
+            (value for value in sessions if value.get("session_id") == session_id),
             None,
         )
 
         if not isinstance(session, dict):
             return
 
-        game_name = self.riot_game_name_input.text().strip()
-        tag_line = self.riot_tag_line_input.text().strip()
+        game_name = self.riot_game_name
+        tag_line = self.riot_tag_line
 
         if not game_name or not tag_line:
             return
@@ -4766,7 +3957,6 @@ class MainWindow(QMainWindow):
             self.riot_account_region,
             self.riot_platform_region,
         )
-
 
     @Slot(int, int, str)
     def on_postgame_sync_progress(
@@ -4821,9 +4011,7 @@ class MainWindow(QMainWindow):
             break
 
         if replaced:
-            self.live_match_tracker._save_sessions(
-                sessions
-            )
+            self.live_match_tracker._save_sessions(sessions)
 
         if hasattr(
             self,
@@ -4847,7 +4035,6 @@ class MainWindow(QMainWindow):
                     replay.update_session(updated_session)
             except RuntimeError:
                 self.replay_window = None
-
 
     @Slot(str)
     def receive_postgame_sync_error(
@@ -4879,9 +4066,7 @@ class MainWindow(QMainWindow):
         self.pending_postgame_session_id = ""
 
     def get_player_role(self, player: dict) -> str:
-        position = str(
-            player.get("position", "")
-        ).upper()
+        position = str(player.get("position", "")).upper()
 
         aliases = {
             "MID": "MIDDLE",
@@ -4956,17 +4141,19 @@ class MainWindow(QMainWindow):
         )
 
     def rebuild_cards(self, snapshot: dict) -> None:
-        """Reconstruye el panel: un bloque por equipo con su cabecera."""
-        self.clear_cards()
+        """Actualiza tarjetas y paneles desde la instantánea LIVE.
 
+        Args:
+            snapshot: Equipos, participantes y datos actuales de partida.
+        Returns:
+            None.
+        """
         all_players = snapshot.get("all_players", [])
 
         if not isinstance(all_players, list):
             all_players = []
 
-        local_team = str(
-            snapshot.get("local_team", "")
-        ).upper()
+        local_team = str(snapshot.get("local_team", "")).upper()
 
         if local_team not in ("ORDER", "CHAOS"):
             local_team = "ORDER"
@@ -4980,27 +4167,59 @@ class MainWindow(QMainWindow):
             teams.reverse()
 
         if not all_players:
-            waiting = QLabel(
-                "Esperando los datos de los diez jugadores..."
-            )
+            self.clear_cards()
+            waiting = QLabel("Esperando los datos de los diez jugadores...")
             waiting.setObjectName("liveSummary")
             waiting.setAlignment(Qt.AlignmentFlag.AlignCenter)
             waiting.setWordWrap(True)
             self.cards_layout.addWidget(waiting, 1)
             return
 
-        for team, side_name in teams:
-            players = self.sort_players_by_role(
-                [
-                    player
-                    for player in all_players
-                    if player.get("team") == team
-                ]
+        grupos = [
+            (
+                team,
+                side_name,
+                self.sort_players_by_role(
+                    [player for player in all_players if player.get("team") == team]
+                )[:5],
             )
+            for team, side_name in teams
+        ]
+        grupos = [grupo for grupo in grupos if grupo[2]]
+        orden = tuple(grupo[0] for grupo in grupos)
+        firmas = {
+            team: tuple(
+                self._identidad_jugador(player)
+                + (
+                    "local"
+                    if self.player_is_local(player, snapshot.get("local_player", {}))
+                    else "",
+                )
+                for player in players
+            )
+            for team, _, players in grupos
+        }
+        if orden == self.live_team_order and firmas == self.live_team_signatures:
+            for team, _, players in grupos:
+                for tarjeta, player in zip(self.live_team_cards[team], players):
+                    es_local = self.player_is_local(
+                        player, snapshot.get("local_player", {})
+                    )
+                    tarjeta.actualizar_datos(
+                        player,
+                        float(snapshot.get("game_time", 0)),
+                        snapshot.get("local_live_stats", {}) if es_local else None,
+                    )
+                self.live_team_summaries[team].setText(
+                    self.format_team_summary(players)
+                )
+            self.cards_widget.updateGeometry()
+            return
 
-            if not players:
-                continue
-
+        self.clear_cards()
+        self.live_team_order = orden
+        self.live_team_signatures = firmas
+        for team, side_name, players in grupos:
             self.add_team_panel(
                 team,
                 side_name,
@@ -5008,6 +4227,14 @@ class MainWindow(QMainWindow):
                 snapshot,
                 is_local_team=team == local_team,
             )
+
+    @staticmethod
+    def _identidad_jugador(player: dict) -> tuple[str, ...]:
+        """Devuelve una clave estable para detectar cambios de roster."""
+        return tuple(
+            str(player.get(clave) or "")
+            for clave in ("riotId", "summonerName", "championName")
+        )
 
     def add_team_panel(
         self,
@@ -5017,40 +4244,45 @@ class MainWindow(QMainWindow):
         snapshot: dict,
         is_local_team: bool,
     ) -> None:
-        """Añade el bloque de un equipo con su cabecera y sus tarjetas."""
+        """Añade el equipo como un bloque que mide su cabecera y sus tarjetas.
+
+        Args:
+            team: Identificador del equipo en los datos LIVE.
+            side_name: Nombre legible del lado del mapa.
+            players: Participantes que se mostrarán en la fila.
+            snapshot: Estado actual de la partida y del jugador local.
+            is_local_team: Indica si el panel representa al equipo del usuario.
+        Returns:
+            None.
+        """
         panel = QFrame()
         panel.setObjectName("liveTeamPanel")
         panel.setProperty(
             "side",
             "ally" if is_local_team else "enemy",
         )
+        panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(12, 10, 12, 12)
-        layout.setSpacing(10)
+        layout.setSpacing(7)
 
         layout.addLayout(
             self.create_team_header(
                 players,
                 side_name,
                 is_local_team,
+                team,
             )
         )
 
-        grid_container = QWidget()
-        grid_container.setObjectName("teamCardsRow")
-
-        grid = QGridLayout(grid_container)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
-
-        for column in range(5):
-            grid.setColumnStretch(column, 1)
-
+        tarjetas: list[ChampionCard] = []
         local_player = snapshot.get("local_player", {})
 
-        for index, player in enumerate(players[:5]):
+        for player in players[:5]:
             is_local = self.player_is_local(
                 player,
                 local_player,
@@ -5074,30 +4306,34 @@ class MainWindow(QMainWindow):
 
             card.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
-                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Expanding,
             )
 
-            grid.addWidget(card, 0, index)
+            tarjetas.append(card)
 
-        layout.addWidget(grid_container)
-        self.cards_layout.addWidget(panel)
-        # Tras reconstruir, el alto del contenido debe ser válido de
-        # inmediato: el scroll depende de él y la tarjeta mide su fondo.
-        self.cards_widget.adjustSize()
+        grid_container = RejillaTarjetasEquipo(tarjetas)
+        grid_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        layout.addWidget(grid_container, 1)
+        self.cards_layout.addWidget(panel, 1)
+        self.live_team_cards[team] = tarjetas
+        self.cards_widget.updateGeometry()
 
     def create_team_header(
         self,
         players: list[dict],
         side_name: str,
         is_local_team: bool,
+        team: str,
     ) -> QHBoxLayout:
+        """Crea la cabecera del equipo y conserva su etiqueta de resumen."""
         header = QHBoxLayout()
         header.setSpacing(10)
         header.setContentsMargins(0, 0, 4, 0)
 
-        tag = QLabel(
-            "TU EQUIPO" if is_local_team else "EQUIPO ENEMIGO"
-        )
+        tag = QLabel("TU EQUIPO" if is_local_team else "EQUIPO ENEMIGO")
         tag.setObjectName("liveTeamTag")
         header.addWidget(tag)
 
@@ -5110,12 +4346,20 @@ class MainWindow(QMainWindow):
         summary.setObjectName("liveTeamSummary")
         summary.setWordWrap(False)
         header.addWidget(summary)
+        self.live_team_summaries[team] = summary
 
         return header
 
     def format_team_summary(self, players: list[dict]) -> str:
-        """Resumen del equipo: asesinatos, oro en objetos y jugadores."""
+        """Resume asesinatos y oro total observado en objetos del equipo.
+
+        Args:
+            players: Participantes LIVE pertenecientes al equipo.
+        Returns:
+            Texto compacto con asesinatos y oro en inventarios.
+        """
         kills = 0
+        kills_disponibles = True
         gold = 0
 
         for player in players:
@@ -5123,27 +4367,24 @@ class MainWindow(QMainWindow):
 
             if isinstance(scores, dict):
                 try:
-                    kills += int(scores.get("kills", 0) or 0)
+                    valor_asesinatos = scores.get("kills")
+                    if valor_asesinatos is None:
+                        kills_disponibles = False
+                    else:
+                        kills += int(valor_asesinatos)
                 except (TypeError, ValueError):
-                    pass
+                    kills_disponibles = False
+            else:
+                kills_disponibles = False
 
             gold += get_inventory_value(
                 player,
                 self.item_catalog,
             )
 
-        gold_text = (
-            f"{gold / 1000:.1f}k" if gold >= 1000 else str(gold)
-        )
-        total = min(len(players), 5)
-        players_text = (
-            "1 JUGADOR" if total == 1 else f"{total} JUGADORES"
-        )
-
-        return (
-            f"{kills} ASESINATOS · {gold_text} ORO EN OBJETOS · "
-            f"{players_text}"
-        )
+        gold_text = f"{gold / 1000:.1f}k" if gold >= 1000 else str(gold)
+        kills_text = str(kills) if kills_disponibles else "—"
+        return f"{kills_text} ASESINATOS · {gold_text} ORO EN OBJETOS"
 
     @staticmethod
     def player_is_local(
@@ -5169,6 +4410,7 @@ class MainWindow(QMainWindow):
         self,
         keep_empty_label: bool = False,
     ) -> None:
+        """Retira tarjetas y libera sus referencias de actualización."""
         while self.cards_layout.count():
             item = self.cards_layout.takeAt(0)
             widget = item.widget()
@@ -5176,10 +4418,7 @@ class MainWindow(QMainWindow):
             if widget is None:
                 continue
 
-            if (
-                keep_empty_label
-                and widget is self.live_empty_label
-            ):
+            if keep_empty_label and widget is self.live_empty_label:
                 widget.setParent(None)
                 continue
 
@@ -5193,13 +4432,15 @@ class MainWindow(QMainWindow):
             except RuntimeError:
                 pass
             widget.deleteLater()
+        self.live_team_cards = {}
+        self.live_team_summaries = {}
+        self.live_team_signatures = {}
+        self.live_team_order = ()
 
     def toggle_overlay_visibility(self) -> None:
         enabled = self.overlay.toggle_all()
         self.show_overlay_button.setText(
-            "Ocultar overlay"
-            if enabled
-            else "Mostrar overlay"
+            "Ocultar overlay" if enabled else "Mostrar overlay"
         )
         self.sync_overlay_settings_ui()
 
@@ -5210,15 +4451,11 @@ class MainWindow(QMainWindow):
 
     def change_overlay_opacity(self, percent: int) -> None:
         self.overlay.set_overlay_opacity(percent)
-        self.opacity_value.setText(
-            f"{percent}%"
-        )
+        self.opacity_value.setText(f"{percent}%")
 
     def change_overlay_alert_lead(self, seconds: int) -> None:
         self.overlay.set_alert_lead_seconds(seconds)
-        self.alert_lead_value.setText(
-            f"{seconds} s"
-        )
+        self.alert_lead_value.setText(f"{seconds} s")
 
     def toggle_overlay_panel(self, key: str) -> None:
         self.overlay.set_panel_enabled(
@@ -5239,14 +4476,10 @@ class MainWindow(QMainWindow):
 
         enabled = self.overlay.enabled_panels()
         self.show_overlay_button.setText(
-            "Ocultar overlay"
-            if self.overlay.any_enabled()
-            else "Mostrar overlay"
+            "Ocultar overlay" if self.overlay.any_enabled() else "Mostrar overlay"
         )
         self.lock_overlay_button.setText(
-            "Bloquear clics: SÍ"
-            if self.overlay.click_through
-            else "Bloquear clics: NO"
+            "Bloquear clics: SÍ" if self.overlay.click_through else "Bloquear clics: NO"
         )
 
         for key, button in self.overlay_panel_buttons.items():
@@ -5265,11 +4498,7 @@ class MainWindow(QMainWindow):
             "alerts": "Alertas",
             "threat": "Rivales",
         }
-        active = [
-            name
-            for key, name in panel_names.items()
-            if enabled.get(key, False)
-        ]
+        active = [name for key, name in panel_names.items() if enabled.get(key, False)]
         tab_hidden = sorted(
             name
             for key, name in panel_names.items()
@@ -5334,13 +4563,9 @@ class MainWindow(QMainWindow):
             widget.blockSignals(True)
 
         self.sound_enabled_checkbox.setChecked(enabled)
-        self.sound_objective_checkbox.setChecked(
-            service.kind_enabled("objective")
-        )
+        self.sound_objective_checkbox.setChecked(service.kind_enabled("objective"))
         self.sound_dragon_checkbox.setChecked(service.kind_enabled("dragon"))
-        self.sound_enemy_buy_checkbox.setChecked(
-            service.kind_enabled("enemy_buy")
-        )
+        self.sound_enemy_buy_checkbox.setChecked(service.kind_enabled("enemy_buy"))
         self.sound_volume_slider.setValue(int(round(service.volume * 100)))
         self.sound_volume_value.setText(f"{int(round(service.volume * 100))}%")
 
@@ -5355,18 +4580,28 @@ class MainWindow(QMainWindow):
 
     def setup_champ_select_worker(self) -> None:
         self.champ_select_worker = ChampSelectWorker(parent=self)
-        self.champ_select_worker.champ_select_started.connect(self._on_champ_select_started)
-        self.champ_select_worker.champ_select_updated.connect(self._on_champ_select_updated)
+        self.champ_select_worker.champ_select_started.connect(
+            self._on_champ_select_started
+        )
+        self.champ_select_worker.champ_select_updated.connect(
+            self._on_champ_select_updated
+        )
         self.champ_select_worker.champ_select_ended.connect(self._on_champ_select_ended)
         self.champ_select_worker.start()
 
     def open_draft_tool_dialog(self) -> None:
-        if not self.draft_tool_dialog or not self.draft_tool_dialog.isVisible():
+        """Abre el draft como página única del shell y mantiene las señales LCU."""
+        if self.draft_tool_dialog is None:
             self.draft_tool_dialog = DraftToolDialog(self)
-            self.draft_tool_dialog.show()
-        else:
-            self.draft_tool_dialog.raise_()
-            self.draft_tool_dialog.activateWindow()
+            self.draft_tool_dialog.setWindowFlags(Qt.WindowType.Widget)
+            self.draft_tool_dialog.setMinimumSize(0, 0)
+            anterior = self.pages.widget(6)
+            if anterior is not None:
+                self.pages.removeWidget(anterior)
+                anterior.deleteLater()
+            self.pages.insertWidget(6, self.draft_tool_dialog)
+        self.pages.setCurrentIndex(6)
+        self.draft_tool_dialog.show()
 
     @Slot(dict)
     def _on_champ_select_started(self, session: dict) -> None:
@@ -5377,14 +4612,15 @@ class MainWindow(QMainWindow):
 
     @Slot(dict)
     def _on_champ_select_updated(self, session: dict) -> None:
-        if self.draft_tool_dialog and self.draft_tool_dialog.isVisible():
+        if self.draft_tool_dialog is not None:
             self.draft_tool_dialog.update_from_lcu_session(session)
 
     def _on_champ_select_ended(self) -> None:
-        if self.draft_tool_dialog and self.draft_tool_dialog.isVisible():
+        if self.draft_tool_dialog is not None:
             self.draft_tool_dialog._set_lcu_managed_controls(False)
             # El draft ha terminado: se cierra para poder ver el panel principal.
-            self.draft_tool_dialog.close()
+            if self.pages.currentIndex() == 6:
+                self.pages.setCurrentIndex(0)
         # El draft ha terminado; cuando la pantalla de carga acabe y la partida
         # arranque (primer snapshot de la API local) el panel irá solo a
         # "Partida en vivo" (ver show_game).
@@ -5413,7 +4649,10 @@ class MainWindow(QMainWindow):
                 self.recording_service.abort()
                 self.recording_service.wait_for_stop(3000)
 
-        if hasattr(self, "champ_select_worker") and self.champ_select_worker.isRunning():
+        if (
+            hasattr(self, "champ_select_worker")
+            and self.champ_select_worker.isRunning()
+        ):
             self.champ_select_worker.stop()
             self.champ_select_worker.quit()
             self.champ_select_worker.wait(2000)
@@ -5425,18 +4664,11 @@ class MainWindow(QMainWindow):
                 self.worker_thread.terminate()
                 self.worker_thread.wait(2000)
 
-        if self.history_thread.isRunning():
-            self.history_thread.quit()
-
-            if not self.history_thread.wait(5000):
-                self.history_thread.terminate()
-                self.history_thread.wait(2000)
-
         if self.postgame_sync_thread.isRunning():
             self.postgame_sync_thread.quit()
 
         if not self.postgame_sync_thread.wait(5000):
             self.postgame_sync_thread.terminate()
             self.postgame_sync_thread.wait(2000)
-            
+
         event.accept()

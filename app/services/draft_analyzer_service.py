@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import itertools
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from _paths import DATA_DIR
+from app.services.repositorio_campeones import RepositorioCampeones
 
 
 class DraftAnalyzerService:
     """Servicio de análisis en tiempo real para fase de Draft (Champ Select)."""
 
-    TIME_BRACKETS = ["0-15", "15-20", "20-25", "25-30", "30-35", "35-40", "40+"]
+    TIME_BRACKETS = ("0-15", "15-20", "20-25", "25-30", "30-35", "35-40", "40+")
 
     # Líneas del draft en el orden que usa la herramienta.
     ROLES = ("Top", "Jungle", "Mid", "Bot", "Support")
@@ -29,14 +31,28 @@ class DraftAnalyzerService:
         ("utilidad_y_defensa", "Utilidad y Defensa"),
     )
 
-    def __init__(self, champions_strict_path: Path | None = None) -> None:
-        self.path = champions_strict_path or DATA_DIR / "champions_strict.json"
+    def __init__(
+        self,
+        ruta_campeones: Path | None = None,
+        perfiles: Iterable[dict[str, Any]] | None = None,
+    ) -> None:
+        """Inicializa datos desde la ruta y perfiles opcionales; no devuelve valor."""
+        self.path = ruta_campeones or DATA_DIR / "champion_data"
         self.champions: dict[str, dict[str, Any]] = {}
         self.champ_by_id: dict[int, str] = {}
-        self._load_data()
+        if perfiles is None:
+            self._load_data()
+        else:
+            self.champions = {
+                str(perfil.get("character", "")).casefold(): perfil
+                for perfil in perfiles
+                if perfil.get("character")
+            }
         self.version = "16.17.1"
         try:
-            raw_items = json.loads((self.path.parent / "items.json").read_text(encoding="utf-8"))
+            raw_items = json.loads(
+                (self.path.parent / "items.json").read_text(encoding="utf-8")
+            )
             self.items = raw_items.get("items", {})
             self.version = str(raw_items.get("version") or self.version)
         except (OSError, ValueError):
@@ -46,21 +62,17 @@ class DraftAnalyzerService:
             if item.get("maps", {}).get("11", True) and not item.get("requiredAlly"):
                 for key in ("name", "name_es", "name_en"):
                     if item.get(key):
-                        self.item_names.setdefault(item[key].strip().casefold(), item_id)
+                        self.item_names.setdefault(
+                            item[key].strip().casefold(), item_id
+                        )
 
     def _load_data(self) -> None:
-        if not self.path.exists():
-            return
-        try:
-            raw_list = json.loads(self.path.read_text(encoding="utf-8"))
-            for entry in raw_list:
-                name = entry.get("character") or entry.get("basic_info", {}).get("name")
-                if name:
-                    self.champions[name.casefold()] = entry
-        except (json.JSONDecodeError, OSError):
-            pass
+        """Carga perfiles del repositorio y correspondencias de Data Dragon; retorna None."""
+        for entry in RepositorioCampeones(self.path).perfiles():
+            name = entry.get("character")
+            if name:
+                self.champions[name.casefold()] = entry
 
-        # Cargar catálogo DataDragon para mapear championId -> nombre
         catalog_path = self.path.parent / "champion_catalog.json"
         if catalog_path.exists():
             try:
@@ -92,9 +104,15 @@ class DraftAnalyzerService:
         info = profile.get("basic_info", {})
         raw_roles = [info.get("primary_role")] + list(info.get("flex_potential", []))
         role_aliases = {
-            "adc": "Bot", "bottom": "Bot", "bot": "Bot",
-            "middle": "Mid", "mid": "Mid", "top": "Top",
-            "jungle": "Jungle", "support": "Support", "utility": "Support",
+            "adc": "Bot",
+            "bottom": "Bot",
+            "bot": "Bot",
+            "middle": "Mid",
+            "mid": "Mid",
+            "top": "Top",
+            "jungle": "Jungle",
+            "support": "Support",
+            "utility": "Support",
         }
         roles: list[str] = []
         for raw_role in raw_roles:
@@ -103,8 +121,9 @@ class DraftAnalyzerService:
                 roles.append(role)
         return roles
 
-    def assign_likely_roles(self, champion_names: list[str],
-                            exclude: Iterable[str] = ()) -> list[str]:
+    def assign_likely_roles(
+        self, champion_names: list[str], exclude: Iterable[str] = ()
+    ) -> list[str]:
         """Reparte las líneas entre los campeones: la hipótesis que mejor encaja.
 
         Durante el draft no se conoce la línea real de nadie (el cliente solo
@@ -122,11 +141,13 @@ class DraftAnalyzerService:
         # Solo entran campeones y líneas con algún encaje posible: el resto no
         # altera el resultado y encarece la búsqueda.
         known = [
-            index for index, roles in enumerate(likely)
+            index
+            for index, roles in enumerate(likely)
             if any(self._role_confidence(roles, role) > 0 for role in candidates)
         ]
         candidates = [
-            role for role in candidates
+            role
+            for role in candidates
             if any(self._role_confidence(roles, role) > 0 for roles in likely)
         ]
         assignment = [""] * len(champion_names)
@@ -142,7 +163,8 @@ class DraftAnalyzerService:
                     chosen = dict(zip(champions, roles))
                     scores = tuple(
                         self._role_confidence(likely[index], chosen[index])
-                        if index in chosen else 0.0
+                        if index in chosen
+                        else 0.0
                         for index in known
                     )
                     # Primero el total; después, menos líneas inventadas; y en
@@ -165,7 +187,9 @@ class DraftAnalyzerService:
             return cls.ROLE_CONFIDENCE[index]
         return cls.ROLE_CONFIDENCE[-1]
 
-    def calculate_team_damage_breakdown(self, team_champions: list[str]) -> dict[str, float]:
+    def calculate_team_damage_breakdown(
+        self, team_champions: list[str]
+    ) -> dict[str, float]:
         """Calcula el desglose porcentual de daño físico, mágico y verdadero del equipo."""
         total_ad = 0.0
         total_ap = 0.0
@@ -232,7 +256,10 @@ class DraftAnalyzerService:
             for matchup in matchups.get(group_name, []):
                 if not isinstance(matchup, dict):
                     continue
-                if str(matchup.get("champion", "")).casefold() != opponent_name.casefold():
+                if (
+                    str(matchup.get("champion", "")).casefold()
+                    != opponent_name.casefold()
+                ):
                     continue
                 try:
                     win_rate = float(matchup.get("win_rate", 0.5))
@@ -263,7 +290,7 @@ class DraftAnalyzerService:
     def calculate_team_power_curve(self, team_champions: list[str]) -> dict[str, float]:
         """Calcula la media de las curvas de win rate de los campeones del equipo.
 
-        ``champions_strict.json`` almacena las curvas como una lista en
+        El repositorio local almacena las curvas como una lista en
         ``win_rate_vs_game_length``. Conservamos compatibilidad con el formato
         antiguo de diccionario para los perfiles ya guardados.
         """
@@ -312,9 +339,14 @@ class DraftAnalyzerService:
                 result[bracket] = 50.0
         return result
 
-    def analyze_power_spike_phase(self, my_curve: dict[str, float], enemy_curve: dict[str, float]) -> str:
+    def analyze_power_spike_phase(
+        self, my_curve: dict[str, float], enemy_curve: dict[str, float]
+    ) -> str:
         """Determina la ventana de Power Spike del equipo aliado en comparación con el enemigo."""
-        diffs = {b: my_curve.get(b, 50.0) - enemy_curve.get(b, 50.0) for b in self.TIME_BRACKETS}
+        diffs = {
+            b: my_curve.get(b, 50.0) - enemy_curve.get(b, 50.0)
+            for b in self.TIME_BRACKETS
+        }
         early_diff = (diffs["0-15"] + diffs["15-20"]) / 2
         mid_diff = (diffs["20-25"] + diffs["25-30"] + diffs["30-35"]) / 3
         late_diff = (diffs["35-40"] + diffs["40+"]) / 2
@@ -328,7 +360,9 @@ class DraftAnalyzerService:
         else:
             return "Composición equilibrada / Escalado neutro"
 
-    def get_recommended_bans(self, local_champion: str, top_n: int = 3) -> list[dict[str, Any]]:
+    def get_recommended_bans(
+        self, local_champion: str, top_n: int = 3
+    ) -> list[dict[str, Any]]:
         """Devuelve los peores counters para el campeón del jugador local."""
         prof = self.get_champion_profile(local_champion)
         if not prof:
@@ -351,34 +385,64 @@ class DraftAnalyzerService:
                 wr_pct = wr
             else:
                 wr_pct = wr * 100
-            results.append({
-                "champion": c.get("champion"),
-                "win_rate": round(wr_pct, 1),
-                "games": c.get("lane_games") or c.get("overall_games", 0),
-                "tip": c.get("tip", f"Counter severo para {local_champion}"),
-            })
+            results.append(
+                {
+                    "champion": c.get("champion"),
+                    "win_rate": round(wr_pct, 1),
+                    "games": c.get("lane_games") or c.get("overall_games", 0),
+                    "tip": c.get("tip", f"Counter severo para {local_champion}"),
+                }
+            )
         return results
 
-    def get_champion_runes_and_summoners(self, champion_name: str, role: str = "") -> dict[str, Any]:
+    @staticmethod
+    def normalizar_hechizos(spells: Any, role: str) -> tuple[str, str]:
+        """Valida los hechizos recibidos para la línea dada; devuelve el par listo para el cliente.
+
+        La jungla siempre fuerza Aplastar en segundo lugar; en el resto de
+        líneas se reemplaza cualquier Aplastar con el hechizo habitual de la
+        línea. Sin dos hechizos válidos se devuelven los de la línea.
+        """
+        rol = str(role or "").strip().casefold()
+        fallback = {"support": "Extenuación", "bot": "Curación", "mid": "Ignición"}.get(
+            rol, "Teleportación"
+        )
+        crudos = list(spells) if isinstance(spells, (list, tuple)) else []
+        crudos = [hechizo for hechizo in crudos if isinstance(hechizo, str)][:2]
+        if len(crudos) != 2:
+            crudos = ["Destello", fallback]
+        smite = {"smite", "aplastar"}
+        if rol in {"jungle", "jungla", "jgl"}:
+            primero = next(
+                (hechizo for hechizo in crudos if hechizo.casefold() not in smite),
+                "Destello",
+            )
+            crudos = [primero, "Aplastar"]
+        else:
+            crudos = [
+                fallback if hechizo.casefold() in smite else hechizo
+                for hechizo in crudos
+            ]
+            if crudos[0].casefold() == crudos[1].casefold():
+                crudos = ["Destello", fallback]
+        return crudos[0], crudos[1]
+
+    def get_champion_runes_and_summoners(
+        self, champion_name: str, role: str = ""
+    ) -> dict[str, Any]:
         """No atribuye una página a otra fuente. El rol activo manda sobre el perfil."""
         prof = self.get_champion_profile(champion_name) or {}
         pages = prof.get("common_runes") or prof.get("runes") or []
-        sources = {str(p.get("source", "")).casefold(): p for p in pages if isinstance(p, dict)}
+        sources = {
+            str(p.get("source", "")).casefold(): p for p in pages if isinstance(p, dict)
+        }
         roles = self.get_likely_roles(champion_name)
         role = (role or (roles[0] if roles else "Top")).casefold()
-        fallback = {"support": "Extenuación", "bot": "Curación", "mid": "Ignición"}.get(role, "Teleportación")
-        spells = list(prof.get("summoner_spells") or ["Destello", fallback])[:2]
-        if len(spells) != 2 or not all(isinstance(s, str) for s in spells):
-            spells = ["Destello", fallback]
-        smite = {"smite", "aplastar"}
-        if role in {"jungle", "jungla", "jgl"}:
-            first = next((s for s in spells if s.casefold() not in smite), "Destello")
-            spells = [first, "Aplastar"]
-        else:
-            spells = [fallback if s.casefold() in smite else s for s in spells]
-            if spells[0].casefold() == spells[1].casefold():
-                spells = ["Destello", fallback]
-        return {"page_1": sources.get("u.gg"), "page_2": sources.get("lolalytics"), "spells": tuple(spells)}
+        return {
+            "page_1": sources.get("u.gg"),
+            "page_2": sources.get("lolalytics"),
+            "spells": self.normalizar_hechizos(prof.get("summoner_spells"), role),
+        }
 
     def get_situational_items(self, champion_name: str) -> list[dict[str, Any]]:
         """Opciones situacionales del campeón por categoría, ya resueltas a objetos.
@@ -410,7 +474,9 @@ class DraftAnalyzerService:
                 groups.append({"key": cat_key, "label": cat_label, "items": items})
         return groups
 
-    def get_champion_build(self, champion_name: str, enemies: list[str]) -> dict[str, Any]:
+    def get_champion_build(
+        self, champion_name: str, enemies: list[str]
+    ) -> dict[str, Any]:
         """Seis compras principales y botas aparte; la sexta puede ser alternativa tardía."""
         prof = self.get_champion_profile(champion_name) or {}
         core = []
@@ -440,7 +506,9 @@ class DraftAnalyzerService:
         elif damage["true"] > max(damage["physical"], damage["magic"]):
             reason = f"Daño verdadero predominante ({damage['true']:.1f}%): las resistencias no lo reducen; se conservan las botas de la build."
         elif damage["physical"] == damage["magic"]:
-            reason = "Daño físico y mágico equilibrado: se conservan las botas de la build."
+            reason = (
+                "Daño físico y mágico equilibrado: se conservan las botas de la build."
+            )
         elif damage["magic"] > damage["physical"]:
             boots_id = "3111"
             reason = f"Daño mágico predominante ({damage['magic']:.1f}%): resistencia mágica y tenacidad."
@@ -450,14 +518,25 @@ class DraftAnalyzerService:
         if champion_name.casefold() == "cassiopeia":
             boots_id = ""
             reason = "Cassiopeia no puede comprar botas."
+
         def describe(item_id: str) -> dict[str, str]:
             return {"id": item_id, "name": self.items[item_id].get("name", item_id)}
+
         return {
             "items": [describe(i) for i in core[:6]],
             "boots": describe(boots_id) if boots_id in self.items else None,
             "boots_reason": reason,
-            "note": "La sexta compra es una alternativa tardía; solo hay 6 huecos de inventario." if main_count < 6 and len(core) >= 6 else "",
+            "note": "La sexta compra es una alternativa tardía; solo hay 6 huecos de inventario."
+            if main_count < 6 and len(core) >= 6
+            else "",
             "unresolved": unresolved,
             "situational": situational,
-            "champion_id": next((i for i, name in self.champ_by_id.items() if name.casefold() == champion_name.casefold()), 0),
+            "champion_id": next(
+                (
+                    i
+                    for i, name in self.champ_by_id.items()
+                    if name.casefold() == champion_name.casefold()
+                ),
+                0,
+            ),
         }

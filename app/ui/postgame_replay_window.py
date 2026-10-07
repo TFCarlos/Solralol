@@ -43,7 +43,10 @@ from app.services.recording_service import (
 )
 from app.ui.postgame_sidebar import PostgameSidebar
 from app.ui.recordings_page import MarkerSlider
-from app.ui.styles import CONTROL_WINDOW_STYLE
+from app.ui.tema import (
+    actualizar_texto_boton,
+    aplicar_tema,
+)
 
 #: Segundos que retrocede/avanza cada botón de salto.
 SEEK_SECONDS = 10
@@ -83,18 +86,8 @@ class PostgameReplayWindow(QMainWindow):
 
     closed = Signal()
 
-    def __init__(
-        self,
-        *,
-        session: dict[str, Any] | None = None,
-        video_path: str | Path | None = None,
-        library: RecordingLibrary | None = None,
-        tracker: Any = None,
-        service: Any = None,
-        assets: Any = None,
-        item_catalog: dict[str, Any] | None = None,
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, *, session: dict[str, Any] | None=None, video_path: str | Path | None=None, library: RecordingLibrary | None=None, tracker: Any=None, service: Any=None, assets: Any=None, item_catalog: dict[str, Any] | None=None, parent: QWidget | None=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setObjectName("postgameReplayWindow")
         self.setWindowTitle("Repaso de partida · SolraLol")
@@ -130,7 +123,7 @@ class PostgameReplayWindow(QMainWindow):
         self._build_ui()
         self._build_player()
         self._install_shortcuts()
-        self.setStyleSheet(CONTROL_WINDOW_STYLE)
+        aplicar_tema(self)
 
         if self.video_path is None:
             self.video_path = self.video_for_session(self.session)
@@ -424,8 +417,9 @@ class PostgameReplayWindow(QMainWindow):
         self._sync_volume_button()
 
     def _sync_volume_button(self) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         muted = self.audio.isMuted() or self.audio.volume() <= 0.0
-        self.volume_button.setText("\U0001F507" if muted else "\U0001F50A")
+        actualizar_texto_boton(self.volume_button, '🔇' if muted else '🔊')
         tip = "Activar audio (M)" if muted else "Silenciar (M)"
         self.volume_button.setToolTip(tip)
 
@@ -501,7 +495,7 @@ class PostgameReplayWindow(QMainWindow):
         )
         window.setObjectName("postgameFullscreenWindow")
         window.setWindowTitle("Repaso de partida · pantalla completa")
-        window.setStyleSheet(CONTROL_WINDOW_STYLE)
+        aplicar_tema(window)
 
         layout = QVBoxLayout(window)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -578,9 +572,8 @@ class PostgameReplayWindow(QMainWindow):
             self._pending_seek_ms = 0
 
     def _on_state(self, state: QMediaPlayer.PlaybackState) -> None:
-        self.play_button.setText(
-            "⏸" if state == QMediaPlayer.PlayingState else "▶"
-        )
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
+        actualizar_texto_boton(self.play_button, '⏸' if state == QMediaPlayer.PlayingState else '▶')
 
     def _on_error(self, error: Any, message: str = "") -> None:
         if error == QMediaPlayer.Error.NoError:

@@ -41,6 +41,12 @@ from app.services.recording_service import (
     format_duration,
 )
 from app.ui.async_task import run_async
+from app.ui.componentes_visuales import Reflujo
+from app.ui.sistema_visual import PALETA
+from app.ui.tema import (
+    actualizar_texto_boton,
+    color_con_alfa,
+)
 
 SEEK_SECONDS = 10
 
@@ -49,22 +55,22 @@ RECORDING_ROW_BUTTON_WIDTH = 100
 
 #: Estilo de cada tipo de marcador en la barra y en la lista.
 MARKER_STYLES: dict[str, dict[str, str]] = {
-    "kill": {"color": "#4adea0", "glyph": "⚔️"},
-    "teamfight": {"color": "#fbbf24", "glyph": "💥"},
-    "death": {"color": "#f07d8a", "glyph": "💀"},
-    "assist": {"color": "#57cafa", "glyph": "🤝"},
-    "dragon": {"color": "#fb923c", "glyph": "🐉"},
-    "baron": {"color": "#c084fc", "glyph": "👑"},
-    "herald": {"color": "#c3b1fc", "glyph": "👁️"},
-    "horde": {"color": "#a3e635", "glyph": "🐛"},
-    "tower": {"color": "#e9c875", "glyph": "🏰"},
-    "inhibitor": {"color": "#2dd4bf", "glyph": "💠"},
-    "objective": {"color": "#a78bfa", "glyph": "🎯"},
+    "kill": {"color": PALETA["ventaja"], "glyph": "⚔️"},
+    "teamfight": {"color": PALETA["oro_suave"], "glyph": "💥"},
+    "death": {"color": PALETA["desventaja"], "glyph": "💀"},
+    "assist": {"color": PALETA["teal"], "glyph": "🤝"},
+    "dragon": {"color": PALETA["oro_suave"], "glyph": "🐉"},
+    "baron": {"color": PALETA["magenta"], "glyph": "👑"},
+    "herald": {"color": PALETA["magenta"], "glyph": "👁️"},
+    "horde": {"color": PALETA["ventaja"], "glyph": "🐛"},
+    "tower": {"color": PALETA["oro_suave"], "glyph": "🏰"},
+    "inhibitor": {"color": PALETA["teal"], "glyph": "💠"},
+    "objective": {"color": PALETA["magenta"], "glyph": "🎯"},
 }
 
 
 def marker_style(kind: str) -> dict[str, str]:
-    return MARKER_STYLES.get(kind, {"color": "#94a3b8", "glyph": "•"})
+    return MARKER_STYLES.get(kind, {"color": PALETA["secundario"], "glyph": "•"})
 
 
 #: Prioridad de cada tipo cuando varios sucesos caen en el mismo punto de la
@@ -186,7 +192,8 @@ class MarkerSlider(QSlider):
 
     # -- dibujo ---------------------------------------------------------
 
-    def paintEvent(self, event) -> None:  # noqa: N802 - firma de Qt
+    def paintEvent(self, event: Any) -> None:  # noqa: N802 - firma de Qt
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().paintEvent(event)
 
         if not self.markers or self.duration_ms <= 0:
@@ -226,7 +233,7 @@ class MarkerSlider(QSlider):
         # Línea-guía vertical bajo el chip apuntado por el ratón: conecta el
         # icono con su momento exacto de la barra.
         if self._hover_x is not None:
-            guide_pen = QPen(QColor(217, 174, 79, 130), 2)
+            guide_pen = QPen(color_con_alfa("oro_suave", 130), 2)
             painter.setPen(guide_pen)
             painter.drawLine(
                 QPointF(self._hover_x, max(0.0, groove_top - 3.0)),
@@ -257,9 +264,9 @@ class MarkerSlider(QSlider):
             side = str(_marker.get("side") or "")
 
             if side == "ally":
-                pin_color = QColor("#4ade80")
+                pin_color = QColor(PALETA["ventaja"])
             elif side == "enemy":
-                pin_color = QColor("#f07d8a")
+                pin_color = QColor(PALETA["desventaja"])
             else:
                 pin_color = QColor(style["color"])
 
@@ -267,7 +274,7 @@ class MarkerSlider(QSlider):
                 self._hover_x is not None and abs(x - self._hover_x) <= 0.6
             )
             radius = pin_radius + (2.0 if hovered else 0.0)
-            ring = QColor("#f0cc70") if hovered else QColor("#0b1423")
+            ring = QColor(PALETA["oro_suave"]) if hovered else QColor(PALETA["superficie"])
             painter.setPen(QPen(ring, 1.6))
             painter.setBrush(QBrush(pin_color))
             painter.drawEllipse(QPointF(x, center_y), radius, radius)
@@ -338,7 +345,7 @@ class MarkerSlider(QSlider):
                     )
                 )
                 painter.drawRoundedRect(rect, 5.0, 5.0)
-                painter.setPen(QPen(QColor("#eef4ff")))
+                painter.setPen(QPen(QColor(PALETA["texto"])))
                 painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, glyph)
 
                 if cluster["count"] > 1:
@@ -354,9 +361,9 @@ class MarkerSlider(QSlider):
                     badge_font.setPixelSize(max(7, font.pixelSize() - 3))
                     painter.setFont(badge_font)
                     painter.setPen(QPen(color, 1.0))
-                    painter.setBrush(QBrush(QColor("#0b1423")))
+                    painter.setBrush(QBrush(QColor(PALETA["superficie"])))
                     painter.drawEllipse(badge)
-                    painter.setPen(QPen(QColor("#eef4ff")))
+                    painter.setPen(QPen(QColor(PALETA["texto"])))
                     painter.drawText(
                         badge,
                         Qt.AlignmentFlag.AlignCenter,
@@ -563,6 +570,7 @@ class RecordingsPage(QWidget):
     # -- construcción ---------------------------------------------------
 
     def _build_layout(self) -> None:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
@@ -580,6 +588,7 @@ class RecordingsPage(QWidget):
         body.addWidget(self._build_player_card(), 2)
 
         layout.addLayout(body, 1)
+        self.reflujo = Reflujo(self, [body], 1050)
 
     def _build_header(self) -> QWidget:
         header = QFrame()
@@ -1126,7 +1135,7 @@ class RecordingsPage(QWidget):
         self.pending_seek_ms = 0
         self.player_title.setText("Elige una grabación de la lista")
         self.play_button.setEnabled(False)
-        self.play_button.setText("▶ Reproducir")
+        actualizar_texto_boton(self.play_button, '▶ Reproducir')
         self.position_slider.setRange(0, 0)
         self.position_slider.set_markers([], 0)
         self._update_kda_card()
@@ -1152,6 +1161,7 @@ class RecordingsPage(QWidget):
     # -- reproducción ---------------------------------------------------
 
     def play_entry(self, path: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         if path is None:
             return
 
@@ -1192,7 +1202,7 @@ class RecordingsPage(QWidget):
         champion = str(metadata.get("champion") or video.stem)
         self.player_title.setText(f"▶ {champion} — {video.name}")
         self.play_button.setEnabled(True)
-        self.play_button.setText("⏸ Pausar")
+        actualizar_texto_boton(self.play_button, '⏸ Pausar')
         self.player.setSource(QUrl.fromLocalFile(str(video)))
         self.player.play()
 
@@ -1224,18 +1234,17 @@ class RecordingsPage(QWidget):
     def _apply_volume(self, value: int) -> None:
         self.audio_output.setVolume(max(0, min(100, value)) / 100.0)
 
-    def _sync_play_button(
-        self, state: QMediaPlayer.PlaybackState
-    ) -> None:
+    def _sync_play_button(self, state: QMediaPlayer.PlaybackState) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         if self.current_path is None:
-            self.play_button.setText("▶ Reproducir")
+            actualizar_texto_boton(self.play_button, '▶ Reproducir')
 
             return
 
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            self.play_button.setText("⏸ Pausar")
+            actualizar_texto_boton(self.play_button, '⏸ Pausar')
         else:
-            self.play_button.setText("▶ Reproducir")
+            actualizar_texto_boton(self.play_button, '▶ Reproducir')
 
     def _on_position_changed(self, position_ms: int) -> None:
         duration = self.player.duration()

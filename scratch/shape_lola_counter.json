@@ -1,0 +1,866 @@
+{
+ "stats": {
+  "defaultLane": "top",
+  "cid": 266,
+  "lane": "top",
+  "vsLane": "top",
+  "analysed": 20824137,
+  "avgWr": 51.71,
+  "br": 7.7,
+  "pr": "6.48",
+  "wr": "51.59",
+  "lanes": {
+   "top": 84.7,
+   "jungle": 12.5,
+   "middle": 1.9,
+   "bottom": 0.2,
+   "support": 0.7
+  },
+  "counters": {
+   "strong": [
+    901,
+    64,
+    102
+   ],
+   "weak": [
+    60,
+    103,
+    26
+   ]
+  }
+ },
+ "counters": [
+  {
+   "cid": 901,
+   "vsWr": 63.16,
+   "n": 152,
+   "d1": 8.22,
+   "d2": 4.94,
+   "allWr": 54.94,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 64,
+   "vsWr": 62.5,
+   "n": 128,
+   "d1": 9.88,
+   "d2": 6.59,
+   "allWr": 52.62,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 102,
+   "vsWr": 60.87,
+   "n": 115,
+   "d1": 8.3,
+   "d2": 5.01,
+   "allWr": 52.57,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 107,
+   "vsWr": 59.31,
+   "n": 145,
+   "d1": 9.26,
+   "d2": 5.96,
+   "allWr": 50.05,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 9,
+   "vsWr": 59.23,
+   "n": 130,
+   "d1": 11.68,
+   "d2": 8.38,
+   "allWr": 47.55,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 3,
+   "vsWr": 59.09,
+   "n": 132,
+   "d1": 10.26,
+   "d2": 6.96,
+   "allWr": 48.83,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 42,
+   "vsWr": 57.28,
+   "n": 316,
+   "d1": 2.97,
+   "d2": -0.31,
+   "allWr": 54.31,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 36,
+   "vsWr": 57.09,
+   "n": 2363,
+   "d1": 8.68,
+   "d2": 5.38,
+   "allWr": 48.41,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 223,
+   "vsWr": 56.46,
+   "n": 1123,
+   "d1": 8.03,
+   "d2": 4.73,
+   "allWr": 48.43,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 145,
+   "vsWr": 55.92,
+   "n": 152,
+   "d1": 3.45,
+   "d2": 0.16,
+   "allWr": 52.47,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 14,
+   "vsWr": 55.79,
+   "n": 1873,
+   "d1": 6.93,
+   "d2": 3.63,
+   "allWr": 48.86,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 110,
+   "vsWr": 55.68,
+   "n": 546,
+   "d1": 5.23,
+   "d2": 1.93,
+   "allWr": 50.45,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 113,
+   "vsWr": 55.43,
+   "n": 184,
+   "d1": 6.37,
+   "d2": 3.07,
+   "allWr": 49.06,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 8,
+   "vsWr": 55.33,
+   "n": 788,
+   "d1": 5.87,
+   "d2": 2.57,
+   "allWr": 49.46,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 11,
+   "vsWr": 55.15,
+   "n": 359,
+   "d1": 5.32,
+   "d2": 2.02,
+   "allWr": 49.83,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 517,
+   "vsWr": 55.15,
+   "n": 515,
+   "d1": 6.99,
+   "d2": 3.69,
+   "allWr": 48.16,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 897,
+   "vsWr": 54.78,
+   "n": 2928,
+   "d1": 3.36,
+   "d2": 0.06,
+   "allWr": 51.42,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 75,
+   "vsWr": 54.22,
+   "n": 3947,
+   "d1": 6.64,
+   "d2": 3.34,
+   "allWr": 47.58,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 96,
+   "vsWr": 54.13,
+   "n": 109,
+   "d1": 5.22,
+   "d2": 1.92,
+   "allWr": 48.91,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 157,
+   "vsWr": 54.09,
+   "n": 2176,
+   "d1": 5.15,
+   "d2": 1.85,
+   "allWr": 48.94,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 84,
+   "vsWr": 54.01,
+   "n": 1559,
+   "d1": 5.07,
+   "d2": 1.77,
+   "allWr": 48.94,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 245,
+   "vsWr": 53.98,
+   "n": 113,
+   "d1": 5.86,
+   "d2": 2.56,
+   "allWr": 48.12,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 126,
+   "vsWr": 53.58,
+   "n": 5116,
+   "d1": 2.68,
+   "d2": -0.62,
+   "allWr": 50.9,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 13,
+   "vsWr": 53.47,
+   "n": 303,
+   "d1": 2.35,
+   "d2": -0.95,
+   "allWr": 51.12,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 67,
+   "vsWr": 53.3,
+   "n": 895,
+   "d1": 2.66,
+   "d2": -0.64,
+   "allWr": 50.64,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 48,
+   "vsWr": 53.18,
+   "n": 991,
+   "d1": 3.76,
+   "d2": 0.46,
+   "allWr": 49.42,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 429,
+   "vsWr": 53.17,
+   "n": 284,
+   "d1": 4.12,
+   "d2": 0.82,
+   "allWr": 49.05,
+   "defaultLane": "bottom"
+  },
+  {
+   "cid": 875,
+   "vsWr": 52.94,
+   "n": 4248,
+   "d1": 5.47,
+   "d2": 2.17,
+   "allWr": 47.47,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 57,
+   "vsWr": 52.92,
+   "n": 240,
+   "d1": 3.96,
+   "d2": 0.66,
+   "allWr": 48.96,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 82,
+   "vsWr": 52.91,
+   "n": 3589,
+   "d1": 4.84,
+   "d2": 1.54,
+   "allWr": 48.07,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 31,
+   "vsWr": 52.72,
+   "n": 1984,
+   "d1": 5.17,
+   "d2": 1.87,
+   "allWr": 47.55,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 72,
+   "vsWr": 52.68,
+   "n": 112,
+   "d1": 1.95,
+   "d2": -1.35,
+   "allWr": 50.73,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 150,
+   "vsWr": 52.53,
+   "n": 2389,
+   "d1": 3.05,
+   "d2": -0.25,
+   "allWr": 49.48,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 68,
+   "vsWr": 52.38,
+   "n": 1134,
+   "d1": 1.35,
+   "d2": -1.95,
+   "allWr": 51.03,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 50,
+   "vsWr": 52.32,
+   "n": 323,
+   "d1": 2.83,
+   "d2": -0.47,
+   "allWr": 49.49,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 122,
+   "vsWr": 52.25,
+   "n": 4758,
+   "d1": 3.7,
+   "d2": 0.4,
+   "allWr": 48.55,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 106,
+   "vsWr": 52.18,
+   "n": 2999,
+   "d1": 3.23,
+   "d2": -0.07,
+   "allWr": 48.95,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 23,
+   "vsWr": 52.18,
+   "n": 2110,
+   "d1": 4.47,
+   "d2": 1.17,
+   "allWr": 47.71,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 164,
+   "vsWr": 52.08,
+   "n": 2913,
+   "d1": 4.17,
+   "d2": 0.87,
+   "allWr": 47.91,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 127,
+   "vsWr": 52.07,
+   "n": 242,
+   "d1": 5.25,
+   "d2": 1.95,
+   "allWr": 46.82,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 24,
+   "vsWr": 51.97,
+   "n": 3627,
+   "d1": 3.23,
+   "d2": -0.07,
+   "allWr": 48.74,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 83,
+   "vsWr": 51.94,
+   "n": 1881,
+   "d1": 3.08,
+   "d2": -0.22,
+   "allWr": 48.86,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 98,
+   "vsWr": 51.94,
+   "n": 2295,
+   "d1": 4.74,
+   "d2": 1.44,
+   "allWr": 47.2,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 92,
+   "vsWr": 51.88,
+   "n": 1573,
+   "d1": 3.11,
+   "d2": -0.19,
+   "allWr": 48.77,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 63,
+   "vsWr": 51.88,
+   "n": 239,
+   "d1": 4.13,
+   "d2": 0.83,
+   "allWr": 47.75,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 45,
+   "vsWr": 51.49,
+   "n": 101,
+   "d1": 4.74,
+   "d2": 1.44,
+   "allWr": 46.75,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 58,
+   "vsWr": 51.48,
+   "n": 4596,
+   "d1": 2.92,
+   "d2": -0.38,
+   "allWr": 48.56,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 887,
+   "vsWr": 51.46,
+   "n": 1477,
+   "d1": 3.73,
+   "d2": 0.43,
+   "allWr": 47.73,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 420,
+   "vsWr": 51.44,
+   "n": 1767,
+   "d1": 3.59,
+   "d2": 0.29,
+   "allWr": 47.85,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 2,
+   "vsWr": 51.38,
+   "n": 1557,
+   "d1": 3.81,
+   "d2": 0.51,
+   "allWr": 47.57,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 77,
+   "vsWr": 51.28,
+   "n": 470,
+   "d1": 0.56,
+   "d2": -2.74,
+   "allWr": 50.72,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 141,
+   "vsWr": 51.2,
+   "n": 209,
+   "d1": 0.29,
+   "d2": -3.01,
+   "allWr": 50.91,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 86,
+   "vsWr": 51.16,
+   "n": 3737,
+   "d1": 3.94,
+   "d2": 0.64,
+   "allWr": 47.22,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 90,
+   "vsWr": 50.94,
+   "n": 267,
+   "d1": 2.3,
+   "d2": -1,
+   "allWr": 48.64,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 5,
+   "vsWr": 50.82,
+   "n": 122,
+   "d1": 0.13,
+   "d2": -3.17,
+   "allWr": 50.69,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 893,
+   "vsWr": 50.67,
+   "n": 300,
+   "d1": 2.05,
+   "d2": -1.25,
+   "allWr": 48.62,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 4,
+   "vsWr": 50.61,
+   "n": 164,
+   "d1": 1.57,
+   "d2": -1.73,
+   "allWr": 49.04,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 238,
+   "vsWr": 50.6,
+   "n": 415,
+   "d1": 3.53,
+   "d2": 0.23,
+   "allWr": 47.07,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 19,
+   "vsWr": 50.56,
+   "n": 987,
+   "d1": 3.99,
+   "d2": 0.69,
+   "allWr": 46.57,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 41,
+   "vsWr": 50.53,
+   "n": 4348,
+   "d1": 3.15,
+   "d2": -0.15,
+   "allWr": 47.38,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 516,
+   "vsWr": 50.42,
+   "n": 2255,
+   "d1": 3.38,
+   "d2": 0.08,
+   "allWr": 47.04,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 17,
+   "vsWr": 50.34,
+   "n": 2940,
+   "d1": 3.97,
+   "d2": 0.67,
+   "allWr": 46.37,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 904,
+   "vsWr": 50.26,
+   "n": 2151,
+   "d1": 2,
+   "d2": -1.3,
+   "allWr": 48.26,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 34,
+   "vsWr": 50.25,
+   "n": 394,
+   "d1": 3.45,
+   "d2": 0.15,
+   "allWr": 46.8,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 69,
+   "vsWr": 50.19,
+   "n": 269,
+   "d1": 1.73,
+   "d2": -1.57,
+   "allWr": 48.46,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 777,
+   "vsWr": 50.18,
+   "n": 7166,
+   "d1": 2.1,
+   "d2": -1.2,
+   "allWr": 48.08,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 79,
+   "vsWr": 50.03,
+   "n": 1687,
+   "d1": 2.1,
+   "d2": -1.2,
+   "allWr": 47.93,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 246,
+   "vsWr": 50,
+   "n": 144,
+   "d1": 3.49,
+   "d2": 0.19,
+   "allWr": 46.51,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 80,
+   "vsWr": 49.91,
+   "n": 2242,
+   "d1": 1.97,
+   "d2": -1.33,
+   "allWr": 47.94,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 74,
+   "vsWr": 49.72,
+   "n": 718,
+   "d1": 1.62,
+   "d2": -1.68,
+   "allWr": 48.1,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 10,
+   "vsWr": 49.61,
+   "n": 1298,
+   "d1": 2.88,
+   "d2": -0.42,
+   "allWr": 46.73,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 6,
+   "vsWr": 49.45,
+   "n": 2105,
+   "d1": 2.24,
+   "d2": -1.06,
+   "allWr": 47.21,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 85,
+   "vsWr": 49.31,
+   "n": 1158,
+   "d1": 1.56,
+   "d2": -1.74,
+   "allWr": 47.75,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 240,
+   "vsWr": 49.3,
+   "n": 1359,
+   "d1": 2.05,
+   "d2": -1.25,
+   "allWr": 47.25,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 114,
+   "vsWr": 49.24,
+   "n": 3922,
+   "d1": 1.35,
+   "d2": -1.95,
+   "allWr": 47.89,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 799,
+   "vsWr": 49.06,
+   "n": 3235,
+   "d1": -0.37,
+   "d2": -3.67,
+   "allWr": 49.43,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 805,
+   "vsWr": 48.91,
+   "n": 137,
+   "d1": -1.38,
+   "d2": -4.68,
+   "allWr": 50.29,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 154,
+   "vsWr": 48.79,
+   "n": 373,
+   "d1": 1.79,
+   "d2": -1.51,
+   "allWr": 47,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 233,
+   "vsWr": 48.76,
+   "n": 201,
+   "d1": -0.96,
+   "d2": -4.26,
+   "allWr": 49.72,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 39,
+   "vsWr": 48.48,
+   "n": 3777,
+   "d1": 0.49,
+   "d2": -2.81,
+   "allWr": 47.99,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 112,
+   "vsWr": 48.32,
+   "n": 149,
+   "d1": 0.92,
+   "d2": -2.38,
+   "allWr": 47.4,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 950,
+   "vsWr": 48.26,
+   "n": 230,
+   "d1": 0.51,
+   "d2": -2.79,
+   "allWr": 47.75,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 78,
+   "vsWr": 47.97,
+   "n": 615,
+   "d1": 0.8,
+   "d2": -2.5,
+   "allWr": 47.17,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 54,
+   "vsWr": 47.86,
+   "n": 4733,
+   "d1": 1.04,
+   "d2": -2.26,
+   "allWr": 46.82,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 27,
+   "vsWr": 47.8,
+   "n": 1592,
+   "d1": 1.06,
+   "d2": -2.24,
+   "allWr": 46.74,
+   "defaultLane": "top"
+  },
+  {
+   "cid": 133,
+   "vsWr": 46.93,
+   "n": 522,
+   "d1": 1.06,
+   "d2": -2.23,
+   "allWr": 45.87,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 62,
+   "vsWr": 46.89,
+   "n": 981,
+   "d1": -0.48,
+   "d2": -3.78,
+   "allWr": 47.37,
+   "defaultLane": "jungle"
+  },
+  {
+   "cid": 7,
+   "vsWr": 44.23,
+   "n": 104,
+   "d1": -2.76,
+   "d2": -6.06,
+   "allWr": 46.99,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 43,
+   "vsWr": 43.61,
+   "n": 133,
+   "d1": -6.53,
+   "d2": -9.83,
+   "allWr": 50.14,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 26,
+   "vsWr": 42.86,
+   "n": 119,
+   "d1": -1.87,
+   "d2": -5.16,
+   "allWr": 44.73,
+   "defaultLane": "support"
+  },
+  {
+   "cid": 103,
+   "vsWr": 42.51,
+   "n": 167,
+   "d1": -3.18,
+   "d2": -6.47,
+   "allWr": 45.69,
+   "defaultLane": "middle"
+  },
+  {
+   "cid": 60,
+   "vsWr": 41.38,
+   "n": 116,
+   "d1": -9.24,
+   "d2": -12.54,
+   "allWr": 50.62,
+   "defaultLane": "jungle"
+  }
+ ],
+ "response": {
+  "valid": true,
+  "duration": "30"
+ }
+}

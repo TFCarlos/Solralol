@@ -9,10 +9,11 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 import _paths
+from app.services.repositorio_campeones import RepositorioCampeones
 from app.ui import startup_window
 from app.ui.main_window import MainWindow
+from app.ui.tema import instalar_sistema_visual
 from data_dragon import load_cached_item_catalog, load_item_catalog
-
 
 # Avisos de Qt que solo ensucian la consola: Qt ya no incluye tipografías
 # propias y FreeType a veces rechaza algún fichero del directorio de fuentes
@@ -37,9 +38,7 @@ def install_message_filter() -> None:
     """Silencia solo los avisos inofensivos de fuentes; el resto pasa igual."""
 
     def handler(mode, context, message):
-        if any(
-            fragment in message for fragment in QUIET_MESSAGE_FRAGMENTS
-        ):
+        if any(fragment in message for fragment in QUIET_MESSAGE_FRAGMENTS):
             return
 
         line = f"{_MESSAGE_LABELS.get(mode, 'Message')}: {message}"
@@ -113,18 +112,19 @@ def set_app_user_model_id() -> None:
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "Solralol.App"
-        )
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Solralol.App")
     except Exception:  # noqa: BLE001 - cosmético: nunca debe romper el arranque
         pass
 
 
 def main() -> int:
+    """Inicializa repositorio local y aplicación Qt; devuelve el código de salida."""
+    RepositorioCampeones()
     install_message_filter()
     set_app_user_model_id()
 
     app = QApplication(sys.argv)
+    instalar_sistema_visual(app)
 
     app.setApplicationName("Solralol")
     app.setOrganizationName("Solralol")

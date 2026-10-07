@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from logging import root
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -9,7 +8,6 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -19,6 +17,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.services.data_dragon_assets import DataDragonAssetService
+from app.ui.componentes_visuales import Reflujo
+from app.ui.tema import aplicar_tema
 
 
 class MatchInspectorDialog(QDialog):
@@ -30,13 +30,8 @@ class MatchInspectorDialog(QDialog):
         ("inhibitor", "Inhibidores", "💎"),
     )
 
-    def __init__(
-        self,
-        match: dict[str, Any],
-        item_catalog: dict[str, Any] | None = None,
-        assets: DataDragonAssetService | None = None,
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, match: dict[str, Any], item_catalog: dict[str, Any] | None=None, assets: DataDragonAssetService | None=None, parent: QWidget | None=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.match = match
         self.item_catalog = item_catalog or {}
@@ -45,10 +40,12 @@ class MatchInspectorDialog(QDialog):
         self.setWindowTitle("Inspector de partida · SolraLoL")
         self.setModal(True)
         self.resize(1540, 1050)
-        self.setMinimumSize(1220, 840)
+        self.setMinimumSize(900, 700)
+        aplicar_tema(self)
         self._build_ui()
 
     def _build_ui(self) -> None:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         root = QVBoxLayout(self)
         root.setContentsMargins(30, 27, 30, 27)
         root.setSpacing(20)
@@ -66,6 +63,7 @@ class MatchInspectorDialog(QDialog):
         teams.addWidget(self._create_team_card("ALIADOS", self.match.get("allies", []), "ally"), 1)
         teams.addWidget(self._create_team_card("ENEMIGOS", self.match.get("enemies", []), "enemy"), 1)
         scroll.setWidget(content)
+        self.reflujo = Reflujo(content, [teams], 1100)
         root.addWidget(scroll, 1)
 
         footer = QHBoxLayout()

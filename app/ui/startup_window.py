@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
@@ -27,53 +27,12 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.async_task import AsyncTask, run_async
+from app.ui.tema import (
+    aplicar_tema,
+)
 
 #: Estilo propio (la ventana principal aún no existe cuando se muestra).
-STARTUP_STYLE = """
-QWidget#startupWindow {
-    background: qlineargradient(
-        x1: 0, y1: 0, x2: 1, y2: 1,
-        stop: 0 rgba(21, 52, 93, 245),
-        stop: 1 rgba(7, 11, 20, 250)
-    );
-    border: 1px solid rgba(97, 148, 211, 90);
-    border-radius: 18px;
-    font-family: "Segoe UI";
-}
-QLabel#startupBrand {
-    color: #d9ae4f;
-    font-size: 26px;
-    font-weight: 800;
-    letter-spacing: 3px;
-}
-QLabel#startupMessage {
-    color: #e8f0ff;
-    font-size: 13px;
-}
-QLabel#startupElapsed {
-    color: #9caec9;
-    font-size: 11px;
-}
-QLabel#startupHint {
-    color: #7d8ea6;
-    font-size: 11px;
-}
-QProgressBar#startupBar {
-    border: 1px solid rgba(97, 148, 211, 90);
-    border-radius: 7px;
-    background: rgba(8, 16, 30, 200);
-    height: 12px;
-    text-align: center;
-}
-QProgressBar#startupBar::chunk {
-    background: qlineargradient(
-        x1: 0, y1: 0, x2: 1, y2: 0,
-        stop: 0 #1f6fe0,
-        stop: 1 #4fa3ff
-    );
-    border-radius: 6px;
-}
-"""
+
 
 
 class StartupWindow(QWidget):
@@ -82,12 +41,8 @@ class StartupWindow(QWidget):
     #: ``(resultado, error)`` — *error* es ``str`` o ``None``.
     finished = Signal(object, object)
 
-    def __init__(
-        self,
-        message: str = "Cargando…",
-        hint: str = "",
-        parent: QWidget | None = None,
-    ) -> None:
+    def __init__(self, message: str='Cargando…', hint: str='', parent: QWidget | None=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setObjectName("startupWindow")
         self.setWindowFlags(
@@ -96,7 +51,7 @@ class StartupWindow(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setFixedSize(460, 220)
-        self.setStyleSheet(STARTUP_STYLE)
+        aplicar_tema(self)
 
         self._task: AsyncTask | None = None
         self._elapsed = 0.0

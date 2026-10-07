@@ -17,12 +17,10 @@ esta barra con la sesión recargada de disco.
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QPointF, QThread, Qt, Signal
+from PySide6.QtCore import QPointF, Qt, QThread, Signal
 from PySide6.QtGui import (
-    QColor,
     QFont,
     QPainter,
     QPainterPath,
@@ -31,20 +29,15 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QButtonGroup,
     QComboBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -52,6 +45,13 @@ from PySide6.QtWidgets import (
 from app.services.recording_service import (
     format_duration,
     normalise_marker_kind,
+)
+from app.ui.sistema_visual import PALETA
+from app.ui.tema import (
+    aplicar_apariencia,
+    aplicar_color,
+    aplicar_estado,
+    color_con_alfa,
 )
 from data_dragon import get_champion_icon_path, get_item_icon_path
 
@@ -148,29 +148,29 @@ OBJECTIVE_KEY_ALIASES: dict[str, str] = {
 
 #: Valoración de cada suceso: glifo, color y descripción corta.
 EVALUATION_STYLES: dict[int, dict[str, str]] = {
-    1: {"glyph": "🟢", "color": "#4ade80", "label": "Buen intercambio"},
-    0: {"glyph": "⚪", "color": "#9eb4d3", "label": "Neutro"},
-    -1: {"glyph": "🔴", "color": "#f07d8a", "label": "Coste alto"},
+    1: {"glyph": "🟢", "color": PALETA["ventaja"], "label": "Buen intercambio"},
+    0: {"glyph": "⚪", "color": PALETA["teal"], "label": "Neutro"},
+    -1: {"glyph": "🔴", "color": PALETA["desventaja"], "label": "Coste alto"},
 }
 
 #: Color de la barra lateral de cada tipo de suceso.
 EVENT_KIND_COLORS: dict[str, str] = {
-    "kill": "#4adea0",
-    "teamfight": "#fbbf24",
-    "death": "#f07d8a",
-    "assist": "#57cafa",
-    "dragon": "#fb923c",
-    "baron": "#c084fc",
-    "rift_herald": "#c3b1fc",
-    "horde": "#a3e635",
-    "tower": "#e9c875",
-    "inhibitor": "#2dd4bf",
-    "item_purchase": "#fbbf24",
-    "item_removed": "#94a3b8",
-    "cs_milestone": "#38bdf8",
-    "level_up": "#34d399",
-    "objective": "#a78bfa",
-    "default": "#94a3b8",
+    "kill": PALETA["ventaja"],
+    "teamfight": PALETA["oro_suave"],
+    "death": PALETA["desventaja"],
+    "assist": PALETA["teal"],
+    "dragon": PALETA["oro_suave"],
+    "baron": PALETA["magenta"],
+    "rift_herald": PALETA["magenta"],
+    "horde": PALETA["ventaja"],
+    "tower": PALETA["oro_suave"],
+    "inhibitor": PALETA["teal"],
+    "item_purchase": PALETA["oro_suave"],
+    "item_removed": PALETA["secundario"],
+    "cs_milestone": PALETA["teal"],
+    "level_up": PALETA["ventaja"],
+    "objective": PALETA["magenta"],
+    "default": PALETA["secundario"],
 }
 
 ALLY_TEAMS = {"ORDER", "BLUE", "100", "1", "ALLY", "TEAM"}
@@ -355,10 +355,6 @@ def player_side(session: dict[str, Any], key: Any) -> str:
 #: El degradado parte del borde izquierdo (donde está la barra de color) y se
 #: funde con el fondo normal de la tarjeta, así se identifica el bando de un
 #: vistazo sin quitar legibilidad al texto.
-CARD_TINT_STOPS: dict[str, tuple[str, str]] = {
-    "ally": ("rgba(74, 222, 128, 46)", "rgba(74, 222, 128, 12)"),
-    "enemy": ("rgba(240, 125, 138, 46)", "rgba(240, 125, 138, 12)"),
-}
 
 
 def event_polarity(kind: str, side: str) -> str:
@@ -382,33 +378,7 @@ def event_polarity(kind: str, side: str) -> str:
     return ""
 
 
-def card_tint_style(polarity: str) -> str:
-    """QSS del degradado de fondo para la polaridad dada (``""`` = sin tinte).
 
-    El degradado se declara también para ``:hover``: sin esta regla, el
-    estilo global de ``styles.py`` pintaría el fondo neutro al pasar el
-    ratón y el tinte (verde/rojo) se perdería justo en esa tarjeta.
-    """
-    stops = CARD_TINT_STOPS.get(str(polarity or ""))
-
-    if not stops:
-        return ""
-
-    strong, soft = stops
-
-    return (
-        "QFrame#postgameEventRow { "
-        "border: 1px solid rgba(97, 148, 211, 45); "
-        "border-radius: 9px; "
-        "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        f"stop:0 {strong}, stop:0.55 {soft}, "
-        "stop:1 rgba(14, 26, 44, 190)); } "
-        "QFrame#postgameEventRow:hover { "
-        "border-color: rgba(217, 174, 79, 150); "
-        "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        f"stop:0 {strong}, stop:0.55 {soft}, "
-        "stop:1 rgba(21, 39, 64, 210)); }"
-    )
 
 
 def local_player_key(session: dict[str, Any]) -> str:
@@ -1194,6 +1164,7 @@ class RadarChartWidget(QWidget):
         return QPolygonF(points[1:])
 
     def paintEvent(self, _event: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         width = self.width()
@@ -1207,7 +1178,7 @@ class RadarChartWidget(QWidget):
         radius = side / 2.6
         count = len(self.METRICS)
         step = 2 * math.pi / count
-        grid_pen = QPen(QColor(97, 148, 211, 90))
+        grid_pen = QPen(color_con_alfa("teal", 90))
         grid_pen.setWidthF(1.0)
         painter.setPen(grid_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -1222,15 +1193,15 @@ class RadarChartWidget(QWidget):
                 QPointF(radius * math.cos(angle), radius * math.sin(angle)),
             )
 
-        painter.setPen(QPen(QColor(240, 125, 138), 2.0))
-        painter.setBrush(QColor(240, 125, 138, 60))
+        painter.setPen(QPen(color_con_alfa("desventaja", 255), 2.0))
+        painter.setBrush(color_con_alfa("desventaja", 60))
         painter.drawPolygon(self._polygon(self.enemy_values, radius, step))
 
-        painter.setPen(QPen(QColor(76, 175, 80), 2.0))
-        painter.setBrush(QColor(76, 175, 80, 80))
+        painter.setPen(QPen(color_con_alfa("ventaja", 255), 2.0))
+        painter.setBrush(color_con_alfa("ventaja", 80))
         painter.drawPolygon(self._polygon(self.player_values, radius, step))
 
-        painter.setPen(QColor(160, 186, 214))
+        painter.setPen(color_con_alfa("teal", 255))
         painter.setFont(QFont("Segoe UI", 8))
 
         for index, text in enumerate(self.METRICS):
@@ -1240,9 +1211,9 @@ class RadarChartWidget(QWidget):
             painter.drawText(QPointF(x - 24, y + 4), text)
 
         painter.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        painter.setPen(QColor(76, 175, 80))
+        painter.setPen(color_con_alfa("ventaja", 255))
         painter.drawText(QPointF(-radius, radius + 34), f"● {self.player_label}")
-        painter.setPen(QColor(240, 125, 138))
+        painter.setPen(color_con_alfa("desventaja", 255))
         painter.drawText(QPointF(-radius, radius + 48), f"● {self.enemy_label}")
 
 
@@ -1319,9 +1290,8 @@ class EventRow(QFrame):
 
     activated = Signal(float)
 
-    def __init__(
-        self, event: dict[str, Any], parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, event: dict[str, Any], parent: QWidget | None=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setObjectName("postgameEventRow")
         # Ojo: el atributo NO puede llamarse ``event``: QObject ya tiene
@@ -1332,10 +1302,7 @@ class EventRow(QFrame):
         # Tinte del fondo según a quién favorece el suceso (verde = tu
         # equipo, rojo = el rival); "" = neutro, sin tinte.
         self.polarity = event_polarity(kind, str(event.get("side") or ""))
-        tint = card_tint_style(self.polarity)
-
-        if tint:
-            self.setStyleSheet(tint)
+        aplicar_estado(self, self.polarity)
 
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         player_name = str(event.get("player_name") or "").strip()
@@ -1351,10 +1318,7 @@ class EventRow(QFrame):
         accent = QFrame()
         accent.setObjectName("postgameEventAccent")
         accent.setFixedWidth(4)
-        accent.setStyleSheet(
-            f"background: {EVENT_KIND_COLORS.get(kind, '#94a3b8')};"
-            "border-radius: 2px;"
-        )
+        aplicar_color(accent, EVENT_KIND_COLORS.get(kind, PALETA["secundario"]))
         layout.addWidget(accent)
 
         time_label = QLabel(format_duration(event.get("time")))
@@ -1494,6 +1458,7 @@ class PostgameSidebar(QWidget):
         root.addWidget(self.tabs, 1)
 
     def _build_overview_tab(self) -> QWidget:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         page = QWidget()
         page.setObjectName("postgameTabPage")
         outer = QVBoxLayout(page)
@@ -1525,13 +1490,7 @@ class PostgameSidebar(QWidget):
         # idénticas, para comparar de un vistazo.
         score_row = QFrame()
         score_row.setObjectName("postgameVsRow")
-        score_row.setStyleSheet(
-            "QFrame#postgameVsRow { "
-            "border: 1px solid rgba(97,148,211,70); "
-            "border-radius: 18px; "
-            "background: rgba(10,20,36,205); "
-            "padding: 10px 4px; }"
-        )
+        aplicar_apariencia(score_row, "tarjeta")
         score_layout = QVBoxLayout(score_row)
         score_layout.setContentsMargins(6, 8, 6, 8)
         score_layout.setSpacing(6)
@@ -1540,9 +1499,7 @@ class PostgameSidebar(QWidget):
         self.team_header = QLabel("MI EQUIPO · VS · EQUIPO ENEMIGO")
         self.team_header.setObjectName("postgameVsTitle")
         self.team_header.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self.team_header.setStyleSheet(
-            "color:#d9ae4f; font-size:11px; font-weight:800; letter-spacing:2px;"
-        )
+        aplicar_apariencia(self.team_header, "etiqueta")
         score_layout.addWidget(self.team_header)
 
         columns = QHBoxLayout()
@@ -1551,10 +1508,7 @@ class PostgameSidebar(QWidget):
 
         self.ally_column = QWidget()
         self.ally_column.setObjectName("postgameAllyColumn")
-        self.ally_column.setStyleSheet(
-            "QWidget#postgameAllyColumn { background: rgba(74,150,255,40); "
-            "border-radius:10px; border:1px solid rgba(74,150,255,90); }"
-        )
+        aplicar_apariencia(self.ally_column, "tarjeta")
         ally_layout = QVBoxLayout(self.ally_column)
         ally_layout.setContentsMargins(6, 6, 6, 6)
         ally_layout.setSpacing(6)
@@ -1563,10 +1517,7 @@ class PostgameSidebar(QWidget):
 
         self.enemy_column = QWidget()
         self.enemy_column.setObjectName("postgameEnemyColumn")
-        self.enemy_column.setStyleSheet(
-            "QWidget#postgameEnemyColumn { background: rgba(240,96,118,40); "
-            "border-radius:10px; border:1px solid rgba(240,96,118,90); }"
-        )
+        aplicar_apariencia(self.enemy_column, "tarjeta")
         enemy_layout = QVBoxLayout(self.enemy_column)
         enemy_layout.setContentsMargins(6, 6, 6, 6)
         enemy_layout.setSpacing(6)
@@ -1585,11 +1536,7 @@ class PostgameSidebar(QWidget):
         self.stats_label = QLabel("Sin datos de la partida todavía.")
         self.stats_label.setObjectName("postgameStatsLine")
         self.stats_label.setWordWrap(True)
-        self.stats_label.setStyleSheet(
-            "QLabel#postgameStatsLine { color:#b9c8dc; font-size:11px; "
-            "border-radius:8px; padding:4px 8px; "
-            "background:rgba(14,26,44,190); }"
-        )
+        aplicar_apariencia(self.stats_label, "tarjeta")
         layout.addWidget(self.stats_label)
 
         scroll.setWidget(content)
@@ -1917,49 +1864,22 @@ class PostgameSidebar(QWidget):
 
         return value or DEFAULT_DD_VERSION
 
-    def _create_player_card(
-        self,
-        key: str,
-        player: dict,
-        version: str,
-        is_local: bool = False,
-    ) -> QFrame:
+    def _create_player_card(self, key: str, player: dict, version: str, is_local: bool=False) -> QFrame:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         card = PlayerCard(key)
         card.setObjectName("postgamePlayerCard")
         card.setMinimumWidth(176)
         side = team_side(self.session, player.get("team"))
-        accent = "#4a96ff" if side == "ally" else "#f06076"
+        accent = PALETA["teal"] if side == "ally" else PALETA["desventaja"]
         # Selección para el radar: borde grueso en el jugador analizado y
         # borde dorado en el rival elegido con un clic sobre su tarjeta.
         focus_key = self.player_key or local_player_key(self.session)
         is_focus = key == focus_key
         is_rival = bool(self.rival_key) and key == self.rival_key
 
-        if is_rival:
-            border = "1px solid #fbbf24"
-            left_colour = "#fbbf24"
-            left_width = 5
-        elif is_focus:
-            border = f"1px solid {accent}"
-            left_colour = accent
-            left_width = 5
-        else:
-            border = f"1px solid {accent}66"
-            left_colour = accent
-            left_width = 4
-
-        # El borde tiene el mismo grosor en todas las tarjetas (un borde de
-        # foco más grueso descuadraría las alturas entre filas del VS).
-        card.setStyleSheet(
-            "QFrame#postgamePlayerCard { "
-            f"border: {border}; "
-            f"border-left: {left_width}px solid {left_colour}; "
-            "border-radius: 10px; "
-            "min-height: 158px; "
-            "background: rgba(12, 22, 40, 225); } "
-            "QFrame#postgamePlayerCard:hover { "
-            "background: rgba(22, 40, 68, 240); }"
-        )
+        aplicar_apariencia(card, "interactiva")
+        aplicar_color(card, PALETA["oro_suave"] if is_rival else accent)
+        card.setProperty("seleccionado", is_focus or is_rival)
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(8, 7, 8, 7)
@@ -2054,7 +1974,7 @@ class PostgameSidebar(QWidget):
             f"{stats['kills']} / {stats['deaths']} / {stats['assists']}"
         )
         kda.setObjectName("postgameStatKda")
-        kda.setStyleSheet(f"color:{_kda_colour(stats['kda'])};")
+        aplicar_color(kda, _kda_colour(stats['kda']))
         kda.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         kda.setToolTip(
             f"KDA {stats['kda']:.2f} · asesinatos / muertes / asistencias"
@@ -2076,21 +1996,21 @@ class PostgameSidebar(QWidget):
                 str(stats["cs"]),
                 f"{stats['cspm']:.1f} CS/min",
                 "postgameStatCs",
-                "#7cc7ff",
+                PALETA["teal"],
             ),
             (
                 "ORO",
                 _format_gold(stats["gold"]),
                 f"{stats['gpm']:.0f} oro/min",
                 "postgameStatGold",
-                "#f0cc70",
+                PALETA["oro_suave"],
             ),
             (
                 "VISIÓN",
                 str(stats["vision"]),
                 "Puntuación de visión acumulada",
                 "postgameStatVision",
-                "#7ee7a6",
+                PALETA["ventaja"],
             ),
         ):
             chip = QFrame()
@@ -2107,7 +2027,7 @@ class PostgameSidebar(QWidget):
 
             amount = QLabel(value)
             amount.setObjectName(object_name)
-            amount.setStyleSheet(f"color:{colour};")
+            aplicar_color(amount, colour)
             amount.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             amount.setToolTip(tooltip)
             chip_layout.addWidget(amount)
@@ -2583,15 +2503,15 @@ def _kda_colour(kda: float) -> str:
     try:
         value = float(kda)
     except (TypeError, ValueError):
-        return "#eef4ff"
+        return PALETA["texto"]
 
     if value >= 4.0:
-        return "#7ee7a6"
+        return PALETA["ventaja"]
     if value >= 2.0:
-        return "#eef4ff"
+        return PALETA["texto"]
     if value >= 1.0:
-        return "#f0cc70"
-    return "#ff9ca7"
+        return PALETA["oro_suave"]
+    return PALETA["desventaja"]
 
 
 def _cached_item_icon(

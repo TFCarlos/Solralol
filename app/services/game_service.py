@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import urllib3
 import requests
+import urllib3
 
 
-urllib3.disable_warnings(
-    urllib3.exceptions.InsecureRequestWarning
-)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class GameService:
@@ -56,6 +54,11 @@ class GameService:
 
         Incluye allgamedata y, cuando esté disponible, eventdata
         de la Live Client Data API local.
+
+        Args:
+            None.
+        Returns:
+            Instantánea normalizada o None si la API no responde.
         """
 
         try:
@@ -106,11 +109,7 @@ class GameService:
 
         if local_player is None:
             local_player = next(
-                (
-                    player
-                    for player in all_players
-                    if not player.get("isBot", False)
-                ),
+                (player for player in all_players if not player.get("isBot", False)),
                 {},
             )
 
@@ -122,10 +121,7 @@ class GameService:
         enemies = [
             player
             for player in all_players
-            if (
-                local_team
-                and player.get("team") != local_team
-            )
+            if (local_team and player.get("team") != local_team)
         ]
 
         champion_stats = active_player.get("championStats", {})
@@ -135,7 +131,7 @@ class GameService:
             **champion_stats,
             **{
                 key: active_player[key]
-                for key in ("currentGold", "gold", "goldCurrent")
+                for key in ("currentGold", "gold", "goldCurrent", "level")
                 if key in active_player
             },
         }
@@ -172,10 +168,7 @@ class GameService:
                     "items",
                     [],
                 )
-                if (
-                    isinstance(item, dict)
-                    and item.get("itemID")
-                )
+                if (isinstance(item, dict) and item.get("itemID"))
             ],
             "local_player": local_player,
             "local_team": local_team,

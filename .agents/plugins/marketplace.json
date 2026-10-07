@@ -1,0 +1,20 @@
+{
+  "name": "solralol-local",
+  "interface": {
+    "displayName": "Plugins de Solralol"
+  },
+  "plugins": [
+    {
+      "name": "ponytail",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/ponytail"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

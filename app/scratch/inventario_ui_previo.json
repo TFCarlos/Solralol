@@ -1,0 +1,1430 @@
+[
+  {
+    "archivo": "app\\ui\\__init__.py",
+    "clases": [],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\analisis_local_worker.py",
+    "clases": [
+      {
+        "nombre": "AnalisisLocalWorker",
+        "bases": [
+          "QThread"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\async_task.py",
+    "clases": [
+      {
+        "nombre": "TaskSignals",
+        "bases": [
+          "QObject"
+        ]
+      },
+      {
+        "nombre": "AsyncTask",
+        "bases": [
+          "QRunnable"
+        ]
+      },
+      {
+        "nombre": "TaskManager",
+        "bases": []
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\barra_lateral.py",
+    "clases": [
+      {
+        "nombre": "BarraLateral",
+        "bases": [
+          "QFrame"
+        ]
+      }
+    ],
+    "controles": {
+      "QPixmap": 2,
+      "QPainter": 1,
+      "QIcon": 1,
+      "QVBoxLayout": 1,
+      "QHBoxLayout": 1,
+      "QLabel": 3,
+      "QFrame": 1,
+      "QPushButton": 1,
+      "QVariantAnimation": 1,
+      "QSvgRenderer": 1,
+      "QSize": 2,
+      "QByteArray": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 120,
+        "componente": "self",
+        "estilo": "ESTILO_BARRA"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\champ_select_worker.py",
+    "clases": [
+      {
+        "nombre": "ChampSelectWorker",
+        "bases": [
+          "QThread"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\champion_ai_worker.py",
+    "clases": [
+      {
+        "nombre": "ChampionAIWorker",
+        "bases": [
+          "QThread"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\champion_card.py",
+    "clases": [
+      {
+        "nombre": "ChampionCard",
+        "bases": [
+          "QFrame"
+        ]
+      }
+    ],
+    "controles": {
+      "QColor": 11,
+      "QPixmap": 5,
+      "QFrame": 4,
+      "QVBoxLayout": 5,
+      "QHBoxLayout": 5,
+      "QLabel": 15,
+      "QGridLayout": 1,
+      "QWidget": 1,
+      "QPainter": 1,
+      "QPainterPath": 1,
+      "QLinearGradient": 2,
+      "QRadialGradient": 1,
+      "QRect": 1,
+      "QPen": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 644,
+        "componente": "keystone_label",
+        "estilo": "f'color: {primary_color};'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\champion_scraper_worker.py",
+    "clases": [
+      {
+        "nombre": "ChampionScraperWorker",
+        "bases": [
+          "QThread"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\contenedores_analisis.py",
+    "clases": [
+      {
+        "nombre": "TarjetaContenido",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "TablaRecomendaciones",
+        "bases": [
+          "QTableWidget"
+        ]
+      }
+    ],
+    "controles": {
+      "QVBoxLayout": 1,
+      "QLabel": 1,
+      "QTimer": 1,
+      "QSize": 1
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\control_window.py",
+    "clases": [
+      {
+        "nombre": "TeamBackground",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "SolralolWindow",
+        "bases": [
+          "QMainWindow"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 2,
+      "QRadialGradient": 2,
+      "QTimer": 1,
+      "QThread": 1,
+      "QWidget": 2,
+      "QVBoxLayout": 2,
+      "QHBoxLayout": 2,
+      "QLabel": 6,
+      "QPushButton": 3,
+      "QFrame": 1,
+      "QSlider": 1,
+      "QScrollArea": 1,
+      "QGridLayout": 1,
+      "QColor": 9,
+      "QGraphicsDropShadowEffect": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 128,
+        "componente": "self",
+        "estilo": "CONTROL_WINDOW_STYLE"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\draft_icon_cache.py",
+    "clases": [
+      {
+        "nombre": "_Result",
+        "bases": [
+          "QObject"
+        ]
+      },
+      {
+        "nombre": "_Download",
+        "bases": [
+          "QRunnable"
+        ]
+      },
+      {
+        "nombre": "DraftIconCache",
+        "bases": [
+          "QObject"
+        ]
+      }
+    ],
+    "controles": {
+      "QPixmap": 2
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\draft_tool_dialog.py",
+    "clases": [
+      {
+        "nombre": "DraftPowerCurveWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "DraftToolDialog",
+        "bases": [
+          "QDialog"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 1,
+      "QFont": 12,
+      "QPen": 7,
+      "QPainterPath": 2,
+      "QVBoxLayout": 13,
+      "QFrame": 15,
+      "QHBoxLayout": 20,
+      "QLabel": 41,
+      "QPushButton": 6,
+      "QComboBox": 5,
+      "QScrollArea": 1,
+      "QWidget": 1,
+      "QColor": 17,
+      "QRect": 4,
+      "QBrush": 3,
+      "QCheckBox": 2,
+      "QSignalBlocker": 3
+    },
+    "estilos_locales": [
+      {
+        "linea": 239,
+        "componente": "self",
+        "estilo": "\"\\n            QDialog { background: #0B0F19; color: #E5EEF9; font-family: 'Segoe UI'; }\\n            QComboBox { background: #111C30; border: 1px solid #2E405D; border-radius: 5px; padding: 3px 7px; min-height: 22px; }\\n            QComboBox:hover { border-color: #38BDF8; }\\n            QComboBox:disabled { color: #C7D2E2; background: #0E1728; }\\n            QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #52677F; border-radius: 4px; background: #101A2D; }\\n            QCheckBox::indicator:checked { background: #10B981; border-color: #6EE7B7; }\\n            QTableWidget { background: #0E1728; alternate-background-color: #111D32; border: 1px solid #2A3C58; gridline-color: #293B55; border-radius: 6px; }\\n            QHeaderView::section { background: #1B2A40; color: #DCE9FA; border: 0; border-bottom: 1px solid #334A69; padding: 5px; font-weight: 600; }\\n        \""
+      },
+      {
+        "linea": 296,
+        "componente": "header_frame",
+        "estilo": "'background-color: #1E293B; border-radius: 8px; border: 1px solid #334155;'"
+      },
+      {
+        "linea": 302,
+        "componente": "title_lbl",
+        "estilo": "'color: #38BDF8;'"
+      },
+      {
+        "linea": 306,
+        "componente": "self.lcu_status_lbl",
+        "estilo": "'color: #FBBF24; padding: 4px 10px; background-color: #0F172A; border-radius: 6px;'"
+      },
+      {
+        "linea": 310,
+        "componente": "refresh_lcu_btn",
+        "estilo": "'background-color: #334155; color: #F8FAFC; border-radius: 6px; padding: 6px 12px; font-weight: bold;'"
+      },
+      {
+        "linea": 316,
+        "componente": "local_champ_lbl",
+        "estilo": "'color: #94A3B8; font-weight: bold;'"
+      },
+      {
+        "linea": 323,
+        "componente": "local_role_lbl",
+        "estilo": "'color: #94A3B8; font-weight: bold;'"
+      },
+      {
+        "linea": 333,
+        "componente": "manual_role_label",
+        "estilo": "'color: #94A3B8; font-weight: bold;'"
+      },
+      {
+        "linea": 338,
+        "componente": "bans_header",
+        "estilo": "'background: #111C30; border: 1px solid #2D405D; border-radius: 6px;'"
+      },
+      {
+        "linea": 363,
+        "componente": "scroll_area",
+        "estilo": "'QScrollArea { border: none; background-color: transparent; }'"
+      },
+      {
+        "linea": 373,
+        "componente": "teams_frame",
+        "estilo": "'\\n            QFrame#draftTeamsSection {\\n                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,\\n                    stop:0 #16213A, stop:1 #101B2D);\\n                border: 1px solid #2C3D57; border-radius: 12px;\\n            }\\n            QLabel { background: transparent; border: none; padding: 0px; }\\n            QFrame#draftAllyBanner {\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\\n                    stop:0 #123129, stop:1 #141F35);\\n                border: 1px solid #245C4C; border-left: 4px solid #10B981;\\n                border-radius: 9px;\\n            }\\n            QFrame#draftEnemyBanner {\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\\n                    stop:0 #141F35, stop:1 #30151B);\\n                border: 1px solid #633342; border-left: 4px solid #F87171;\\n                border-radius: 9px;\\n            }\\n            QFrame#draftAllySlot {\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\\n                    stop:0 #16263C, stop:1 #131F33);\\n                border: 1px solid #2C4260; border-left: 3px solid #10B981;\\n                border-radius: 9px;\\n            }\\n            QFrame#draftAllySlot:hover {\\n                border-color: #34D399;\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\\n                    stop:0 #1A2F49, stop:1 #152438);\\n            }\\n            QFrame#draftEnemySlot {\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\\n                    stop:0 #131F33, stop:1 #26171F);\\n                border: 1px solid #4C3040; border-left: 3px solid #F87171;\\n                border-radius: 9px;\\n            }\\n            QFrame#draftEnemySlot:hover {\\n                border-color: #FB7185;\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,\\n                    stop:0 #152438, stop:1 #2E1A23);\\n            }\\n            QLabel#draftSlotIcon {\\n                background: #0B1424; border: 2px solid #2E4A6B;\\n                border-radius: 8px; padding: 1px;\\n            }\\n            QLabel#draftSlotWr {\\n                background: #131E33; border: 1px solid #2C3D57;\\n                border-radius: 9px; font-size: 12px; font-weight: 700;\\n            }\\n            QLabel#draftEnemyRole { font-size: 11px; padding-left: 8px; }\\n            QLabel#draftColumnCaption {\\n                color: #5B6E8A; font-size: 10px; font-weight: 700;\\n                letter-spacing: 1px;\\n            }\\n            QComboBox#draftPickCombo { font-size: 12px; font-weight: 600; }\\n            QComboBox#draftRoleCombo { font-size: 11px; font-weight: 700; }\\n            QComboBox#draftPickCombo[empty=\"true\"] { color: #64748B; font-style: italic; }\\n        '"
+      },
+      {
+        "linea": 438,
+        "componente": "teams_title",
+        "estilo": "'color: #93C5FD; letter-spacing: 1px;'"
+      },
+      {
+        "linea": 442,
+        "componente": "teams_hint",
+        "estilo": "'color: #9CAEC9; font-size: 11px;'"
+      },
+      {
+        "linea": 460,
+        "componente": "my_team_title",
+        "estilo": "'color: #6EE7B7;'"
+      },
+      {
+        "linea": 467,
+        "componente": "self.my_team_overall_lbl",
+        "estilo": "'color: #94A3B8; background: #131E33; border: 1px solid #2C3D57; border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 800;'"
+      },
+      {
+        "linea": 538,
+        "componente": "enemy_team_title",
+        "estilo": "'color: #FCA5A5;'"
+      },
+      {
+        "linea": 545,
+        "componente": "self.enemy_team_overall_lbl",
+        "estilo": "'color: #94A3B8; background: #131E33; border: 1px solid #2C3D57; border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 800;'"
+      },
+      {
+        "linea": 613,
+        "componente": "analytics_frame",
+        "estilo": "'background-color: #1E293B; border-radius: 8px; border: 1px solid #334155;'"
+      },
+      {
+        "linea": 642,
+        "componente": "rec_frame",
+        "estilo": "'\\n            QFrame#draftBansSection {\\n                background: #101B2D; border: 1px solid #2C3D57; border-radius: 12px;\\n            }\\n            QLabel {\\n                background: transparent; border: none; padding: 0px;\\n            }\\n            QFrame#draftBanCard {\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,\\n                    stop:0 #1D2B42, stop:1 #111D30);\\n                border: 1px solid #35445E; border-top: 2px solid #9F485F;\\n                border-radius: 10px;\\n            }\\n            QFrame#draftBanCard:hover { border-color: #CE7086; }\\n            QLabel#draftBanPortrait {\\n                background: #0B1424; border: 2px solid #AD6478;\\n                border-radius: 8px; padding: 2px;\\n            }\\n            QLabel#draftBanRate {\\n                background: #352333; border: 1px solid #614054;\\n                border-radius: 9px; padding: 3px 12px; font-size: 13px;\\n            }\\n        '"
+      },
+      {
+        "linea": 672,
+        "componente": "bans_title",
+        "estilo": "'color: #FDA4AF; letter-spacing: 1px;'"
+      },
+      {
+        "linea": 676,
+        "componente": "bans_hint",
+        "estilo": "'color: #9CAEC9; font-size: 11px;'"
+      },
+      {
+        "linea": 718,
+        "componente": "import_frame",
+        "estilo": "'\\n            QFrame#draftImportSection {\\n                background: #101B2D; border: 1px solid #2C3D57; border-radius: 12px;\\n            }\\n            QLabel { background: transparent; border: none; padding: 0px; color: #ADBED6; }\\n            QFrame#importBuildCard, QFrame#importSpellsCard {\\n                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,\\n                    stop:0 #192940, stop:1 #111D30);\\n                border: 1px solid #30445F; border-radius: 10px;\\n            }\\n            QFrame#importBuildCard { border-top: 2px solid #5283BA; }\\n            QFrame#importSpellsCard { border-top: 2px solid #B89B62; }\\n            QLabel#importItemIcon {\\n                background: #0A1424; border: 1px solid #466080; border-radius: 6px;\\n            }\\n            QLabel#importItemIcon:hover { border-color: #93C5FD; }\\n            QLabel#importBootsIcon {\\n                background: #241F1B; border: 2px solid #C4A263; border-radius: 6px;\\n            }\\n            QLabel#importSpellIcon {\\n                background: #0A1424; border: 1px solid #8E7A55; border-radius: 7px;\\n            }\\n            QLabel#importNote {\\n                color: #ADBED6; font-size: 11px;\\n                background: #0E1A2B; border-radius: 6px; padding: 9px;\\n            }\\n            QLabel#importRuneIcon {\\n                background: #101B2D; border: 1px solid #30445F; border-radius: 5px;\\n            }\\n            QLabel#importRuneIcon:hover { border-color: #A5B8D2; }\\n        '"
+      },
+      {
+        "linea": 756,
+        "componente": "import_title",
+        "estilo": "'color: #C4B5FD; letter-spacing: 1px;'"
+      },
+      {
+        "linea": 760,
+        "componente": "import_hint",
+        "estilo": "'color: #9CAEC9; font-size: 11px;'"
+      },
+      {
+        "linea": 775,
+        "componente": "build_title",
+        "estilo": "'color: #93C5FD; font-size: 12px; font-weight: 700;'"
+      },
+      {
+        "linea": 779,
+        "componente": "boots_title",
+        "estilo": "'color: #DEC28D; font-size: 10px; font-weight: 700;'"
+      },
+      {
+        "linea": 795,
+        "componente": "arrow",
+        "estilo": "'color: #60A5FA; font-size: 14pt; font-weight: 700; background: transparent;'"
+      },
+      {
+        "linea": 886,
+        "componente": "spells_title",
+        "estilo": "'color: #DEC28D; font-size: 12px; font-weight: 700;'"
+      },
+      {
+        "linea": 930,
+        "componente": "button",
+        "estilo": "f'\\n            QPushButton {{\\n                background: {background}; color: #F4F7FF;\\n                border: 1px solid {border}; border-radius: 7px;\\n                padding: 2px 10px; font-size: 11px; font-weight: 600;\\n            }}\\n            QPushButton:hover {{ background: {hover}; border-color: #B8CDEA; }}\\n            QPushButton:pressed {{ background: {pressed}; }}\\n            QPushButton:focus {{ border: 2px solid #D9E7FF; }}\\n            QPushButton:disabled {{ background: #182538; color: #8192AA; border-color: #304057; }}\\n        '"
+      },
+      {
+        "linea": 950,
+        "componente": "my_title",
+        "estilo": "'color: #34D399; font-weight: 700;'"
+      },
+      {
+        "linea": 957,
+        "componente": "versus",
+        "estilo": "'color: #94A3B8; font-weight: 800;'"
+      },
+      {
+        "linea": 964,
+        "componente": "enemy_title",
+        "estilo": "'color: #FB7185; font-weight: 700;'"
+      },
+      {
+        "linea": 564,
+        "componente": "role_lbl",
+        "estilo": "'color: #64748B; font-weight: 700;'"
+      },
+      {
+        "linea": 624,
+        "componente": "button",
+        "estilo": "'QPushButton { background: #111C30; border: 1px solid #334A69; border-radius: 6px; padding: 5px 10px; color: #BFD0E7; }QPushButton:checked { background: #1D4ED8; border-color: #60A5FA; color: white; font-weight: 700; }'"
+      },
+      {
+        "linea": 695,
+        "componente": "name_lbl",
+        "estilo": "'font-size: 16px; font-weight: 700; color: #F4F7FF;'"
+      },
+      {
+        "linea": 699,
+        "componente": "wr_lbl",
+        "estilo": "'color: #94A3B8; font-weight: 700;'"
+      },
+      {
+        "linea": 703,
+        "componente": "tip_lbl",
+        "estilo": "'color: #ADBED6; font-size: 11px;'"
+      },
+      {
+        "linea": 831,
+        "componente": "row_widget",
+        "estilo": "f'QFrame#importRunePage{page_index} {{ background: #111E31; border: 1px solid #30445F; border-left: 3px solid {color}; border-radius: 8px; }}'"
+      },
+      {
+        "linea": 840,
+        "componente": "src_lbl",
+        "estilo": "f'color: {color}; font-size: 11px; font-weight: 700;'"
+      },
+      {
+        "linea": 844,
+        "componente": "keystone_lbl",
+        "estilo": "'color: #E5EEF9; font-size: 11px; font-weight: 600;'"
+      },
+      {
+        "linea": 999,
+        "componente": "self.lcu_status_lbl",
+        "estilo": "'color: #10B981; padding: 4px 10px; background-color: #0F172A; border-radius: 6px; font-weight: bold;'"
+      },
+      {
+        "linea": 1005,
+        "componente": "self.lcu_status_lbl",
+        "estilo": "'color: #FBBF24; padding: 4px 10px; background-color: #0F172A; border-radius: 6px; font-weight: bold;'"
+      },
+      {
+        "linea": 1190,
+        "componente": "label",
+        "estilo": "'color: #FBBF24; font-weight: bold; font-style: italic;'"
+      },
+      {
+        "linea": 1235,
+        "componente": "combo",
+        "estilo": "'QComboBox { color: #94A3B8; font-style: italic; }'"
+      },
+      {
+        "linea": 1373,
+        "componente": "label",
+        "estilo": "f'color: {color}; background: {background}; border: 1px solid {border}; border-radius: 10px; padding: 4px 12px; font-size: 12px; font-weight: 800;'"
+      },
+      {
+        "linea": 350,
+        "componente": "ban_label",
+        "estilo": "f'color: #CBD5E1; background: #111C30; border: 2px solid {color}; border-radius: 4px;'"
+      },
+      {
+        "linea": 1182,
+        "componente": "label",
+        "estilo": "'color: #64748B; font-weight: bold;'"
+      },
+      {
+        "linea": 1224,
+        "componente": "combo",
+        "estilo": "'QComboBox { color: #FBBF24; font-style: italic; border-color: #B98A2E; }'"
+      },
+      {
+        "linea": 1229,
+        "componente": "combo",
+        "estilo": "''"
+      },
+      {
+        "linea": 1313,
+        "componente": "label",
+        "estilo": "f'color: {color}; background: {background}; border: 1px solid {border}; border-radius: 9px; font-size: 11px; font-weight: 700;'"
+      },
+      {
+        "linea": 1437,
+        "componente": "card['wr']",
+        "estilo": "'color: #FB7185; font-weight: 700;' if ban.get('win_rate', 50) < 50.0 else 'color: #94A3B8; font-weight: 700;'"
+      },
+      {
+        "linea": 1448,
+        "componente": "card['wr']",
+        "estilo": "'color: #94A3B8; font-weight: 700;'"
+      },
+      {
+        "linea": 1300,
+        "componente": "label",
+        "estilo": "'color: #64748B; background: #131E33; border: 1px solid #2C3D57; border-radius: 9px; font-size: 11px; font-weight: 700;'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\estilo_analisis.py",
+    "clases": [],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\inventory.py",
+    "clases": [],
+    "controles": {
+      "QLabel": 1,
+      "QWidget": 1,
+      "QGridLayout": 1,
+      "QPixmap": 1
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\live_analysis_task.py",
+    "clases": [
+      {
+        "nombre": "TaskSignals",
+        "bases": [
+          "QObject"
+        ]
+      },
+      {
+        "nombre": "AnalysisTask",
+        "bases": [
+          "QRunnable"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\live_match_analysis_dialog.py",
+    "clases": [
+      {
+        "nombre": "VersusChart",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "RiotComparisonBar",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "LiveMatchAnalysisDialog",
+        "bases": [
+          "QDialog"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 2,
+      "QPen": 4,
+      "QPointF": 1,
+      "QColor": 21,
+      "QTimer": 1,
+      "QVBoxLayout": 16,
+      "QStackedWidget": 1,
+      "QHBoxLayout": 11,
+      "QPushButton": 10,
+      "QFrame": 10,
+      "QLabel": 39,
+      "QButtonGroup": 2,
+      "QWidget": 5,
+      "QDialog": 1,
+      "QTextBrowser": 2,
+      "QGridLayout": 2,
+      "QPolygonF": 1,
+      "QProgressBar": 1,
+      "QScrollArea": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 953,
+        "componente": "title",
+        "estilo": "'color: #c4b5fd; font-size: 15px; font-weight: bold;'"
+      },
+      {
+        "linea": 958,
+        "componente": "text_edit",
+        "estilo": "\"font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 11px; color: #cbd5e1; background: #090e1c; border: 1px solid rgba(138, 92, 246, 120); border-radius: 8px; padding: 10px;\""
+      },
+      {
+        "linea": 1418,
+        "componente": "quality",
+        "estilo": "'color: #64748b; font-size: 10px; font-style: italic; margin-top: 4px;'"
+      },
+      {
+        "linea": 806,
+        "componente": "spin_lbl",
+        "estilo": "'color: #c4b5fd; font-size: 16px; font-weight: bold;'"
+      },
+      {
+        "linea": 811,
+        "componente": "desc_lbl",
+        "estilo": "'color: #94a3b8; font-size: 12px;'"
+      },
+      {
+        "linea": 818,
+        "componente": "pbar",
+        "estilo": "'QProgressBar { min-height: 8px; border-radius: 4px; background: rgba(30, 41, 59, 200); } QProgressBar::chunk { background: #8b5cf6; border-radius: 4px; }'"
+      },
+      {
+        "linea": 1241,
+        "componente": "empty_lbl",
+        "estilo": "'color: #7890a8; font-size: 11px; font-style: italic;'"
+      },
+      {
+        "linea": 1274,
+        "componente": "lbl_tag",
+        "estilo": "'color: #d9ae4f; font-size: 9px; font-weight: 800;'"
+      },
+      {
+        "linea": 1277,
+        "componente": "lbl_name",
+        "estilo": "'color: #e2e8f0; font-size: 11px; font-weight: 700;'"
+      },
+      {
+        "linea": 1303,
+        "componente": "empty_lbl",
+        "estilo": "'color: #7890a8; font-size: 11px; font-style: italic;'"
+      },
+      {
+        "linea": 1405,
+        "componente": "lbl",
+        "estilo": "'color: #94a3b8; font-size: 11px; font-weight: 600;'"
+      },
+      {
+        "linea": 1408,
+        "componente": "val_lbl",
+        "estilo": "f'color: {val_color}; font-size: 11px; font-weight: 800;'"
+      },
+      {
+        "linea": 1677,
+        "componente": "empty_lbl",
+        "estilo": "'color: #7890a8; font-size: 11px; font-style: italic;'"
+      },
+      {
+        "linea": 826,
+        "componente": "model_info",
+        "estilo": "'color: #a78bfa; font-size: 11px; font-weight: bold; margin-left: 4px;'"
+      },
+      {
+        "linea": 843,
+        "componente": "head_lbl",
+        "estilo": "'color: #c4b5fd; font-size: 18px; font-weight: bold;'"
+      },
+      {
+        "linea": 858,
+        "componente": "detail_lbl",
+        "estilo": "'color: #cbd5e1; font-size: 13px; line-height: 1.5;'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\live_timeline.py",
+    "clases": [
+      {
+        "nombre": "TimelineModel",
+        "bases": [
+          "QAbstractListModel"
+        ]
+      },
+      {
+        "nombre": "TimelineDelegate",
+        "bases": [
+          "QStyledItemDelegate"
+        ]
+      },
+      {
+        "nombre": "TimelineView",
+        "bases": [
+          "QListView"
+        ]
+      }
+    ],
+    "controles": {
+      "QModelIndex": 2,
+      "QSize": 1,
+      "QColor": 8,
+      "QRect": 4,
+      "QPen": 1,
+      "QPainter": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 137,
+        "componente": "self",
+        "estilo": "'QListView { background: #0d1c30; border: 1px solid #29435e; border-radius: 6px; outline: none; padding: 0; }'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\local_analysis_dialog.py",
+    "clases": [
+      {
+        "nombre": "ClickableFrame",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "DamageBarWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "RadarWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "PowerCurveWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "BarWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "HeatmapWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "LocalAnalysisDialog",
+        "bases": [
+          "QDialog"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 5,
+      "QPointF": 7,
+      "QPolygonF": 2,
+      "QPainterPath": 3,
+      "QLinearGradient": 5,
+      "QPen": 5,
+      "QSize": 1,
+      "QTimer": 1,
+      "QVBoxLayout": 34,
+      "QTabWidget": 1,
+      "QHBoxLayout": 34,
+      "QComboBox": 5,
+      "QLabel": 73,
+      "QProgressBar": 2,
+      "QPushButton": 7,
+      "QFrame": 19,
+      "QGridLayout": 4,
+      "QScrollArea": 1,
+      "QWidget": 11,
+      "QTextEdit": 2,
+      "QFont": 7,
+      "QFontMetrics": 1,
+      "QColor": 40,
+      "QRectF": 16,
+      "QPixmap": 3,
+      "QTableWidgetItem": 2
+    },
+    "estilos_locales": [
+      {
+        "linea": 1877,
+        "componente": "self",
+        "estilo": "ESTILO_ANALISIS"
+      },
+      {
+        "linea": 1898,
+        "componente": "ventana_menu",
+        "estilo": "self.styleSheet()"
+      },
+      {
+        "linea": 2807,
+        "componente": "no_data",
+        "estilo": "'color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;'"
+      },
+      {
+        "linea": 2846,
+        "componente": "no_data",
+        "estilo": "'color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;'"
+      },
+      {
+        "linea": 2881,
+        "componente": "no_sp",
+        "estilo": "'color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;'"
+      },
+      {
+        "linea": 2893,
+        "componente": "no_s",
+        "estilo": "'color: #64748b; font-size: 10px; font-style: italic; border: none; background: transparent;'"
+      },
+      {
+        "linea": 2921,
+        "componente": "col_widget",
+        "estilo": "'background: transparent;'"
+      },
+      {
+        "linea": 2927,
+        "componente": "header",
+        "estilo": "f'color: {color}; font-weight: 600; font-size: 12px;'"
+      },
+      {
+        "linea": 2947,
+        "componente": "none_lbl",
+        "estilo": "'color: #64748b; font-size: 10px;'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\main_window.py",
+    "clases": [
+      {
+        "nombre": "Backdrop",
+        "bases": [
+          "FondoTecnologico"
+        ]
+      },
+      {
+        "nombre": "MainWindow",
+        "bases": [
+          "QMainWindow"
+        ]
+      }
+    ],
+    "controles": {
+      "QTimer": 1,
+      "QVBoxLayout": 26,
+      "QHBoxLayout": 29,
+      "QStackedWidget": 1,
+      "QWidget": 14,
+      "QLabel": 70,
+      "QPushButton": 23,
+      "QButtonGroup": 1,
+      "QFrame": 15,
+      "QLineEdit": 5,
+      "QScrollArea": 4,
+      "QGridLayout": 2,
+      "QSlider": 1,
+      "QCheckBox": 6,
+      "QComboBox": 6,
+      "QThread": 3,
+      "QUrl": 2
+    },
+    "estilos_locales": [
+      {
+        "linea": 316,
+        "componente": "self",
+        "estilo": "CONTROL_WINDOW_STYLE + ESTILO_SHELL"
+      },
+      {
+        "linea": 512,
+        "componente": "self.profile_icon_label",
+        "estilo": "'border: 2px solid #d9ae4f; border-radius: 9px; background: rgba(5, 12, 24, 180); color: #d9ae4f; font-weight: bold; font-size: 11px;'"
+      },
+      {
+        "linea": 519,
+        "componente": "self.summoner_riot_id_label",
+        "estilo": "'color: #f4f7ff; font-size: 15px; font-weight: 800;'"
+      },
+      {
+        "linea": 524,
+        "componente": "self.summoner_level_label",
+        "estilo": "'color: #8fa2bd; font-size: 11px;'"
+      },
+      {
+        "linea": 533,
+        "componente": "self.soloq_tier_badge",
+        "estilo": "'padding: 5px 10px; border: 1px solid rgba(217, 174, 79, 150); border-radius: 6px; color: #f0cf78; background: rgba(76, 60, 30, 160); font-size: 11px; font-weight: 800;'"
+      },
+      {
+        "linea": 537,
+        "componente": "self.soloq_winrate_label",
+        "estilo": "'color: #c9d9ee; font-size: 11px; font-weight: 600;'"
+      },
+      {
+        "linea": 542,
+        "componente": "most_played_box",
+        "estilo": "'border: 1px solid rgba(97, 148, 211, 70); border-radius: 6px; background: rgba(10, 20, 36, 170);'"
+      },
+      {
+        "linea": 550,
+        "componente": "self.most_played_icon",
+        "estilo": "'border-radius: 6px; background: rgba(5, 12, 24, 180); color: #8fa2bd; font-size: 13px;'"
+      },
+      {
+        "linea": 558,
+        "componente": "self.most_played_title",
+        "estilo": "'color: #e2e8f0; font-size: 11px; font-weight: 700;'"
+      },
+      {
+        "linea": 562,
+        "componente": "self.most_played_stats",
+        "estilo": "'color: #94a3b8; font-size: 10px;'"
+      },
+      {
+        "linea": 571,
+        "componente": "soloq_card",
+        "estilo": "'QFrame#soloqGraphCard { border: 1px solid rgba(80, 118, 171, 95); border-radius: 12px; background: rgba(8, 19, 34, 220); }'"
+      },
+      {
+        "linea": 579,
+        "componente": "graph_header_label",
+        "estilo": "'color: #edd175; font-weight: 800; font-size: 10px; letter-spacing: 1px;'"
+      },
+      {
+        "linea": 600,
+        "componente": "eyebrow",
+        "estilo": "'font-size: 11px;'"
+      },
+      {
+        "linea": 605,
+        "componente": "self.home_title",
+        "estilo": "'font-size: 18px; font-weight: 800;'"
+      },
+      {
+        "linea": 612,
+        "componente": "self.home_text",
+        "estilo": "'font-size: 12px;'"
+      },
+      {
+        "linea": 728,
+        "componente": "self.history_scroll",
+        "estilo": "'QScrollArea { background: transparent; border: none; } QWidget { background: transparent; }'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\match_ai_worker.py",
+    "clases": [
+      {
+        "nombre": "MatchAIWorker",
+        "bases": [
+          "QThread"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\match_inspector_dialog.py",
+    "clases": [
+      {
+        "nombre": "MatchInspectorDialog",
+        "bases": [
+          "QDialog"
+        ]
+      }
+    ],
+    "controles": {
+      "QVBoxLayout": 4,
+      "QScrollArea": 1,
+      "QWidget": 2,
+      "QHBoxLayout": 9,
+      "QPushButton": 1,
+      "QFrame": 3,
+      "QLabel": 14,
+      "QPixmap": 1
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\overlay_window.py",
+    "clases": [
+      {
+        "nombre": "_FloatingPanel",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "_GoldRow",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "GoldPanel",
+        "bases": [
+          "_FloatingPanel"
+        ]
+      },
+      {
+        "nombre": "_AlertRow",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "_RecordingRow",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "AlertsPanel",
+        "bases": [
+          "_FloatingPanel"
+        ]
+      },
+      {
+        "nombre": "_ThreatRow",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "ThreatPanel",
+        "bases": [
+          "_FloatingPanel"
+        ]
+      },
+      {
+        "nombre": "OverlayWindow",
+        "bases": [
+          "QObject"
+        ]
+      }
+    ],
+    "controles": {
+      "QLabel": 11,
+      "QFrame": 3,
+      "QVBoxLayout": 2,
+      "QGridLayout": 1,
+      "QHBoxLayout": 3,
+      "QPixmap": 10
+    },
+    "estilos_locales": [
+      {
+        "linea": 295,
+        "componente": "self",
+        "estilo": "_PANEL_STYLE"
+      },
+      {
+        "linea": 583,
+        "componente": "separator",
+        "estilo": "'background: rgba(97, 148, 211, 70);'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\postgame_replay_window.py",
+    "clases": [
+      {
+        "nombre": "ReplayVideoWidget",
+        "bases": [
+          "QVideoWidget"
+        ]
+      },
+      {
+        "nombre": "PostgameMarkerSlider",
+        "bases": [
+          "MarkerSlider"
+        ]
+      },
+      {
+        "nombre": "PostgameReplayWindow",
+        "bases": [
+          "QMainWindow"
+        ]
+      }
+    ],
+    "controles": {
+      "QWidget": 4,
+      "QVBoxLayout": 6,
+      "QSplitter": 1,
+      "QLabel": 6,
+      "QFrame": 3,
+      "QHBoxLayout": 2,
+      "QPushButton": 7,
+      "QSlider": 1,
+      "QMediaPlayer": 1,
+      "QAudioOutput": 1,
+      "QShortcut": 2,
+      "QUrl": 2,
+      "QKeySequence": 2
+    },
+    "estilos_locales": [
+      {
+        "linea": 133,
+        "componente": "self",
+        "estilo": "CONTROL_WINDOW_STYLE"
+      },
+      {
+        "linea": 504,
+        "componente": "window",
+        "estilo": "CONTROL_WINDOW_STYLE"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\postgame_sidebar.py",
+    "clases": [
+      {
+        "nombre": "RadarChartWidget",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "IconWarmupThread",
+        "bases": [
+          "QThread"
+        ]
+      },
+      {
+        "nombre": "PlayerCard",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "EventRow",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "PostgameSidebar",
+        "bases": [
+          "QWidget"
+        ]
+      }
+    ],
+    "controles": {
+      "QPixmap": 6,
+      "QPainter": 2,
+      "QPainterPath": 1,
+      "QFrame": 6,
+      "QPolygonF": 1,
+      "QPen": 3,
+      "QHBoxLayout": 10,
+      "QLabel": 23,
+      "QVBoxLayout": 13,
+      "QTabWidget": 1,
+      "QWidget": 6,
+      "QScrollArea": 2,
+      "QComboBox": 1,
+      "QButtonGroup": 1,
+      "QPointF": 8,
+      "QColor": 8,
+      "QFont": 2,
+      "QPushButton": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 1354,
+        "componente": "accent",
+        "estilo": "f\"background: {EVENT_KIND_COLORS.get(kind, '#94a3b8')};border-radius: 2px;\""
+      },
+      {
+        "linea": 1528,
+        "componente": "score_row",
+        "estilo": "'QFrame#postgameVsRow { border: 1px solid rgba(97,148,211,70); border-radius: 18px; background: rgba(10,20,36,205); padding: 10px 4px; }'"
+      },
+      {
+        "linea": 1543,
+        "componente": "self.team_header",
+        "estilo": "'color:#d9ae4f; font-size:11px; font-weight:800; letter-spacing:2px;'"
+      },
+      {
+        "linea": 1554,
+        "componente": "self.ally_column",
+        "estilo": "'QWidget#postgameAllyColumn { background: rgba(74,150,255,40); border-radius:10px; border:1px solid rgba(74,150,255,90); }'"
+      },
+      {
+        "linea": 1566,
+        "componente": "self.enemy_column",
+        "estilo": "'QWidget#postgameEnemyColumn { background: rgba(240,96,118,40); border-radius:10px; border:1px solid rgba(240,96,118,90); }'"
+      },
+      {
+        "linea": 1588,
+        "componente": "self.stats_label",
+        "estilo": "'QLabel#postgameStatsLine { color:#b9c8dc; font-size:11px; border-radius:8px; padding:4px 8px; background:rgba(14,26,44,190); }'"
+      },
+      {
+        "linea": 1953,
+        "componente": "card",
+        "estilo": "f'QFrame#postgamePlayerCard {{ border: {border}; border-left: {left_width}px solid {left_colour}; border-radius: 10px; min-height: 158px; background: rgba(12, 22, 40, 225); }} QFrame#postgamePlayerCard:hover {{ background: rgba(22, 40, 68, 240); }}'"
+      },
+      {
+        "linea": 2057,
+        "componente": "kda",
+        "estilo": "f\"color:{_kda_colour(stats['kda'])};\""
+      },
+      {
+        "linea": 1338,
+        "componente": "self",
+        "estilo": "tint"
+      },
+      {
+        "linea": 2110,
+        "componente": "amount",
+        "estilo": "f'color:{colour};'"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\recommendation_panel.py",
+    "clases": [
+      {
+        "nombre": "RecommendationPanel",
+        "bases": [
+          "QFrame"
+        ]
+      }
+    ],
+    "controles": {
+      "QTimer": 1,
+      "QLabel": 1,
+      "QFrame": 1,
+      "QVBoxLayout": 9,
+      "QHBoxLayout": 7,
+      "QScrollArea": 1,
+      "QWidget": 5,
+      "QToolButton": 1,
+      "QGridLayout": 3
+    },
+    "estilos_locales": [
+      {
+        "linea": 68,
+        "componente": "self",
+        "estilo": "PANEL_STYLE"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\recordings_page.py",
+    "clases": [
+      {
+        "nombre": "MarkerSlider",
+        "bases": [
+          "QSlider"
+        ]
+      },
+      {
+        "nombre": "RecordingsPage",
+        "bases": [
+          "QWidget"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 1,
+      "QStyleOptionSlider": 1,
+      "QVBoxLayout": 8,
+      "QLabel": 19,
+      "QHBoxLayout": 7,
+      "QFrame": 4,
+      "QPushButton": 9,
+      "QWidget": 2,
+      "QScrollArea": 1,
+      "QVideoWidget": 1,
+      "QSlider": 1,
+      "QListWidget": 1,
+      "QMediaPlayer": 1,
+      "QAudioOutput": 1,
+      "QTimer": 1,
+      "QPen": 8,
+      "QColor": 12,
+      "QFont": 2,
+      "QUrl": 1,
+      "QListWidgetItem": 1,
+      "QPointF": 9,
+      "QBrush": 3,
+      "QRectF": 3
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\sistema_visual.py",
+    "clases": [],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\soloq_graph_widget.py",
+    "clases": [
+      {
+        "nombre": "SoloQGraphWidget",
+        "bases": [
+          "QWidget"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 1,
+      "QPen": 3,
+      "QPainterPath": 2,
+      "QLinearGradient": 1,
+      "QColor": 13,
+      "QPointF": 1
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\startup_window.py",
+    "clases": [
+      {
+        "nombre": "StartupWindow",
+        "bases": [
+          "QWidget"
+        ]
+      }
+    ],
+    "controles": {
+      "QVBoxLayout": 1,
+      "QLabel": 4,
+      "QProgressBar": 1,
+      "QTimer": 1
+    },
+    "estilos_locales": [
+      {
+        "linea": 99,
+        "componente": "self",
+        "estilo": "STARTUP_STYLE"
+      }
+    ]
+  },
+  {
+    "archivo": "app\\ui\\styles.py",
+    "clases": [],
+    "controles": {},
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\superficies_analisis.py",
+    "clases": [
+      {
+        "nombre": "FondoTecnologico",
+        "bases": [
+          "QWidget"
+        ]
+      },
+      {
+        "nombre": "TarjetaCampeon",
+        "bases": [
+          "QFrame"
+        ]
+      },
+      {
+        "nombre": "IconoEnmarcado",
+        "bases": [
+          "QLabel"
+        ]
+      }
+    ],
+    "controles": {
+      "QPainter": 3,
+      "QPixmap": 2,
+      "QPainterPath": 2,
+      "QLinearGradient": 2,
+      "QColor": 11,
+      "QRadialGradient": 1,
+      "QPen": 2,
+      "QRectF": 4
+    },
+    "estilos_locales": []
+  },
+  {
+    "archivo": "app\\ui\\winrate_worker.py",
+    "clases": [
+      {
+        "nombre": "WinrateUpdateWorker",
+        "bases": [
+          "QThread"
+        ]
+      }
+    ],
+    "controles": {},
+    "estilos_locales": []
+  }
+]

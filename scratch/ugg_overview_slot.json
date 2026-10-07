@@ -1,0 +1,175 @@
+{
+ "stat_shards": {
+  "matches": 15931,
+  "wins": 8159,
+  "win_rate": 51.21,
+  "active_shards": [
+   5008,
+   5008,
+   5011
+  ]
+ },
+ "rec_runes": {
+  "matches": 10781,
+  "wins": 5462,
+  "win_rate": 50.66,
+  "primary_style": 8000,
+  "sub_style": 8400,
+  "active_perks": [
+   8010,
+   8299,
+   8444,
+   8453,
+   9105,
+   9111
+  ]
+ },
+ "rec_summoner_spells": {
+  "matches": 84777,
+  "wins": 42929,
+  "win_rate": 50.64,
+  "ids": [
+   4,
+   14
+  ]
+ },
+ "rec_starting_items": {
+  "matches": 67391,
+  "wins": 33955,
+  "win_rate": 50.39,
+  "ids": [
+   1055,
+   2003
+  ]
+ },
+ "rec_core_items": {
+  "matches": 3663,
+  "wins": 1940,
+  "win_rate": 52.96,
+  "ids": [
+   6692,
+   3047,
+   3161
+  ]
+ },
+ "rec_skills": {
+  "slots": [
+   "Q",
+   "E",
+   "W"
+  ]
+ },
+ "rec_skill_path": {
+  "matches": 93827,
+  "wins": 47382,
+  "win_rate": 50.5,
+  "slots": [
+   "Q",
+   "E",
+   "W",
+   "Q",
+   "Q",
+   "R",
+   "Q",
+   "E",
+   "Q",
+   "E",
+   "R",
+   "E",
+   "E",
+   "W",
+   "W",
+   "R",
+   "W",
+   "W"
+  ]
+ },
+ "rec_skill_evolve_path": null,
+ "item_options_1": [
+  {
+   "wins": 14138,
+   "matches": 24896,
+   "win_rate": 56.79,
+   "id": 6333
+  },
+  {
+   "wins": 2895,
+   "matches": 4874,
+   "win_rate": 59.4,
+   "id": 3053
+  }
+ ],
+ "item_options_2": [
+  {
+   "wins": 2397,
+   "matches": 4100,
+   "win_rate": 58.46,
+   "id": 6333
+  },
+  {
+   "wins": 1039,
+   "matches": 1656,
+   "win_rate": 62.74,
+   "id": 2517
+  },
+  {
+   "wins": 1548,
+   "matches": 2723,
+   "win_rate": 56.85,
+   "id": 3053
+  }
+ ],
+ "item_options_3": [
+  {
+   "wins": 248,
+   "matches": 413,
+   "win_rate": 60.05,
+   "id": 6333
+  },
+  {
+   "wins": 296,
+   "matches": 512,
+   "win_rate": 57.81,
+   "id": 2517
+  },
+  {
+   "wins": 187,
+   "matches": 317,
+   "win_rate": 58.99,
+   "id": 3156
+  }
+ ],
+ "item_options_4": null,
+ "prismatic_options": [],
+ "consumable_options": [
+  {
+   "wins": 22263,
+   "matches": 42342,
+   "win_rate": 52.58,
+   "id": 2055
+  },
+  {
+   "wins": 57974,
+   "matches": 115623,
+   "win_rate": 50.14,
+   "id": 2003
+  },
+  {
+   "wins": 2082,
+   "matches": 3794,
+   "win_rate": 54.88,
+   "id": 2140
+  }
+ ],
+ "t3_boots_options": [],
+ "wins": 58628,
+ "matches": 117132,
+ "win_rate": 50.05,
+ "build_warning": false,
+ "last_updated": "2026-10-03T13:03:33.325563Z",
+ "arena_synergies": [],
+ "arena_augments": [],
+ "role_quest_time": [
+  739794.4635859748
+ ]
+}

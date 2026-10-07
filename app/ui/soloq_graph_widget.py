@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from typing import Any
+
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
+
+from app.ui.tema import (
+    color_con_alfa,
+)
 
 
 class SoloQGraphWidget(QWidget):
@@ -42,12 +47,13 @@ class SoloQGraphWidget(QWidget):
         self.hover_position = None
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Fondo del gráfico
-        painter.fillRect(self.rect(), QColor(8, 19, 34, 0))  # transparente: la card ya tiene fondo
+        painter.fillRect(self.rect(), color_con_alfa("superficie", 0))  # transparente: la card ya tiene fondo
 
         normal_font = painter.font()
         normal_font.setBold(False)
@@ -58,7 +64,7 @@ class SoloQGraphWidget(QWidget):
         bounds = self.rect().adjusted(52, 10, -15, -25)
 
         if not self.points or len(self.points) < 2:
-            painter.setPen(QColor(147, 170, 202))
+            painter.setPen(color_con_alfa("teal", 255))
             painter.drawText(
                 bounds,
                 Qt.AlignmentFlag.AlignCenter,
@@ -81,7 +87,7 @@ class SoloQGraphWidget(QWidget):
             max_val = min_val + 50.0
 
         # 1. Rejilla y etiquetas Y (una sola vez por línea)
-        grid_pen = QPen(QColor(93, 126, 170, 60))
+        grid_pen = QPen(color_con_alfa("teal", 60))
         grid_pen.setStyle(Qt.PenStyle.DotLine)
         painter.setPen(grid_pen)
 
@@ -91,7 +97,7 @@ class SoloQGraphWidget(QWidget):
             painter.drawLine(bounds.left(), y, bounds.right(), y)
 
             v = min_val + (max_val - min_val) * ratio
-            painter.setPen(QColor(135, 159, 194))
+            painter.setPen(color_con_alfa("teal", 255))
             if has_elo:
                 label_text = self.format_elo_short(v)
             else:
@@ -127,19 +133,19 @@ class SoloQGraphWidget(QWidget):
         gradient = QLinearGradient(
             0, bounds.top(), 0, bounds.bottom()
         )
-        gradient.setColorAt(0, QColor(217, 174, 79, 70))
-        gradient.setColorAt(1, QColor(58, 188, 245, 5))
+        gradient.setColorAt(0, color_con_alfa("oro_suave", 70))
+        gradient.setColorAt(1, color_con_alfa("teal", 5))
         painter.fillPath(fill_path, gradient)
 
         # 4. Dibujar línea principal
-        line_pen = QPen(QColor(217, 174, 79), 2)
+        line_pen = QPen(color_con_alfa("oro_suave", 255), 2)
         painter.setPen(line_pen)
         painter.drawPath(path)
 
         # 5. Dibujar puntos de partidas
         for pt_coords, pt_info in mapped_points:
             is_win = bool(pt_info.get("win", False))
-            color = QColor(58, 188, 245) if is_win else QColor(244, 87, 108)
+            color = color_con_alfa("teal", 255) if is_win else color_con_alfa("desventaja", 255)
 
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(color)
@@ -156,7 +162,7 @@ class SoloQGraphWidget(QWidget):
             c_pos, c_info = closest
 
             # Línea vertical indicadora
-            pen = QPen(QColor(237, 209, 117, 180))
+            pen = QPen(color_con_alfa("oro_suave", 180))
             pen.setStyle(Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.drawLine(int(c_pos.x()), bounds.top(), int(c_pos.x()), bounds.bottom())
@@ -182,11 +188,11 @@ class SoloQGraphWidget(QWidget):
             tx = min(int(c_pos.x()) + 8, bounds.right() - tw)
             ty = bounds.top() + 10
 
-            painter.fillRect(tx, ty, tw, th, QColor(5, 12, 24, 240))
-            painter.setPen(QColor(217, 174, 79))
+            painter.fillRect(tx, ty, tw, th, color_con_alfa("base", 240))
+            painter.setPen(color_con_alfa("oro_suave", 255))
             painter.drawRect(tx, ty, tw, th)
 
-            painter.setPen(QColor(235, 242, 252))
+            painter.setPen(color_con_alfa("texto", 255))
             for index, l in enumerate(lines):
                 painter.drawText(tx + 8, ty + 16 + index * 16, l)
 

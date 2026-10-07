@@ -1,5 +1,5 @@
 {
-  "version": "16.19.1",
+  "version": "16.20.1",
   "items": {
     "1001": {
       "name": "Botas",
@@ -2544,7 +2544,7 @@
     },
     "1221": {
       "name": "Recompensa de la misión de la calle superior",
-      "description": "<mainText><stats></stats><br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue un gran escudo según la vida máxima al usarlo.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
+      "description": "<mainText><stats></stats><br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue 0 de escudo durante 10 s al usarlo y reducir su enfriamiento a 30 s.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
       "colloq": "Top Lane Quest Reward;Recompensa de la misión de la calle superior",
       "plaintext": "",
       "inStore": false,
@@ -2576,13 +2576,13 @@
       "stats": {},
       "id": "1221",
       "name_es": "Recompensa de la misión de la calle superior",
-      "description_es": "<mainText><stats></stats><br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue un gran escudo según la vida máxima al usarlo.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
+      "description_es": "<mainText><stats></stats><br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue 0 de escudo durante 10 s al usarlo y reducir su enfriamiento a 30 s.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
       "name_en": "Top Lane Quest Reward",
-      "description_en": "<mainText><stats></stats><br><br><font color = '#00FF00'>Rewards</font><br>• Enhance your Teleport with a large max-health shield on use<br>• Flat bonus experience, more experience from all sources, and an increased level cap</mainText>"
+      "description_en": "<mainText><stats></stats><br><br><font color = '#00FF00'>Rewards</font><br>• Enhance your Teleport with a  shield for 10s on use and 30s reduced cooldown<br>• Flat bonus experience, more experience from all sources, and an increased level cap</mainText>"
     },
     "1222": {
       "name": "Misión de la calle superior",
-      "description": "<mainText><stats></stats><br><br>Participa en el asesinato de campeones, súbditos y monstruos épicos o destruye torretas y placas para completar tu misión. ¡Conseguirás puntos mucho más rápido en la calle superior!<br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue un gran escudo según la vida máxima al usarlo.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
+      "description": "<mainText><stats></stats><br><br>Participa en el asesinato de campeones, súbditos y monstruos épicos o destruye torretas y placas para completar tu misión. ¡Conseguirás puntos mucho más rápido en la calle superior!<br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue un gran escudo según la vida máxima al usarlo y enfriamiento reducido.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
       "colloq": "Top Lane Quest;Misión de la calle superior",
       "plaintext": "",
       "inStore": false,
@@ -2614,9 +2614,9 @@
       "stats": {},
       "id": "1222",
       "name_es": "Misión de la calle superior",
-      "description_es": "<mainText><stats></stats><br><br>Participa en el asesinato de campeones, súbditos y monstruos épicos o destruye torretas y placas para completar tu misión. ¡Conseguirás puntos mucho más rápido en la calle superior!<br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue un gran escudo según la vida máxima al usarlo.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
+      "description_es": "<mainText><stats></stats><br><br>Participa en el asesinato de campeones, súbditos y monstruos épicos o destruye torretas y placas para completar tu misión. ¡Conseguirás puntos mucho más rápido en la calle superior!<br><br><font color = '#00FF00'>Recompensas</font><br>• Mejora Teleportar para que otorgue un gran escudo según la vida máxima al usarlo y enfriamiento reducido.<br>• Una cantidad fija de experiencia adicional, más experiencia de todas las fuentes y un nivel máximo superior.</mainText>",
       "name_en": "Top Lane Quest",
-      "description_en": "<mainText><stats></stats><br><br>Takedown champions, minions, towers, plates, and epic monsters to complete your quest. Earn points much faster in top lane!<br><br><font color = '#00FF00'>Rewards</font><br>• Enhance your Teleport with a large max-health shield on use<br>• Flat bonus experience, more experience from all sources, and increased level cap</mainText>"
+      "description_en": "<mainText><stats></stats><br><br>Takedown champions, minions, towers, plates, and epic monsters to complete your quest. Earn points much faster in top lane!<br><br><font color = '#00FF00'>Rewards</font><br>• Enhance your Teleport with a large max-health shield on use and reduced cooldown<br>• Flat bonus experience, more experience from all sources, and increased level cap</mainText>"
     },
     "123430": {
       "name": "Rito de la ruina",
@@ -9499,7 +9499,7 @@
     },
     "223152": {
       "name": "Cintomisil hextech",
-      "description": "<mainText><stats><attention>95</attention> de poder de habilidad<br><attention>400</attention> de vida<br><attention>20</attention> de velocidad de habilidades</stats><br><br><active>Activa -</active> <active>Supersónico:</active> Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos en arco que infligen daño.</mainText>",
+      "description": "<mainText><stats><attention>95</attention> de poder de habilidad<br><attention>400</attention> de vida<br><attention>10</attention> de velocidad de habilidades</stats><br><br><active>Activa -</active> <active>Supersónico:</active> Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos en arco que infligen daño.</mainText>",
       "colloq": "Hextech Rocketbelt;Cintomisil hextech",
       "plaintext": "",
       "image": {
@@ -9538,9 +9538,9 @@
       },
       "id": "223152",
       "name_es": "Cintomisil hextech",
-      "description_es": "<mainText><stats><attention>95</attention> de poder de habilidad<br><attention>400</attention> de vida<br><attention>20</attention> de velocidad de habilidades</stats><br><br><active>Activa -</active> <active>Supersónico:</active> Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos en arco que infligen daño.</mainText>",
+      "description_es": "<mainText><stats><attention>95</attention> de poder de habilidad<br><attention>400</attention> de vida<br><attention>10</attention> de velocidad de habilidades</stats><br><br><active>Activa -</active> <active>Supersónico:</active> Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos en arco que infligen daño.</mainText>",
       "name_en": "Hextech Rocketbelt",
-      "description_en": "<mainText><stats><attention>95</attention> Ability Power<br><attention>400</attention> Health<br><attention>20</attention> Ability Haste</stats><br><br><active>Active -</active> <active>Supersonic:</active> Dash in target direction, unleashing an arc of magic missiles that deal damage.</mainText>"
+      "description_en": "<mainText><stats><attention>95</attention> Ability Power<br><attention>400</attention> Health<br><attention>10</attention> Ability Haste</stats><br><br><active>Active -</active> <active>Supersonic:</active> Dash in target direction, unleashing an arc of magic missiles that deal damage.</mainText>"
     },
     "223153": {
       "name": "Hoja del rey arruinado",
@@ -18328,7 +18328,7 @@
     },
     "3152": {
       "name": "Cintomisil hextech",
-      "description": "<mainText><stats><attention>60</attention> de poder de habilidad<br><attention>350</attention> de vida<br><attention>20</attention> de velocidad de habilidades</stats><br><br><active>Supersónico</active><br>Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos que infligen <magicDamage>daño mágico</magicDamage>.</mainText>",
+      "description": "<mainText><stats><attention>60</attention> de poder de habilidad<br><attention>350</attention> de vida<br><attention>10</attention> de velocidad de habilidades</stats><br><br><active>Supersónico</active><br>Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos que infligen <magicDamage>daño mágico</magicDamage>.</mainText>",
       "colloq": "rocket;belt;cinturón;cinturon;cintomisil;hextech;misil;cinto;rocketbelt;;rocket belt;;Hextech Rocketbelt;Cintomisil hextech",
       "plaintext": "Puede activarse para desplazarse hacia delante y desencadenar una explosión ardiente.",
       "from": [
@@ -18373,9 +18373,9 @@
       "depth": 3,
       "id": "3152",
       "name_es": "Cintomisil hextech",
-      "description_es": "<mainText><stats><attention>60</attention> de poder de habilidad<br><attention>350</attention> de vida<br><attention>20</attention> de velocidad de habilidades</stats><br><br><active>Supersónico</active><br>Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos que infligen <magicDamage>daño mágico</magicDamage>.</mainText>",
+      "description_es": "<mainText><stats><attention>60</attention> de poder de habilidad<br><attention>350</attention> de vida<br><attention>10</attention> de velocidad de habilidades</stats><br><br><active>Supersónico</active><br>Te deslizas hacia la dirección seleccionada y lanzas proyectiles mágicos que infligen <magicDamage>daño mágico</magicDamage>.</mainText>",
       "name_en": "Hextech Rocketbelt",
-      "description_en": "<mainText><stats><attention>60</attention> Ability Power<br><attention>350</attention> Health<br><attention>20</attention> Ability Haste</stats><br><br><active>Supersonic</active><br>Dash in target direction, unleashing missiles that deal <magicDamage>magic damage</magicDamage>.</mainText>"
+      "description_en": "<mainText><stats><attention>60</attention> Ability Power<br><attention>350</attention> Health<br><attention>10</attention> Ability Haste</stats><br><br><active>Supersonic</active><br>Dash in target direction, unleashing missiles that deal <magicDamage>magic damage</magicDamage>.</mainText>"
     },
     "3153": {
       "name": "Hoja del rey arruinado",
@@ -33196,7 +33196,7 @@
     },
     "773064": {
       "name": "Fuerza de la naturaleza",
-      "description": "<mainText><stats><attention>76</attention> de resistencia mágica<br><attention>8%</attention> de velocidad de movimiento<br><attention>20</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Entereza</jadeUnique>: Regenera <scaleHealth>0 de vida</scaleHealth> adicional cada 5&nbsp;s.</mainText>",
+      "description": "<mainText><stats><attention>76</attention> de resistencia mágica<br><attention>8%</attention> de velocidad de movimiento<br><attention>40</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Entereza</jadeUnique>: Regenera <scaleHealth>0 de vida</scaleHealth> adicional cada 5&nbsp;s.</mainText>",
       "colloq": "Force of Nature;Fuerza de la naturaleza",
       "plaintext": "",
       "from": [
@@ -33234,19 +33234,19 @@
       },
       "stats": {
         "FlatSpellBlockMod": 76,
-        "FlatHPRegenMod": 4,
+        "FlatHPRegenMod": 8,
         "PercentMovementSpeedMod": 0.08
       },
       "depth": 2,
       "id": "773064",
       "name_es": "Fuerza de la naturaleza",
-      "description_es": "<mainText><stats><attention>76</attention> de resistencia mágica<br><attention>8%</attention> de velocidad de movimiento<br><attention>20</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Entereza</jadeUnique>: Regenera <scaleHealth>0 de vida</scaleHealth> adicional cada 5&nbsp;s.</mainText>",
+      "description_es": "<mainText><stats><attention>76</attention> de resistencia mágica<br><attention>8%</attention> de velocidad de movimiento<br><attention>40</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Entereza</jadeUnique>: Regenera <scaleHealth>0 de vida</scaleHealth> adicional cada 5&nbsp;s.</mainText>",
       "name_en": "Force of Nature",
-      "description_en": "<mainText><stats><attention>76</attention> Magic Resist<br><attention>8%</attention> Move Speed<br><attention>20</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Steadfast</jadeUnique>: Regenerate an additional <scaleHealth> health</scaleHealth> per 5 seconds.</mainText>"
+      "description_en": "<mainText><stats><attention>76</attention> Magic Resist<br><attention>8%</attention> Move Speed<br><attention>40</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Steadfast</jadeUnique>: Regenerate an additional <scaleHealth> health</scaleHealth> per 5 seconds.</mainText>"
     },
     "773065": {
       "name": "Rostro espiritual",
-      "description": "<mainText><stats><attention>400</attention> de vida<br><attention>55</attention> de resistencia mágica<br><attention>4</attention> de regeneración de vida cada 5 s<br><attention>20%</attention> de reducción de enfriamiento</stats><br><br><jadeUnique>Fuerza vital:</jadeUnique> Potencia los efectos de <healing>autocuración</healing>, <healing>regeneración de vida</healing>, <lifeSteal>robo de vida</lifeSteal> y <lifeSteal>succión de hechizo</lifeSteal> un 20%.</mainText>",
+      "description": "<mainText><stats><attention>400</attention> de vida<br><attention>55</attention> de resistencia mágica<br><attention>20</attention> de regeneración de vida cada 5 s<br><attention>20%</attention> de reducción de enfriamiento</stats><br><br><jadeUnique>Fuerza vital:</jadeUnique> Potencia los efectos de <healing>autocuración</healing>, <healing>regeneración de vida</healing>, <lifeSteal>robo de vida</lifeSteal> y <lifeSteal>succión de hechizo</lifeSteal> un 20%.</mainText>",
       "colloq": "Spirit Visage;Rostro espiritual",
       "plaintext": "",
       "from": [
@@ -33284,7 +33284,7 @@
       "stats": {
         "FlatSpellBlockMod": 55,
         "FlatHPPoolMod": 400,
-        "FlatHPRegenMod": 0.8
+        "FlatHPRegenMod": 4
       },
       "effect": {
         "Effect1Amount": "0",
@@ -33293,9 +33293,9 @@
       "depth": 3,
       "id": "773065",
       "name_es": "Rostro espiritual",
-      "description_es": "<mainText><stats><attention>400</attention> de vida<br><attention>55</attention> de resistencia mágica<br><attention>4</attention> de regeneración de vida cada 5 s<br><attention>20%</attention> de reducción de enfriamiento</stats><br><br><jadeUnique>Fuerza vital:</jadeUnique> Potencia los efectos de <healing>autocuración</healing>, <healing>regeneración de vida</healing>, <lifeSteal>robo de vida</lifeSteal> y <lifeSteal>succión de hechizo</lifeSteal> un 20%.</mainText>",
+      "description_es": "<mainText><stats><attention>400</attention> de vida<br><attention>55</attention> de resistencia mágica<br><attention>20</attention> de regeneración de vida cada 5 s<br><attention>20%</attention> de reducción de enfriamiento</stats><br><br><jadeUnique>Fuerza vital:</jadeUnique> Potencia los efectos de <healing>autocuración</healing>, <healing>regeneración de vida</healing>, <lifeSteal>robo de vida</lifeSteal> y <lifeSteal>succión de hechizo</lifeSteal> un 20%.</mainText>",
       "name_en": "Spirit Visage",
-      "description_en": "<mainText><stats><attention>400</attention> Health<br><attention>55</attention> Magic Resist<br><attention>4</attention> Health Regen per 5 seconds<br><attention>20%</attention> Cooldown Reduction</stats><br><br><jadeUnique>Lifeforce:</jadeUnique> Increases <healing>self-healing</healing>, <healing>Health Regen</healing>, <lifeSteal>Lifesteal</lifeSteal>, and <lifeSteal>Spell Vamp</lifeSteal> effects by 20%.</mainText>"
+      "description_en": "<mainText><stats><attention>400</attention> Health<br><attention>55</attention> Magic Resist<br><attention>20</attention> Health Regen per 5 seconds<br><attention>20%</attention> Cooldown Reduction</stats><br><br><jadeUnique>Lifeforce:</jadeUnique> Increases <healing>self-healing</healing>, <healing>Health Regen</healing>, <lifeSteal>Lifesteal</lifeSteal>, and <lifeSteal>Spell Vamp</lifeSteal> effects by 20%.</mainText>"
     },
     "773067": {
       "name": "Gema avivadora",
@@ -33889,7 +33889,7 @@
     },
     "773083": {
       "name": "Armadura de Warmog",
-      "description": "<mainText><stats><attention>920</attention> de vida<br><attention>10</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Pasiva:</jadeUnique> Otorga <scaleHealth>3.5 de vida</scaleHealth> y <healing>0.1 de regeneración de vida</healing> cada 5 s por acumulación de forma permanente. Se obtiene 1 acumulación por cada súbdito o monstruo asesinado y 10 acumulaciones por cada eliminación. Bonificaciones máximas: <scaleHealth>0 de vida</scaleHealth> y <healing>0 de regeneración de vida</healing> cada 5 s.</mainText>",
+      "description": "<mainText><stats><attention>920</attention> de vida<br><attention>30</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Pasiva:</jadeUnique> Otorga <scaleHealth>3.5 de vida</scaleHealth> y <healing>0.1 de regeneración de vida</healing> cada 5 s por acumulación de forma permanente. Se obtiene 1 acumulación por cada súbdito o monstruo asesinado y 10 acumulaciones por cada eliminación. Bonificaciones máximas: <scaleHealth>0 de vida</scaleHealth> y <healing>0 de regeneración de vida</healing> cada 5 s.</mainText>",
       "colloq": "Warmog's Armor;Armadura de Warmog",
       "plaintext": "",
       "from": [
@@ -33925,14 +33925,14 @@
       },
       "stats": {
         "FlatHPPoolMod": 920,
-        "FlatHPRegenMod": 2
+        "FlatHPRegenMod": 6
       },
       "depth": 3,
       "id": "773083",
       "name_es": "Armadura de Warmog",
-      "description_es": "<mainText><stats><attention>920</attention> de vida<br><attention>10</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Pasiva:</jadeUnique> Otorga <scaleHealth>3.5 de vida</scaleHealth> y <healing>0.1 de regeneración de vida</healing> cada 5 s por acumulación de forma permanente. Se obtiene 1 acumulación por cada súbdito o monstruo asesinado y 10 acumulaciones por cada eliminación. Bonificaciones máximas: <scaleHealth>0 de vida</scaleHealth> y <healing>0 de regeneración de vida</healing> cada 5 s.</mainText>",
+      "description_es": "<mainText><stats><attention>920</attention> de vida<br><attention>30</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Pasiva:</jadeUnique> Otorga <scaleHealth>3.5 de vida</scaleHealth> y <healing>0.1 de regeneración de vida</healing> cada 5 s por acumulación de forma permanente. Se obtiene 1 acumulación por cada súbdito o monstruo asesinado y 10 acumulaciones por cada eliminación. Bonificaciones máximas: <scaleHealth>0 de vida</scaleHealth> y <healing>0 de regeneración de vida</healing> cada 5 s.</mainText>",
       "name_en": "Warmog's Armor",
-      "description_en": "<mainText><stats><attention>920</attention> Health<br><attention>10</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Passive:</jadeUnique> Permanently gain <scaleHealth>3.5 Health</scaleHealth> and <healing>0.1 Health Regen</healing> per 5 sec. per stack. 1 stack is gained per minion or monster kill and 10 stacks are gained per Takedown. Maximum bonuses: <scaleHealth> Health</scaleHealth> and <healing> Health Regen</healing> per 5 seconds.</mainText>"
+      "description_en": "<mainText><stats><attention>920</attention> Health<br><attention>30</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Passive:</jadeUnique> Permanently gain <scaleHealth>3.5 Health</scaleHealth> and <healing>0.1 Health Regen</healing> per 5 sec. per stack. 1 stack is gained per minion or monster kill and 10 stacks are gained per Takedown. Maximum bonuses: <scaleHealth> Health</scaleHealth> and <healing> Health Regen</healing> per 5 seconds.</mainText>"
     },
     "773084": {
       "name": "Medallón estimulante",
@@ -34544,9 +34544,9 @@
         "sell": 1925
       },
       "tags": [
+        "Health",
         "SpellBlock",
-        "HealthRegen",
-        "SpellDamage"
+        "HealthRegen"
       ],
       "maps": {
         "11": false,
@@ -37161,7 +37161,7 @@
     },
     "773512": {
       "name": "Portal Zz'Rot",
-      "description": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Corredor entre puntos:</jadeUnique> Estar cerca de torretas o <keywordMajor>puertas del Vacío</keywordMajor> otorga hasta un <speed>30% de velocidad de movimiento</speed> que se acumula a lo largo de 2 s.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera una <keywordMajor>Puerta del Vacío</keywordMajor> en la ubicación objetivo durante 150 s. Cada 4 s, la puerta genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.</mainText>",
+      "description": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Velocista:</jadeUnique> Estar cerca de torretas o <keywordMajor>puertas del Vacío</keywordMajor> otorga hasta un <speed>30% de velocidad de movimiento</speed> que se acumula a lo largo de 2 s.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera una <keywordMajor>Puerta del Vacío</keywordMajor> en la ubicación objetivo durante 150 s. Cada 4 s, la puerta genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.</mainText>",
       "colloq": "Zz'Rot Portal;Portal Zz'Rot",
       "plaintext": "",
       "from": [
@@ -37206,7 +37206,7 @@
       "depth": 2,
       "id": "773512",
       "name_es": "Portal Zz'Rot",
-      "description_es": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Corredor entre puntos:</jadeUnique> Estar cerca de torretas o <keywordMajor>puertas del Vacío</keywordMajor> otorga hasta un <speed>30% de velocidad de movimiento</speed> que se acumula a lo largo de 2 s.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera una <keywordMajor>Puerta del Vacío</keywordMajor> en la ubicación objetivo durante 150 s. Cada 4 s, la puerta genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.</mainText>",
+      "description_es": "<mainText><stats><attention>50</attention> de armadura<br><attention>50</attention> de resistencia mágica<br><attention>5</attention> de regeneración de vida cada 5 s</stats><br><br><jadeUnique>Velocista:</jadeUnique> Estar cerca de torretas o <keywordMajor>puertas del Vacío</keywordMajor> otorga hasta un <speed>30% de velocidad de movimiento</speed> que se acumula a lo largo de 2 s.<jadeUnique>Activa</jadeUnique> 150 s<br>Genera una <keywordMajor>Puerta del Vacío</keywordMajor> en la ubicación objetivo durante 150 s. Cada 4 s, la puerta genera una <keywordMajor>criatura del Vacío</keywordMajor> volátil que avanza por la calle más cercana.</mainText>",
       "name_en": "Zz'Rot Portal",
       "description_en": "<mainText><stats><attention>50</attention> Armor<br><attention>50</attention> Magic Resist<br><attention>5</attention> Health Regen per 5 seconds</stats><br><br><jadeUnique>Point Runner:</jadeUnique> Standing near turrets or <keywordMajor>Void Gates</keywordMajor> grants up to <speed>30% Move Speed</speed> that builds up over 2 seconds.<jadeUnique>Active</jadeUnique> 150s<br>Spawn a <keywordMajor>Void Gate</keywordMajor> at the target location for 150 seconds. Every 4 seconds the gate spawns a volatile <keywordMajor>Voidspawn</keywordMajor> that travels down the nearest lane.</mainText>"
     },

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-
 import time
 from bisect import bisect_left
 from copy import deepcopy
 from functools import partial
 from typing import Any
 
-
 from PySide6.QtCore import QPointF, Qt, QThreadPool, QTimer, Slot
-from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -29,22 +27,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-
 from app.services.data_dragon_assets import DataDragonAssetService
 from app.services.game_calculator import calculate_item_stats
-from app.services.live_match_tracker import LiveMatchTracker
 from app.services.live_analysis_models_and_calculator import (
     attach_achievements,
     calculate_post_stats,
 )
+from app.services.live_match_tracker import LiveMatchTracker
 from app.services.match_log_service import MatchLogService
 from app.services.settings_service import SettingsService
-from app.ui.match_ai_worker import MatchAIWorker
-
-from app.ui.recommendation_panel import RecommendationPanel
-from app.ui.live_timeline import TimelineView
-from app.ui.live_analysis_task import AnalysisTask
 from app.ui.draft_icon_cache import DraftIconCache
+from app.ui.live_analysis_task import AnalysisTask
+from app.ui.live_timeline import TimelineView
+from app.ui.match_ai_worker import MatchAIWorker
+from app.ui.recommendation_panel import RecommendationPanel
+from app.ui.sistema_visual import PALETA
+from app.ui.tema import (
+    aplicar_apariencia,
+    aplicar_color,
+    color_con_alfa,
+)
 
 
 class VersusChart(QWidget):
@@ -90,34 +92,35 @@ class VersusChart(QWidget):
         self.update()
 
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor(8, 19, 34, 220))
-        painter.setPen(QColor(220, 231, 247))
+        painter.fillRect(self.rect(), color_con_alfa("superficie", 220))
+        painter.setPen(color_con_alfa("texto", 255))
         painter.drawText(12, 18, self.title)
-        painter.setPen(QColor(58, 188, 245))
+        painter.setPen(color_con_alfa("teal", 255))
         painter.drawText(12, 36, f"● {self.ally_name}")
         enemy_text = f"● {self.enemy_name}"
         enemy_width = painter.fontMetrics().horizontalAdvance(enemy_text)
-        painter.setPen(QColor(244, 87, 108))
+        painter.setPen(color_con_alfa("desventaja", 255))
         painter.drawText(self.width() - enemy_width - 15, 36, enemy_text)
         bounds = self.rect().adjusted(43, 49, -15, -30)
         if len(self.ally_values) + len(self.enemy_values) < 2:
-            painter.setPen(QColor(147, 170, 202))
+            painter.setPen(color_con_alfa("teal", 255))
             painter.drawText(bounds, Qt.AlignmentFlag.AlignCenter, "Esperando snapshots LIVE…")
             return
         ranges = self._cached_ranges
         self._draw_grid(painter, bounds, *ranges)
-        self._draw_series(painter, bounds, self.ally_values, *ranges, QColor(58, 188, 245))
-        self._draw_series(painter, bounds, self.enemy_values, *ranges, QColor(244, 87, 108))
-        painter.setPen(QColor(58, 188, 245))
+        self._draw_series(painter, bounds, self.ally_values, *ranges, color_con_alfa("teal", 255))
+        self._draw_series(painter, bounds, self.enemy_values, *ranges, color_con_alfa("desventaja", 255))
+        painter.setPen(color_con_alfa("teal", 255))
         painter.drawText(
             12,
             36,
             f"● {self.ally_name}",
         )
-        painter.setPen(QColor(244, 87, 108))
+        painter.setPen(color_con_alfa("desventaja", 255))
         painter.drawText(
             self.width() - enemy_width - 15,
             36,
@@ -140,8 +143,9 @@ class VersusChart(QWidget):
         return minimum_time, maximum_time, max(0.0, minimum_value - padding), maximum_value + padding
 
 
-    def _draw_grid(self, painter, bounds, minimum_time, maximum_time, minimum_value, maximum_value):
-        grid_pen = QPen(QColor(93, 126, 170, 80))
+    def _draw_grid(self, painter: Any, bounds: Any, minimum_time: Any, maximum_time: Any, minimum_value: Any, maximum_value: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
+        grid_pen = QPen(color_con_alfa("teal", 80))
         grid_pen.setStyle(Qt.PenStyle.DotLine)
         painter.setPen(grid_pen)
         for step in range(5):
@@ -149,7 +153,7 @@ class VersusChart(QWidget):
             y = int(bounds.bottom() - bounds.height() * ratio)
             painter.drawLine(bounds.left(), y, bounds.right(), y)
             value = minimum_value + (maximum_value - minimum_value) * ratio
-            painter.setPen(QColor(135, 159, 194))
+            painter.setPen(color_con_alfa("teal", 255))
             painter.drawText(3, y + 4, self._format_value(value))
             painter.setPen(grid_pen)
         for step in range(5):
@@ -157,7 +161,7 @@ class VersusChart(QWidget):
             x = int(bounds.left() + bounds.width() * ratio)
             painter.drawLine(x, bounds.top(), x, bounds.bottom())
             seconds = minimum_time + (maximum_time - minimum_time) * ratio
-            painter.setPen(QColor(135, 159, 194))
+            painter.setPen(color_con_alfa("teal", 255))
             painter.drawText(x - 17, self.height() - 9, LiveMatchTracker.format_time(seconds))
             painter.setPen(grid_pen)
 
@@ -204,7 +208,8 @@ class VersusChart(QWidget):
         return [bucket[i] for i in indices]
 
 
-    def _draw_hover(self, painter, bounds, minimum_time, maximum_time, minimum_value, maximum_value):
+    def _draw_hover(self, painter: Any, bounds: Any, minimum_time: Any, maximum_time: Any, minimum_value: Any, maximum_value: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         if self.hover_position is None or not bounds.contains(self.hover_position.toPoint()):
             return
         x = self.hover_position.x()
@@ -212,7 +217,7 @@ class VersusChart(QWidget):
         hover_time = minimum_time + ratio * (maximum_time - minimum_time)
         ally = self._nearest(self.ally_values, hover_time)
         enemy = self._nearest(self.enemy_values, hover_time)
-        pen = QPen(QColor(237, 209, 117, 180))
+        pen = QPen(color_con_alfa("oro_suave", 180))
         pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
         painter.drawLine(int(x), bounds.top(), int(x), bounds.bottom())
@@ -225,8 +230,8 @@ class VersusChart(QWidget):
         height = len(lines) * 16 + 10
         tooltip_x = min(int(x) + 9, bounds.right() - width)
         tooltip_y = bounds.top() + 8
-        painter.fillRect(tooltip_x, tooltip_y, width, height, QColor(3, 10, 20, 238))
-        painter.setPen(QColor(235, 242, 252))
+        painter.fillRect(tooltip_x, tooltip_y, width, height, color_con_alfa("base", 238))
+        painter.setPen(color_con_alfa("texto", 255))
         for index, line in enumerate(lines):
             painter.drawText(tooltip_x + 8, tooltip_y + 17 + index * 16, line)
 
@@ -280,25 +285,26 @@ class RiotComparisonBar(QWidget):
         self.setObjectName("riotComparisonBar")
         self.setMinimumHeight(108)
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: Any) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor(8, 19, 34, 220))
+        painter.fillRect(self.rect(), color_con_alfa("superficie", 220))
 
         bold_font = painter.font()
         bold_font.setBold(True)
         painter.setFont(bold_font)
-        painter.setPen(QColor(237, 209, 117))
+        painter.setPen(color_con_alfa("oro_suave", 255))
         painter.drawText(12, 20, f"{self.title} · RIOT")
 
         normal_font = painter.font()
         normal_font.setBold(False)
         painter.setFont(normal_font)
 
-        ally_color = QColor(58, 188, 245)
-        enemy_color = QColor(244, 87, 108)
-        muted_color = QColor(135, 159, 194)
-        background_color = QColor(33, 54, 82)
+        ally_color = color_con_alfa("teal", 255)
+        enemy_color = color_con_alfa("desventaja", 255)
+        muted_color = color_con_alfa("teal", 255)
+        background_color = color_con_alfa("borde", 255)
 
         maximum = max(self.ally_value, self.enemy_value, 1.0)
 
@@ -753,6 +759,7 @@ class LiveMatchAnalysisDialog(QDialog):
         self.content.setCurrentWidget(self._ai_page)
 
     def _create_ai_analysis_view(self, formatted_log: str) -> QWidget:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -803,19 +810,19 @@ class LiveMatchAnalysisDialog(QDialog):
             l_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             spin_lbl = QLabel("⏳ Generando análisis inteligente con Gemini IA...")
-            spin_lbl.setStyleSheet("color: #c4b5fd; font-size: 16px; font-weight: bold;")
+            aplicar_apariencia(spin_lbl, "tarjeta")
             spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             l_layout.addWidget(spin_lbl)
 
             desc_lbl = QLabel("Procesando la cronología de eventos, farmeo, builds, asesinatos y muertes...")
-            desc_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+            aplicar_apariencia(desc_lbl, "metadatos")
             desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             l_layout.addWidget(desc_lbl)
 
             pbar = QProgressBar()
             pbar.setRange(0, 0)
             pbar.setMaximumWidth(400)
-            pbar.setStyleSheet("QProgressBar { min-height: 8px; border-radius: 4px; background: rgba(30, 41, 59, 200); } QProgressBar::chunk { background: #8b5cf6; border-radius: 4px; }")
+            aplicar_apariencia(pbar, "tarjeta")
             l_layout.addWidget(pbar)
 
             layout.addWidget(loading_card, 1)
@@ -823,7 +830,7 @@ class LiveMatchAnalysisDialog(QDialog):
         elif has_analysis:
             model_used = self.session.get("ai_analysis_model", "Gemini AI")
             model_info = QLabel(f"✨ Análisis generado por {model_used}")
-            model_info.setStyleSheet("color: #a78bfa; font-size: 11px; font-weight: bold; margin-left: 4px;")
+            aplicar_apariencia(model_info, "etiqueta")
             layout.addWidget(model_info)
 
             text_browser = QTextBrowser()
@@ -840,7 +847,7 @@ class LiveMatchAnalysisDialog(QDialog):
             i_layout.setSpacing(14)
 
             head_lbl = QLabel("¿Qué evaluará la IA en esta partida?")
-            head_lbl.setStyleSheet("color: #c4b5fd; font-size: 18px; font-weight: bold;")
+            aplicar_apariencia(head_lbl, "pagina")
             i_layout.addWidget(head_lbl)
 
             items_text = (
@@ -855,7 +862,7 @@ class LiveMatchAnalysisDialog(QDialog):
             detail_lbl = QLabel()
             detail_lbl.setTextFormat(Qt.TextFormat.MarkdownText)
             detail_lbl.setText(items_text)
-            detail_lbl.setStyleSheet("color: #cbd5e1; font-size: 13px; line-height: 1.5;")
+            aplicar_apariencia(detail_lbl, "metadatos")
             detail_lbl.setWordWrap(True)
             i_layout.addWidget(detail_lbl)
 
@@ -941,6 +948,7 @@ class LiveMatchAnalysisDialog(QDialog):
             self.show_ai_analysis()
 
     def _show_raw_log_dialog(self, formatted_log: str) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         dialog = QDialog(self)
         dialog.setWindowTitle("Registro Oficial de Log de Partida · SolraLoL")
         dialog.resize(950, 700)
@@ -950,12 +958,12 @@ class LiveMatchAnalysisDialog(QDialog):
         d_layout.setSpacing(12)
 
         title = QLabel("📄 Fichero de Log de Partida")
-        title.setStyleSheet("color: #c4b5fd; font-size: 15px; font-weight: bold;")
+        aplicar_apariencia(title, "tarjeta")
         d_layout.addWidget(title)
 
         text_edit = QTextBrowser()
         text_edit.setPlainText(formatted_log)
-        text_edit.setStyleSheet("font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 11px; color: #cbd5e1; background: #090e1c; border: 1px solid rgba(138, 92, 246, 120); border-radius: 8px; padding: 10px;")
+        aplicar_apariencia(text_edit, "tarjeta")
         d_layout.addWidget(text_edit, 1)
 
         btn_layout = QHBoxLayout()
@@ -1224,7 +1232,8 @@ class LiveMatchAnalysisDialog(QDialog):
 
         return items
 
-    def _create_runes_panel(self, player):
+    def _create_runes_panel(self, player: Any) -> Any:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         frame = QFrame()
         frame.setObjectName("liveInfoPanel")
         layout = QVBoxLayout(frame)
@@ -1238,7 +1247,7 @@ class LiveMatchAnalysisDialog(QDialog):
         runes_data = self._extract_runes_data(player)
         if not runes_data:
             empty_lbl = QLabel("Sin runas configuradas")
-            empty_lbl.setStyleSheet("color: #7890a8; font-size: 11px; font-style: italic;")
+            aplicar_apariencia(empty_lbl, "metadatos")
             layout.addWidget(empty_lbl)
             return frame
 
@@ -1271,10 +1280,10 @@ class LiveMatchAnalysisDialog(QDialog):
             text_vbox.setSpacing(1)
 
             lbl_tag = QLabel(label_type.upper())
-            lbl_tag.setStyleSheet("color: #d9ae4f; font-size: 9px; font-weight: 800;")
+            aplicar_apariencia(lbl_tag, "etiqueta")
 
             lbl_name = QLabel(rune_name)
-            lbl_name.setStyleSheet("color: #e2e8f0; font-size: 11px; font-weight: 700;")
+            aplicar_apariencia(lbl_name, "etiqueta")
 
             text_vbox.addWidget(lbl_tag)
             text_vbox.addWidget(lbl_name)
@@ -1288,7 +1297,8 @@ class LiveMatchAnalysisDialog(QDialog):
         layout.addLayout(runes_row)
         return frame
 
-    def _create_awards_panel(self, player_key, side):
+    def _create_awards_panel(self, player_key: Any, side: Any) -> Any:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         frame = QFrame()
         frame.setObjectName("liveAwardsPanel")
         layout = QVBoxLayout(frame)
@@ -1300,7 +1310,7 @@ class LiveMatchAnalysisDialog(QDialog):
         awards = self.session.get("achievements", {}).get(player_key, [])
         if not awards:
             empty_lbl = QLabel("Sin logros detectados aún")
-            empty_lbl.setStyleSheet("color: #7890a8; font-size: 11px; font-style: italic;")
+            aplicar_apariencia(empty_lbl, "metadatos")
             layout.addWidget(empty_lbl)
         else:
             grid_layout = QGridLayout()
@@ -1339,11 +1349,8 @@ class LiveMatchAnalysisDialog(QDialog):
         return frame
 
 
-    def _create_metrics_panel(
-        self,
-        player,
-        player_key,
-    ):
+    def _create_metrics_panel(self, player: Any, player_key: Any) -> Any:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         frame = QFrame()
         frame.setObjectName("liveMetricSummary")
         layout = QVBoxLayout(frame)
@@ -1381,20 +1388,20 @@ class LiveMatchAnalysisDialog(QDialog):
             critical *= 100
 
         metrics = [
-            ("KDA", f"{int(point.get('kills', 0) or 0)}/{int(point.get('deaths', 0) or 0)}/{int(point.get('assists', 0) or 0)}", "#e2e8f0"),
-            ("Nivel", f"{int(point.get('level', 1) or 1)}", "#cbd5e1"),
-            ("CS", f"{int(cs or 0)}", "#38bdf8"),
-            ("Oro estim.", f"{int(point.get('estimated_gold', 0) or 0):,}", "#facc15"),
-            ("Visión", f"{int(raw_stats.get('vision_score', 0) or 0)}", "#a78bfa"),
-            ("Vida máx.", f"{int(post_stats.get('hp', 0) or 0):,}", "#4ade80"),
-            ("AD", f"{float(post_stats.get('ad', 0) or 0):.1f}", "#f87171"),
-            ("AP", f"{float(post_stats.get('ap', 0) or 0):.1f}", "#c084fc"),
-            ("Armadura", f"{float(post_stats.get('armor', 0) or 0):.1f}", "#fbbf24"),
-            ("MR", f"{float(post_stats.get('mr', 0) or 0):.1f}", "#60a5fa"),
-            ("Letalidad", f"{float(post_stats.get('lethality', 0) or 0):.1f}", "#f97316"),
-            ("Pen. arm.", f"{armor_pen:.0f}%", "#fb923c"),
-            ("Robo vida", f"{life_steal:.0f}%", "#f43f5e"),
-            ("Crítico", f"{critical:.0f}%", "#eab308"),
+            ("KDA", f"{int(point.get('kills', 0) or 0)}/{int(point.get('deaths', 0) or 0)}/{int(point.get('assists', 0) or 0)}", PALETA["texto"]),
+            ("Nivel", f"{int(point.get('level', 1) or 1)}", PALETA["texto"]),
+            ("CS", f"{int(cs or 0)}", PALETA["teal"]),
+            ("Oro estim.", f"{int(point.get('estimated_gold', 0) or 0):,}", PALETA["oro_suave"]),
+            ("Visión", f"{int(raw_stats.get('vision_score', 0) or 0)}", PALETA["magenta"]),
+            ("Vida máx.", f"{int(post_stats.get('hp', 0) or 0):,}", PALETA["ventaja"]),
+            ("AD", f"{float(post_stats.get('ad', 0) or 0):.1f}", PALETA["desventaja"]),
+            ("AP", f"{float(post_stats.get('ap', 0) or 0):.1f}", PALETA["magenta"]),
+            ("Armadura", f"{float(post_stats.get('armor', 0) or 0):.1f}", PALETA["oro_suave"]),
+            ("MR", f"{float(post_stats.get('mr', 0) or 0):.1f}", PALETA["teal"]),
+            ("Letalidad", f"{float(post_stats.get('lethality', 0) or 0):.1f}", PALETA["oro_suave"]),
+            ("Pen. arm.", f"{armor_pen:.0f}%", PALETA["oro_suave"]),
+            ("Robo vida", f"{life_steal:.0f}%", PALETA["desventaja"]),
+            ("Crítico", f"{critical:.0f}%", PALETA["oro_suave"]),
         ]
 
         for index, (label, val, val_color) in enumerate(metrics):
@@ -1402,10 +1409,10 @@ class LiveMatchAnalysisDialog(QDialog):
             col_idx = (index % 2) * 2
 
             lbl = QLabel(f"{label}:")
-            lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 600;")
+            aplicar_apariencia(lbl, "etiqueta")
 
             val_lbl = QLabel(str(val))
-            val_lbl.setStyleSheet(f"color: {val_color}; font-size: 11px; font-weight: 800;")
+            aplicar_color(val_lbl, val_color)
             val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
             grid.addWidget(lbl, row_idx, col_idx)
@@ -1415,7 +1422,7 @@ class LiveMatchAnalysisDialog(QDialog):
 
         quality = QLabel("≈ Base + nivel + objetos" if post_stats else "Calculando atributos en segundo plano…")
         quality.setObjectName("liveMetricEstimate")
-        quality.setStyleSheet("color: #64748b; font-size: 10px; font-style: italic; margin-top: 4px;")
+        aplicar_apariencia(quality, "metadatos")
         layout.addWidget(quality)
 
         return frame
@@ -1651,7 +1658,8 @@ class LiveMatchAnalysisDialog(QDialog):
         return calculated
 
 
-    def _create_inventory_panel(self, player, player_key):
+    def _create_inventory_panel(self, player: Any, player_key: Any) -> Any:
+        """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         frame = QFrame()
         frame.setObjectName("liveInventoryPanel")
         layout = QVBoxLayout(frame)
@@ -1674,7 +1682,7 @@ class LiveMatchAnalysisDialog(QDialog):
 
         if not valid_items:
             empty_lbl = QLabel("Sin objetos")
-            empty_lbl.setStyleSheet("color: #7890a8; font-size: 11px; font-style: italic;")
+            aplicar_apariencia(empty_lbl, "metadatos")
             layout.addWidget(empty_lbl)
             return frame
 

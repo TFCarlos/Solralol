@@ -1,11 +1,17 @@
 """Timeline virtualizada: sin widgets por evento ni E/S durante el renderizado."""
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QAbstractItemView, QListView, QStyle, QStyledItemDelegate
 
 from app.services.live_match_tracker import LiveMatchTracker
+from app.ui.sistema_visual import PALETA
+from app.ui.tema import (
+    aplicar_tema,
+)
 
 
 class TimelineModel(QAbstractListModel):
@@ -77,25 +83,25 @@ class TimelineDelegate(QStyledItemDelegate):
         timestamp, text, side = index.data(TimelineModel.EventRole)
         painter.save()
         rect = option.rect
-        background = QColor("#0d1c30" if index.row() % 2 == 0 else "#102239")
+        background = QColor(PALETA["superficie"] if index.row() % 2 == 0 else PALETA["elevada"])
         if option.state & QStyle.StateFlag.State_Selected:
-            background = QColor("#254665")
+            background = QColor(PALETA["teal"])
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            background = QColor("#1a324d")
+            background = QColor(PALETA["borde"])
         painter.fillRect(rect, background)
-        painter.setPen(QPen(QColor("#233b54")))
+        painter.setPen(QPen(QColor(PALETA["borde"])))
         painter.drawLine(rect.bottomLeft(), rect.bottomRight())
         center_x = rect.center().x()
         time_rect = QRect(center_x - 29, rect.top(), 58, rect.height())
         painter.setFont(option.font)
-        painter.setPen(QColor("#e9c875"))
+        painter.setPen(QColor(PALETA["oro_suave"]))
         painter.drawText(time_rect, Qt.AlignmentFlag.AlignCenter, timestamp)
-        color = QColor("#57cafa" if side == "ally" else "#fa7e92" if side == "enemy" else "#c3b1fc")
+        color = QColor(PALETA["teal"] if side == "ally" else PALETA["desventaja"] if side == "enemy" else PALETA["magenta"])
         # Global events keep their timestamp; previously it was overwritten.
         if side == "global":
             time_rect = QRect(rect.left() + 8, rect.top(), 54, rect.height())
             painter.fillRect(rect, background)
-            painter.setPen(QColor("#e9c875"))
+            painter.setPen(QColor(PALETA["oro_suave"]))
             painter.drawText(time_rect, Qt.AlignmentFlag.AlignCenter, timestamp)
             text_rect = rect.adjusted(72, 4, -10, -4)
         elif side == "ally":
@@ -122,7 +128,8 @@ class TimelineDelegate(QStyledItemDelegate):
 
 
 class TimelineView(QListView):
-    def __init__(self, item_catalog, parent=None):
+    def __init__(self, item_catalog: Any, parent: Any=None) -> None:
+        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setObjectName("liveTimelineView")
         self.timeline_model = TimelineModel(item_catalog, self)
@@ -134,10 +141,7 @@ class TimelineView(QListView):
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setMouseTracking(True)
         self.setSpacing(0)
-        self.setStyleSheet(
-            "QListView { background: #0d1c30; border: 1px solid #29435e; "
-            "border-radius: 6px; outline: none; padding: 0; }"
-        )
+        aplicar_tema(self)
 
     def set_events(self, events, ally_key, enemy_key):
         scrollbar = self.verticalScrollBar()
@@ -155,6 +159,6 @@ class TimelineView(QListView):
         super().paintEvent(event)
         if not self.timeline_model.rowCount():
             painter = QPainter(self.viewport())
-            painter.setPen(QColor("#94a3b8"))
+            painter.setPen(QColor(PALETA["secundario"]))
             painter.drawText(self.viewport().rect(), Qt.AlignmentFlag.AlignCenter,
                              "Aún no hay eventos para este filtro.")

@@ -1,6 +1,9 @@
 import json
+import logging
+import os
 import re
 import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 
 import requests
@@ -12,7 +15,7 @@ DD_BASE_URL = "https://ddragon.leagueoflegends.com"
 ITEM_CACHE_FILE = DATA_DIR / "items.json"
 ICON_DIR = DATA_DIR / "item_icons"
 CHAMPION_ICON_DIR = DATA_DIR / "champion_icons"
-CHAMPION_DATA_DIR = DATA_DIR / "champion_data"
+CHAMPION_DATA_DIR = DATA_DIR / "champion_metadata"
 CHAMPION_MEMORY_CACHE: dict[str, dict] = {}
 RUNE_ICON_CATALOG_CACHE: dict[str, str] = {}
 #: La descarga del catálogo de runas ya falló en esta ejecución (sin red).
@@ -142,7 +145,11 @@ def load_item_catalog() -> tuple[str, dict]:
 
 
 def get_item_total_gold(item_id: int | str, item_catalog: dict) -> int:
-    if isinstance(item_catalog, dict) and "items" in item_catalog and isinstance(item_catalog["items"], dict):
+    if (
+        isinstance(item_catalog, dict)
+        and "items" in item_catalog
+        and isinstance(item_catalog["items"], dict)
+    ):
         item_catalog = item_catalog["items"]
     item = item_catalog.get(str(item_id)) if isinstance(item_catalog, dict) else None
 
@@ -161,7 +168,11 @@ def get_item_icon_path(
 ) -> Path | None:
     ICON_DIR.mkdir(exist_ok=True)
     item_id = str(item_id)
-    if isinstance(item_catalog, dict) and "items" in item_catalog and isinstance(item_catalog["items"], dict):
+    if (
+        isinstance(item_catalog, dict)
+        and "items" in item_catalog
+        and isinstance(item_catalog["items"], dict)
+    ):
         item_catalog = item_catalog["items"]
 
     item = item_catalog.get(item_id) if isinstance(item_catalog, dict) else None
@@ -193,7 +204,9 @@ def get_item_icon_path(
             if fallback_path.exists():
                 return fallback_path
             try:
-                response = requests.get(f"{DD_BASE_URL}/cdn/{version}/img/item/{item_id}.png", timeout=10)
+                response = requests.get(
+                    f"{DD_BASE_URL}/cdn/{version}/img/item/{item_id}.png", timeout=10
+                )
                 response.raise_for_status()
                 fallback_path.write_bytes(response.content)
                 return fallback_path
@@ -300,13 +313,106 @@ def get_champion_icon_path(
             if cap_path.exists():
                 return cap_path
             try:
-                response = requests.get(f"{DD_BASE_URL}/cdn/{version}/img/champion/{capitalized}.png", timeout=10)
+                response = requests.get(
+                    f"{DD_BASE_URL}/cdn/{version}/img/champion/{capitalized}.png",
+                    timeout=10,
+                )
                 response.raise_for_status()
                 cap_path.write_bytes(response.content)
                 return cap_path
             except requests.RequestException:
                 pass
         return None
+
+
+def _imagen_splash_valida(contenido: bytes) -> bool:
+    """Comprueba cabecera JPEG/PNG/WebP y tamaño mínimo; devuelve True si es imagen válida."""
+    if len(contenido) < 1024:
+        return False
+    return contenido.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")) or (
+        contenido[:4] == b"RIFF" and contenido[8:12] == b"WEBP"
+    )
+
+
+def _registrar_origen_splash(nombre_archivo: str, url: str) -> None:
+    """Anota la URL de origen del splash en origenes.json sin bloquear la descarga; retorna None."""
+    ruta = DATA_DIR / "champion_splashes" / "origenes.json"
+    try:
+        origenes = {}
+        if ruta.is_file():
+            cargado = json.loads(ruta.read_text(encoding="utf-8"))
+            if isinstance(cargado, dict):
+                origenes = cargado
+        origenes[nombre_archivo] = url
+        ruta.write_text(
+            json.dumps(origenes, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except (OSError, ValueError):
+        logging.getLogger(__name__).debug(
+            "[assets] no se pudo registrar el origen de %s", nombre_archivo
+        )
+
+
+def get_champion_splash_path(
+    champion_name: str, *, download: bool = True
+) -> Path | None:
+    """Devuelve la ruta local del splash del campeón, descargándolo solo si falta.
+
+    El archivo se resuelve en `data/champion_splashes/<identificador>_0.jpg`
+    (admite PNG/WebP ya presentes) con el identificador normalizado de Data
+    Dragon, que es la misma referencia que consulta el análisis local al
+    seleccionar un campeón. Si el arte local existe se devuelve sin red; si
+    falta y `download` es verdadero se descarga, se valida por cabecera y se
+    guarda de forma atómica, registrando la URL de origen en `origenes.json`.
+
+    Devuelve `None` cuando no hay arte local y la descarga falla o el
+    contenido no es una imagen válida: nunca propaga la excepción para que un
+    fallo de recursos no descarte la actualización de datos.
+    """
+    identificador = "".join(
+        caracter
+        for caracter in champion_asset_name(champion_name)
+        if caracter.isalnum()
+    )
+    if not identificador:
+        return None
+    registro = logging.getLogger(__name__)
+    directorio = DATA_DIR / "champion_splashes"
+    directorio.mkdir(parents=True, exist_ok=True)
+    for extension in ("jpg", "png", "webp"):
+        candidata = directorio / f"{identificador}_0.{extension}"
+        if candidata.is_file():
+            return candidata
+    if not download:
+        return None
+    url = f"{DD_BASE_URL}/cdn/img/champion/splash/{identificador}_0.jpg"
+    registro.debug("[assets] splash ausente: %s", champion_name)
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+    except requests.RequestException:
+        registro.warning(
+            "[assets] splash no disponible para %s", champion_name, exc_info=True
+        )
+        return None
+    contenido = response.content
+    if not _imagen_splash_valida(contenido):
+        registro.warning("[assets] splash inválido descargado para %s", champion_name)
+        return None
+    destino = directorio / f"{identificador}_0.jpg"
+    temporal = directorio / f".{identificador}_0.{os.getpid()}.tmp"
+    try:
+        temporal.write_bytes(contenido)
+        os.replace(temporal, destino)
+    except OSError:
+        temporal.unlink(missing_ok=True)
+        registro.warning(
+            "[assets] splash no guardado para %s", champion_name, exc_info=True
+        )
+        return None
+    _registrar_origen_splash(destino.name, url)
+    registro.debug("[assets] splash guardado: %s", destino)
+    return destino
 
 
 RUNE_ICON_DIR = DATA_DIR / "rune_icons"
@@ -509,7 +615,11 @@ def get_rune_icon_path(
 
     if asset_path:
         try:
-            url_path = asset_path if asset_path.startswith("perk-images/") else f"perk-images/{asset_path}"
+            url_path = (
+                asset_path
+                if asset_path.startswith("perk-images/")
+                else f"perk-images/{asset_path}"
+            )
             response = requests.get(f"{DD_BASE_URL}/cdn/img/{url_path}", timeout=10)
             response.raise_for_status()
             local_path.parent.mkdir(exist_ok=True)
@@ -520,8 +630,14 @@ def get_rune_icon_path(
             dynamic_path = _rune_icon_catalog(version).get(lookup_name.lower())
             if dynamic_path and dynamic_path != asset_path:
                 try:
-                    url_path = dynamic_path if dynamic_path.startswith("perk-images/") else f"perk-images/{dynamic_path}"
-                    response = requests.get(f"{DD_BASE_URL}/cdn/img/{url_path}", timeout=10)
+                    url_path = (
+                        dynamic_path
+                        if dynamic_path.startswith("perk-images/")
+                        else f"perk-images/{dynamic_path}"
+                    )
+                    response = requests.get(
+                        f"{DD_BASE_URL}/cdn/img/{url_path}", timeout=10
+                    )
                     response.raise_for_status()
                     local_path.parent.mkdir(exist_ok=True)
                     local_path.write_bytes(response.content)
@@ -552,7 +668,9 @@ def _rune_icon_catalog(version: str) -> dict[str, str]:
         )
         response.raise_for_status()
         for style in response.json():
-            RUNE_ICON_CATALOG_CACHE[str(style.get("name", "")).lower()] = style.get("icon", "")
+            RUNE_ICON_CATALOG_CACHE[str(style.get("name", "")).lower()] = style.get(
+                "icon", ""
+            )
             for slot in style.get("slots", []):
                 for rune in slot.get("runes", []):
                     name = str(rune.get("name", "")).lower()
@@ -571,8 +689,13 @@ def download_all_rune_icons(version: str) -> int:
     downloaded = 0
     # El catálogo cubre runas y árboles; los fragmentos no figuran en él.
     names = set(catalog) | {
-        "Adaptive Force", "Attack Speed", "Ability Haste", "Movement Speed",
-        "Health Scaling", "Health", "Tenacity and Slow Resist",
+        "Adaptive Force",
+        "Attack Speed",
+        "Ability Haste",
+        "Movement Speed",
+        "Health Scaling",
+        "Health",
+        "Tenacity and Slow Resist",
     }
     for name in names:
         before = get_rune_icon_path(name, version)
@@ -583,7 +706,10 @@ def download_all_rune_icons(version: str) -> int:
 def get_champion_data(
     champion_name: str,
     version: str,
+    *,
+    download: bool = True,
 ) -> dict:
+    """Devuelve metadatos del campe?n; download controla si se permite red."""
     safe_name = champion_asset_name(champion_name)
 
     if safe_name in CHAMPION_MEMORY_CACHE:
@@ -603,10 +729,10 @@ def get_champion_data(
         except (json.JSONDecodeError, OSError):
             return {}
 
-    url = (
-        f"{DD_BASE_URL}/cdn/{version}/data/es_ES/champion/"
-        f"{safe_name}.json"
-    )
+    if not download:
+        return {}
+
+    url = f"{DD_BASE_URL}/cdn/{version}/data/es_ES/champion/{safe_name}.json"
 
     try:
         response = requests.get(url, timeout=15)
@@ -629,35 +755,193 @@ def get_champion_data(
 
 SPELL_ICON_DIR = DATA_DIR / "spell_icons"
 
-SPELL_NAME_TO_FILE = {
-    "destello": "SummonerFlash.png",
+SPELL_CANONICAL_TO_FILE = {
     "flash": "SummonerFlash.png",
-    "teleportación": "SummonerTeleport.png",
-    "teleport": "SummonerTeleport.png",
-    "aplastar": "SummonerSmite.png",
-    "smite": "SummonerSmite.png",
-    "ignición": "SummonerDot.png",
     "ignite": "SummonerDot.png",
-    "curación": "SummonerHeal.png",
-    "heal": "SummonerHeal.png",
-    "barrera": "SummonerBarrier.png",
-    "barrier": "SummonerBarrier.png",
-    "fantasmal": "SummonerHaste.png",
-    "ghost": "SummonerHaste.png",
-    "extenuación": "SummonerExhaust.png",
-    "exhaust": "SummonerExhaust.png",
-    "purificar": "SummonerBoost.png",
+    "smite": "SummonerSmite.png",
+    "teleport": "SummonerTeleport.png",
     "cleanse": "SummonerBoost.png",
-    "claridad": "SummonerMana.png",
+    "heal": "SummonerHeal.png",
+    "barrier": "SummonerBarrier.png",
+    "ghost": "SummonerHaste.png",
+    "exhaust": "SummonerExhaust.png",
+    "clarity": "SummonerMana.png",
+    "mark": "SummonerSnowball.png",
+    "poro recall": "SummonerPoroRecall.png",
+    "poro throw": "SummonerPoroThrow.png",
+}
+
+SPELL_ID_TO_CANONICAL = {
+    1: "cleanse",
+    2: "clarity",
+    3: "exhaust",
+    4: "flash",
+    6: "ghost",
+    7: "heal",
+    11: "smite",
+    12: "teleport",
+    13: "clarity",
+    14: "ignite",
+    21: "barrier",
+    32: "mark",
+}
+
+SPELL_ALIAS_TO_CANONICAL = {
+    "flash": "flash",
+    "destello": "flash",
+    "summonerflash": "flash",
+    "ignite": "ignite",
+    "ignition": "ignite",
+    "ignicion": "ignite",
+    "summonerdot": "ignite",
+    "smite": "smite",
+    "aplastar": "smite",
+    "summonersmite": "smite",
+    "unleashedsmite": "smite",
+    "primalsmite": "smite",
+    "summonersmiteavataroffensive": "smite",
+    "summonersmiteavatardefensive": "smite",
+    "summonersmiteavatarutility": "smite",
+    "teleport": "teleport",
+    "teleportation": "teleport",
+    "teleportacion": "teleport",
+    "teleportaciondesatada": "teleport",
+    "unleashedteleport": "teleport",
+    "summonerteleport": "teleport",
+    "cleanse": "cleanse",
+    "purificar": "cleanse",
+    "summonerboost": "cleanse",
+    "heal": "heal",
+    "curacion": "heal",
+    "summonerheal": "heal",
+    "barrier": "barrier",
+    "barrera": "barrier",
+    "summonerbarrier": "barrier",
+    "ghost": "ghost",
+    "haste": "ghost",
+    "fantasmal": "ghost",
+    "summonerhaste": "ghost",
+    "exhaust": "exhaust",
+    "extenuacion": "exhaust",
+    "summonerexhaust": "exhaust",
+    "clarity": "clarity",
+    "claridad": "clarity",
+    "summonermana": "clarity",
+    "mark": "mark",
+    "snowball": "mark",
+    "snowballmark": "mark",
+    "summonersnowball": "mark",
+    "summonersnowballmark": "mark",
+    "pororecall": "poro recall",
+    "summonerpororecall": "poro recall",
+    "porothrow": "poro throw",
+    "summonerporothrow": "poro throw",
 }
 
 
-def get_spell_icon_path(spell_name: str, version: str, *, download: bool = True) -> Path | None:
+@dataclass(frozen=True)
+class ResolucionIconoHechizo:
+    """Describe el resultado de normalizar y resolver un hechizo de invocador."""
+
+    identificador_crudo: str
+    identificador_normalizado: str | None
+    ruta: Path | None
+    estado: str
+
+
+def normalizar_hechizo_invocador(hechizo: object) -> str | None:
+    """Convierte IDs, nombres y claves internas a un nombre canónico.
+
+    Args:
+        hechizo: Valor de Live Client Data o identificador individual.
+    Returns:
+        Nombre canónico, o None cuando el identificador no se reconoce.
+    """
+    campos = ("id", "displayName", "name", "rawDisplayName", "rawDescription")
+    valores: list[object] = []
+    if isinstance(hechizo, dict):
+        valores.extend(hechizo.get(campo) for campo in campos)
+    else:
+        valores.append(hechizo)
+    for valor in valores:
+        if valor is None or isinstance(valor, bool):
+            continue
+        texto = str(valor).strip()
+        if not texto:
+            continue
+        if texto.isdigit() and int(texto) in SPELL_ID_TO_CANONICAL:
+            return SPELL_ID_TO_CANONICAL[int(texto)]
+        limpio = unicodedata.normalize("NFKD", texto)
+        limpio = "".join(
+            caracter for caracter in limpio if not unicodedata.combining(caracter)
+        )
+        clave = re.sub(r"[^a-z0-9]", "", limpio.casefold())
+        clave = re.sub(r"^generatedtipsummonerspell", "", clave)
+        clave = re.sub(r"(?:displayname|description)$", "", clave)
+        canonical = SPELL_ALIAS_TO_CANONICAL.get(clave)
+        if canonical:
+            return canonical
+    return None
+
+
+def resolver_icono_hechizo_invocador(
+    hechizo: object,
+    version: str,
+    *,
+    download: bool = False,
+) -> ResolucionIconoHechizo:
+    """Clasifica la ausencia de datos y la resolución del asset del hechizo.
+
+    Args:
+        hechizo: Registro LIVE, nombre, clave interna o ID numérico.
+        version: Versión de Data Dragon para descargar si se autoriza.
+        download: Permite descargar el asset cuando la caché local no lo tenga.
+    Returns:
+        Estado de resolución con identificador, ruta y estado de datos.
+    """
+    if isinstance(hechizo, dict):
+        crudo = str(
+            hechizo.get("displayName")
+            or hechizo.get("name")
+            or hechizo.get("rawDisplayName")
+            or hechizo.get("id")
+            or ""
+        ).strip()
+    else:
+        crudo = "" if hechizo is None else str(hechizo).strip()
+    if not crudo:
+        return ResolucionIconoHechizo("", None, None, "sin_datos")
+    canonical = normalizar_hechizo_invocador(hechizo)
+    if canonical is None:
+        return ResolucionIconoHechizo(crudo, None, None, "sin_resolver")
+    ruta = get_spell_icon_path(canonical, version, download=download)
+    if ruta is None or not ruta.exists():
+        return ResolucionIconoHechizo(crudo, canonical, ruta, "asset_ausente")
+    return ResolucionIconoHechizo(crudo, canonical, ruta, "resuelto")
+
+
+def get_spell_icon_path(
+    spell_name: object,
+    version: str,
+    *,
+    download: bool = True,
+) -> Path | None:
+    """Resuelve un hechizo canónico al asset local de Data Dragon.
+
+    Args:
+        spell_name: Nombre, alias, ID o registro de hechizo.
+        version: Versión de Data Dragon usada para una descarga opcional.
+        download: Permite descargar el icono si no está en caché.
+    Returns:
+        Ruta existente del icono o None si no se pudo resolver.
+    """
     SPELL_ICON_DIR.mkdir(parents=True, exist_ok=True)
-    raw_key = spell_name.strip().lower()
-    file_name = SPELL_NAME_TO_FILE.get(raw_key)
+    canonical = normalizar_hechizo_invocador(spell_name)
+    if canonical is None:
+        return None
+    file_name = SPELL_CANONICAL_TO_FILE.get(canonical)
     if not file_name:
-        file_name = f"Summoner{spell_name.capitalize()}.png"
+        return None
 
     local_path = SPELL_ICON_DIR / file_name
     if local_path.exists():
@@ -667,6 +951,111 @@ def get_spell_icon_path(spell_name: str, version: str, *, download: bool = True)
         return None
 
     url = f"{DD_BASE_URL}/cdn/{version}/img/spell/{file_name}"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        local_path.write_bytes(response.content)
+        return local_path
+    except requests.RequestException:
+        return None
+
+
+#: Iconos de las habilidades (Q/W/E/R) de cada campeón.
+ABILITY_ICON_DIR = DATA_DIR / "ability_icons"
+#: Caché del JSON completo del campeón. Va en su propia carpeta (y no en
+#: `champion_data/`) para no colisionar con las matrices de `ChampionVariantService`.
+CHAMPION_ABILITIES_DIR = DATA_DIR / "champion_abilities"
+CHAMPION_ABILITIES_CACHE: dict[str, dict[str, dict]] = {}
+
+#: Orden de las habilidades según aparecen en los `spells` de Data Dragon.
+ABILITY_KEYS: tuple[str, ...] = ("Q", "W", "E", "R")
+
+
+def get_champion_abilities(
+    champion_name: str, version: str, *, download: bool = True
+) -> dict[str, dict[str, str]]:
+    """Habilidades Q/W/E/R del campeón (nombre e imagen) desde Data Dragon.
+
+    Devuelve ``{"Q": {"name": .., "id": .., "image": "AatroxQ.png"}, ...}``.
+    El JSON completo del campeón se memoriza y se guarda en
+    ``data/champion_abilities`` para no chocar con las matrices de variantes.
+    """
+    safe_name = champion_asset_name(champion_name)
+    cached = CHAMPION_ABILITIES_CACHE.get(safe_name)
+    if cached is not None:
+        return cached
+
+    cache_path = CHAMPION_ABILITIES_DIR / f"{safe_name}.json"
+    raw: dict = {}
+    if cache_path.exists():
+        try:
+            raw = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            raw = {}
+
+    if not raw and not download:
+        return {}
+    if not raw:
+        url = f"{DD_BASE_URL}/cdn/{version}/data/es_ES/champion/{safe_name}.json"
+        try:
+            response = requests.get(url, timeout=15)
+            response.raise_for_status()
+            raw = response.json()
+            CHAMPION_ABILITIES_DIR.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps(raw, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except requests.RequestException:
+            return {}
+
+    champion = raw.get("data", {}).get(safe_name, {}) if isinstance(raw, dict) else {}
+    spells = champion.get("spells", []) if isinstance(champion, dict) else []
+
+    result: dict[str, dict[str, str]] = {}
+    for key, spell in zip(ABILITY_KEYS, spells):
+        if not isinstance(spell, dict):
+            continue
+        image = spell.get("image", {})
+        result[key] = {
+            "name": str(spell.get("name", "")),
+            "id": str(spell.get("id", "")),
+            "image": str(image.get("full", "")) if isinstance(image, dict) else "",
+        }
+
+    CHAMPION_ABILITIES_CACHE[safe_name] = result
+    return result
+
+
+def get_ability_icon_path(
+    champion_name: str,
+    key: str,
+    version: str,
+    *,
+    download: bool = True,
+) -> Path | None:
+    """Icono de la habilidad ``key`` (``Q``/``W``/``E``/``R``) del campeón."""
+    ability_key = str(key).strip().upper()
+    if ability_key not in ABILITY_KEYS:
+        return None
+
+    ability = get_champion_abilities(champion_name, version, download=download).get(
+        ability_key
+    )
+    image = str(ability.get("image", "")) if isinstance(ability, dict) else ""
+    if not image:
+        return None
+
+    ABILITY_ICON_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = champion_asset_name(champion_name)
+    local_path = ABILITY_ICON_DIR / f"{safe_name}{ability_key}.png"
+    if local_path.exists():
+        return local_path
+
+    if not download:
+        return None
+
+    url = f"{DD_BASE_URL}/cdn/{version}/img/spell/{image}"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()

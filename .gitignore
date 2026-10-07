@@ -5,7 +5,8 @@ __pycache__/
 config.local.json
 data/item_icons/
 data/champion_icons/
-data/champion_data/
+data/champion_data/*.tmp
+data/champion_metadata/
 data/rune_icons/
 data/spell_icons/
 build/

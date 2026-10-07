@@ -1,0 +1,86 @@
+﻿{
+  "json_parse_ms": 0.9459,
+  "json_lookup_cached_ms": 0.4426,
+  "json_lookup_cold_ms": 1.4068,
+  "sqlite_lookup_ms": 0.1517,
+  "sqlite_bytes": 1216512,
+  "json_write_full_champion_ms": 23.4952,
+  "json_full_champion_bytes": 1045250,
+  "json_full_lookup_cached_ms": 0.262,
+  "json_full_parse_ms": 8.7754,
+  "json_dataset_bytes": 1137431,
+  "qt_samples": [
+    {
+      "campeon": "Aatrox",
+      "calculo_ms": 1.1954999999943539,
+      "recursos_ms": 51.12559999997757,
+      "total_ms": 54.437000000689295,
+      "variante_ms": 2.1159000007173745,
+      "render_ms": 69.43649999993795,
+      "seleccion_ms": 134.7489999998288
+    },
+    {
+      "campeon": "Ahri",
+      "calculo_ms": 0.021699999706470408,
+      "recursos_ms": 49.5719000000463,
+      "total_ms": 50.77380000057019,
+      "variante_ms": 1.1802000008174218,
+      "render_ms": 50.72459999973944,
+      "seleccion_ms": 108.24589999992895
+    },
+    {
+      "campeon": "Aatrox",
+      "calculo_ms": 0.0,
+      "recursos_ms": 0.0,
+      "total_ms": 0.754600000618666,
+      "variante_ms": 0.752900000406953,
+      "render_ms": 52.71739999989222,
+      "seleccion_ms": 60.51889999980631
+    },
+    {
+      "campeon": "Ahri",
+      "calculo_ms": 0.0,
+      "recursos_ms": 0.0,
+      "total_ms": 0.7967999999891617,
+      "variante_ms": 0.7959000004120753,
+      "render_ms": 49.578899999687565,
+      "seleccion_ms": 56.26790000042092
+    },
+    {
+      "campeon": "Aatrox",
+      "calculo_ms": 0.0,
+      "recursos_ms": 0.0,
+      "total_ms": 0.8240000006480841,
+      "variante_ms": 0.8232000000134576,
+      "render_ms": 64.0821999995751,
+      "seleccion_ms": 70.9366000000955
+    },
+    {
+      "campeon": "Ahri",
+      "calculo_ms": 0.0,
+      "recursos_ms": 0.0,
+      "total_ms": 0.7384000000456581,
+      "variante_ms": 0.7376999992629862,
+      "render_ms": 51.11200000010285,
+      "seleccion_ms": 58.024099999784085
+    },
+    {
+      "campeon": "Aatrox",
+      "calculo_ms": 0.0,
+      "recursos_ms": 0.0,
+      "total_ms": 0.8912999992389814,
+      "variante_ms": 0.8901999999579857,
+      "render_ms": 51.32229999981064,
+      "seleccion_ms": 58.23150000014721
+    },
+    {
+      "campeon": "Ahri",
+      "calculo_ms": 0.0,
+      "recursos_ms": 0.0,
+      "total_ms": 0.6996000001890934,
+      "variante_ms": 0.698499999998603,
+      "render_ms": 47.732900000482914,
+      "seleccion_ms": 54.42140000013751
+    }
+  ]
+}
