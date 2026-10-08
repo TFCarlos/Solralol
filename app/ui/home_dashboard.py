@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.services.resumen_rendimiento_historial import (
+    etiqueta_puntuacion,
+    puntuacion_historial_vigente,
+)
 from app.ui.sistema_visual import PALETA
 from app.ui.tema import aplicar_apariencia
 from data_dragon import get_champion_icon_path, get_item_icon_path
@@ -413,11 +417,28 @@ class HomeDashboard(QWidget):
         """Actualiza perfil, indicadores y filas visibles con datos calculados."""
         matches = history.get("matches", [])
         nuevos_matches = [match for match in matches if isinstance(match, dict)]
+        ids_anteriores = tuple(
+            str(match.get("stable_match_id") or match.get("game_id") or "")
+            for match in self._matches
+        )
+        ids_nuevos = tuple(
+            str(match.get("stable_match_id") or match.get("game_id") or "")
+            for match in nuevos_matches
+        )
+        conservar_estado_historial = (
+            bool(self._matches) and ids_anteriores == ids_nuevos
+        )
+        posicion_scroll = self.history_scroll.verticalScrollBar().value()
         firma = (
             history.get("last_sync"),
             len(nuevos_matches),
+            ids_nuevos[:10],
             tuple(
-                str(match.get("stable_match_id") or "") for match in nuevos_matches[:10]
+                (
+                    str(match.get("stable_match_id") or match.get("game_id") or ""),
+                    repr(match.get("performance_summary")),
+                )
+                for match in nuevos_matches
             ),
             repr(analytics),
             repr(collection or {}),
@@ -426,7 +447,8 @@ class HomeDashboard(QWidget):
         if datos_cambiaron:
             self._matches = nuevos_matches
             self._analytics = analytics
-            self._visible_count = 25
+            if not conservar_estado_historial:
+                self._visible_count = 25
             self._data_signature = firma
         self.connection.setText(status)
         self._collection = collection or {}
@@ -509,6 +531,13 @@ class HomeDashboard(QWidget):
             self._render_collection()
             self.render_matches()
             self._reflow(self.width())
+            if conservar_estado_historial:
+                QTimer.singleShot(
+                    0,
+                    lambda valor=posicion_scroll: (
+                        self.history_scroll.verticalScrollBar().setValue(valor)
+                    ),
+                )
 
     def _clear_section(self, card: QFrame, keep: int = 1) -> QVBoxLayout:
         """Vacía widgets dinámicos de una tarjeta y conserva su cabecera."""
@@ -1165,6 +1194,7 @@ class HomeDashboard(QWidget):
         for match in visible:
             row = QFrame()
             row.setObjectName("savedGameRow")
+            row.setProperty("history", True)
             result = str(match.get("result") or "unknown")
             row.setProperty(
                 "result",
@@ -1250,6 +1280,13 @@ class HomeDashboard(QWidget):
                 started = "Fecha —"
             lower.addSpacing(6)
             lower.addWidget(QLabel(started))
+            resumen = match.get("performance_summary")
+            if puntuacion_historial_vigente(resumen):
+                puntuacion = QLabel(etiqueta_puntuacion(resumen))
+                puntuacion.setObjectName("homePerformanceScore")
+                puntuacion.setProperty("award", str(resumen.get("award") or ""))
+                puntuacion.setToolTip("Puntuación final SOLRALOL · ranking global")
+                lower.addWidget(puntuacion)
             if match.get("analyzable"):
                 saved_link = match.get("saved_match_link") or {}
                 saved_match_id = str(saved_link.get("saved_match_id") or "")

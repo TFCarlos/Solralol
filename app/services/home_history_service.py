@@ -194,6 +194,10 @@ class HomeHistoryRepository:
                     "opponent_champion_name",
                 }
                 for key, value in match.items():
+                    if key == "performance_summary":
+                        if isinstance(value, dict):
+                            previous[key] = value
+                        continue
                     if value in (None, "", [], {}):
                         continue
                     if (
@@ -1527,6 +1531,11 @@ class LCUHomeProvider:
             "kills": cls._integer(stats.get("kills")),
             "deaths": cls._integer(stats.get("deaths")),
             "assists": cls._integer(stats.get("assists")),
+            "total_damage_taken": cls._integer_opcional(stats, "totalDamageTaken"),
+            "damage_taken": cls._integer_opcional(stats, "totalDamageTaken"),
+            "damage_self_mitigated": cls._integer_opcional(
+                stats, "damageSelfMitigated"
+            ),
             "cs": cls._integer(stats.get("minionsKilled"))
             + cls._integer(stats.get("neutralMinionsKilled")),
             "items": [cls._integer(stats.get(f"item{i}")) for i in range(7)],
@@ -1538,6 +1547,17 @@ class LCUHomeProvider:
                 participant.get("isBot") or player.get("isBot") or player.get("bot")
             ),
         }
+
+    @staticmethod
+    def _integer_opcional(datos: dict[str, Any], clave: str) -> int | None:
+        """Lee un entero opcional y conserva None cuando el LCU no lo entrega."""
+        valor = datos.get(clave)
+        if valor is None:
+            return None
+        try:
+            return int(valor)
+        except (TypeError, ValueError, OverflowError):
+            return None
 
     @staticmethod
     def _integer(value: Any) -> int:
@@ -1694,9 +1714,13 @@ def _local_champion_metadata(root: Path | None = None) -> dict[str, dict[str, An
 
 
 def cross_reference_saved_matches(
-    matches: list[dict[str, Any]], sessions: list[dict[str, Any]]
+    matches: list[dict[str, Any]],
+    sessions: list[dict[str, Any]],
+    account_puuid: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Marca partidas guardadas usando ID exacto o coincidencia compuesta fuerte."""
+    """Enlaza partidas guardadas y su puntuación con la cuenta local exacta."""
+    from app.services.resumen_rendimiento_historial import resumen_puntuacion_local
+
     saved_ids = set()
     for session in sessions:
         if not isinstance(session, dict):
@@ -1718,6 +1742,17 @@ def cross_reference_saved_matches(
     for source in matches:
         match = dict(source)
         game_id = str(match.get("game_id") or "")
+        enlace_previo = match.get("saved_match_link")
+        enlace_previo = enlace_previo if isinstance(enlace_previo, dict) else {}
+        id_enlazado = str(enlace_previo.get("saved_match_id") or "")
+        sesion_enlazada = next(
+            (
+                session
+                for session, _ in indexed_sessions
+                if id_enlazado and str(session.get("session_id") or "") == id_enlazado
+            ),
+            None,
+        )
         matched_session = next(
             (
                 session
@@ -1726,9 +1761,18 @@ def cross_reference_saved_matches(
                 and _session_match_id(session).rsplit("_", 1)[-1]
                 == game_id.rsplit("_", 1)[-1]
             ),
-            None,
+            sesion_enlazada,
         )
-        confidence = 100 if matched_session else 0
+        confidence = (
+            100
+            if game_id
+            and matched_session is not None
+            and _session_match_id(matched_session).rsplit("_", 1)[-1]
+            == game_id.rsplit("_", 1)[-1]
+            else 100
+            if sesion_enlazada is not None
+            else 0
+        )
         if not confidence:
             for session, scoreboard in indexed_sessions:
                 candidate = _saved_match_confidence(match, session, scoreboard)
@@ -1742,8 +1786,154 @@ def cross_reference_saved_matches(
             "saved_match_id": session_id if confidence >= 85 else "",
             "confidence": round(confidence / 100, 2),
         }
+        resumen = None
+        enlace_confirmado = bool(
+            sesion_enlazada is not None and matched_session is sesion_enlazada
+        )
+        id_confirmado = bool(
+            matched_session is not None
+            and game_id
+            and _session_match_id(matched_session).rsplit("_", 1)[-1]
+            == game_id.rsplit("_", 1)[-1]
+        )
+        identidad_local_valida = bool(
+            matched_session is not None
+            and _coincide_cuenta_local(match, matched_session, account_puuid)
+        )
+        if (
+            matched_session is not None
+            and (id_confirmado or enlace_confirmado)
+            and identidad_local_valida
+        ):
+            resumen = resumen_puntuacion_local(matched_session)
+        if resumen is not None:
+            match["performance_summary"] = resumen
+        if id_enlazado or match.get("analyzable") is True:
+            sincronizacion_final = (
+                matched_session.get("final_sync") if matched_session else None
+            )
+            sincronizacion_final = (
+                sincronizacion_final if isinstance(sincronizacion_final, dict) else {}
+            )
+            logger.info(
+                "[home] performance lookup association=%s riot_final=%s cached_summary=%s local_participant=%s result=%s",
+                "found" if matched_session is not None else "missing",
+                "yes" if sincronizacion_final.get("status") == "synced" else "no",
+                "yes" if resumen else "no",
+                "yes" if identidad_local_valida else "no",
+                "yes" if resumen else "no",
+            )
         result.append(match)
     return result
+
+
+def _coincide_cuenta_local(
+    match: dict[str, Any],
+    session: dict[str, Any],
+    account_puuid: str | None = None,
+) -> bool:
+    """Confirma que la cuenta local de ambos registros es la misma.
+
+    Args:
+        match: partida del historial LCU, que puede omitir participantes.
+        session: partida guardada que contiene la identidad participante local.
+        account_puuid: PUUID de la cuenta activa que posee el historial.
+
+    Returns:
+        ``True`` cuando coincide el PUUID o, como respaldo, el Riot ID completo.
+    """
+    jugadores = session.get("players")
+    jugadores = jugadores if isinstance(jugadores, dict) else {}
+    clave_local = str(session.get("local_player_key") or "")
+    jugador_local = jugadores.get(clave_local)
+    jugador_local = jugador_local if isinstance(jugador_local, dict) else {}
+    puuid_directo = str(session.get("local_puuid") or jugador_local.get("puuid") or "")
+    puuid_oficial = ""
+    if not puuid_directo:
+        participante_oficial = str(jugador_local.get("official_participant_id") or "")
+        riot_match = session.get("riot_match")
+        riot_info = riot_match.get("info") if isinstance(riot_match, dict) else {}
+        participantes_oficiales = (
+            riot_info.get("participants") if isinstance(riot_info, dict) else []
+        )
+        if isinstance(participantes_oficiales, list):
+            puuid_oficial = next(
+                (
+                    str(participante.get("puuid") or "")
+                    for participante in participantes_oficiales
+                    if isinstance(participante, dict)
+                    and str(participante.get("participantId") or "")
+                    == participante_oficial
+                ),
+                "",
+            )
+    cuenta_activa = str(account_puuid or "").strip()
+    participantes = match.get("participants")
+    participantes = participantes if isinstance(participantes, list) else []
+    if cuenta_activa:
+        if puuid_directo:
+            return puuid_directo == cuenta_activa
+        participante_cuenta = next(
+            (
+                participante
+                for participante in participantes
+                if isinstance(participante, dict)
+                and str(participante.get("puuid") or "") == cuenta_activa
+            ),
+            None,
+        )
+        riot_id_guardado = _riot_id_participante_local(jugador_local, session)
+        if participante_cuenta is not None and riot_id_guardado:
+            return _riot_id_participante(participante_cuenta) == riot_id_guardado
+        return bool(puuid_oficial and puuid_oficial == cuenta_activa)
+    if puuid_directo or puuid_oficial:
+        puuid_guardado = puuid_directo or puuid_oficial
+        return any(
+            isinstance(participante, dict)
+            and str(participante.get("puuid") or "") == puuid_guardado
+            for participante in participantes
+        )
+    riot_id_guardado = _riot_id_participante_local(jugador_local, session)
+    if not riot_id_guardado:
+        return False
+    return any(
+        isinstance(participante, dict)
+        and _riot_id_participante(participante) == riot_id_guardado
+        for participante in participantes
+    )
+
+
+def _riot_id_participante_local(
+    jugador: dict[str, Any], session: dict[str, Any]
+) -> str:
+    """Normaliza el Riot ID conocido del participante local guardado.
+
+    Args:
+        jugador: registro normalizado del jugador local.
+        session: sesión guardada con posibles datos de identidad local.
+
+    Returns:
+        Riot ID completo en minúsculas o una cadena vacía.
+    """
+    return (
+        str(jugador.get("riot_id") or session.get("player_riot_id") or "")
+        .strip()
+        .casefold()
+    )
+
+
+def _riot_id_participante(participante: dict[str, Any]) -> str:
+    """Compone el Riot ID de un participante del historial.
+
+    Args:
+        participante: participante con nombre de juego y etiqueta.
+
+    Returns:
+        Riot ID completo normalizado, o una cadena vacía si no está completo.
+    """
+    game_name = str(participante.get("game_name") or "").strip()
+    tag_line = str(participante.get("tag_line") or "").strip()
+    return f"{game_name}#{tag_line}".casefold() if game_name and tag_line else ""
 
 
 def _session_match_id(session: dict[str, Any]) -> str:

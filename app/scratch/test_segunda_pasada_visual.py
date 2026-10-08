@@ -149,8 +149,17 @@ def test_hero_y_paginas(
     datos = dict(
         perfil, runes=[pagina, dict(pagina, keystone="Otra", build=["Otro objeto"])]
     )
+    dialogo.champion_combo.blockSignals(True)
+    dialogo.champion_combo.setCurrentIndex(dialogo.champion_combo.findText("Prueba"))
+    dialogo.champion_combo.blockSignals(False)
     dialogo._renderizar_analisis(datos)
-    assert dialogo.champion_title.text() == "PRUEBA"
+    assert dialogo.champion_title.text() == "PRUEBA", (
+        dialogo.champion_combo.currentText(),
+        [
+            dialogo.champion_combo.itemText(indice)
+            for indice in range(dialogo.champion_combo.count())
+        ],
+    )
     assert "Dificultad" in dialogo.champion_meta.text()
     assert " WR" not in dialogo.champion_meta.text()
     assert "Conqueror" in dialogo.rune_summary.text()

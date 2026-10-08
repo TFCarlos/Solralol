@@ -22,7 +22,7 @@ from app.services.repositorio_campeones import (
 
 
 @pytest.fixture
-def perfil() -> dict:
+def perfil_repositorio() -> dict:
     """Devuelve perfil mínimo independiente de APIs."""
     return {
         "character": "Ahri",
@@ -32,10 +32,10 @@ def perfil() -> dict:
 
 
 @pytest.fixture
-def documento(perfil: dict) -> dict:
+def documento(perfil_repositorio: dict) -> dict:
     """Devuelve matriz y metadatos válidos para guardar."""
     return RepositorioCampeones.documento(
-        perfil,
+        perfil_repositorio,
         {
             "emerald_plus": {
                 "mid": {
@@ -186,15 +186,19 @@ def test_migracion_fallida_conserva_origen(tmp_path: Path) -> None:
     assert origen.exists()
 
 
-def test_preparacion_y_adaptador(tmp_path: Path, documento: dict, perfil: dict) -> None:
+def test_preparacion_y_adaptador(
+    tmp_path: Path, documento: dict, perfil_repositorio: dict
+) -> None:
     """Comprueba generación persistida, separación global y contrato de variantes."""
     (tmp_path / "items.json").write_text(json.dumps({"items": {}}), encoding="utf-8")
     (tmp_path / "legendary_items_strict.json").write_text("[]", encoding="utf-8")
-    preparado = PreparadorDatosCampeon(tmp_path).preparar(perfil, documento["ranks"])
+    preparado = PreparadorDatosCampeon(tmp_path).preparar(
+        perfil_repositorio, documento["ranks"]
+    )
     assert "recommendations" in preparado["ranks"]["emerald_plus"]["mid"]
     repo = RepositorioCampeones(tmp_path / "champion_data")
     repo.guardar("Ahri", preparado)
-    repo.guardar_perfil(dict(perfil, dato="editado"))
+    repo.guardar_perfil(dict(perfil_repositorio, dato="editado"))
     variante = ChampionVariantService(repo.raiz)
     assert variante.get("Ahri", "mid", "emerald_plus")
     assert variante.available_ranks("Ahri") == ["emerald_plus"]
@@ -202,7 +206,10 @@ def test_preparacion_y_adaptador(tmp_path: Path, documento: dict, perfil: dict) 
     assert variante.lane_stats("Ahri", "emerald_plus")["mid"]["games"] == 123
     assert variante.key("Ahri", "Mid", "Diamond") == "ahri|mid|diamond"
     assert variante.path_for("Ahri") == repo.ruta("Ahri")
-    assert combinar_perfil(dict(perfil, runes=["antiguas"]), {}).get("runes") is None
+    assert (
+        combinar_perfil(dict(perfil_repositorio, runes=["antiguas"]), {}).get("runes")
+        is None
+    )
 
 
 def test_cache_acotada(tmp_path: Path, documento: dict) -> None:

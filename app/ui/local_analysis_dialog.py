@@ -771,8 +771,12 @@ class LocalAnalysisDialog(QDialog):
 
         tabs = QTabWidget()
         tabs.setObjectName("localAnalysisTabs")
+        tabs.setMinimumWidth(0)
+        tabs.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
         analysis = FondoTecnologico()
         analysis.setObjectName("localAnalysisView")
+        analysis.setMinimumWidth(0)
+        analysis.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         analysis_layout = QVBoxLayout(analysis)
         analysis_layout.setContentsMargins(18, 18, 18, 18)
         analysis_layout.setSpacing(ESPACIO_SECCION)

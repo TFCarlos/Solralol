@@ -26,6 +26,8 @@ The dashboard can show ranked profile details, remembered match results and dire
 
 When a remembered match corresponds to a locally saved session, Home can mark it as analyzable and open that session in the detailed analysis view. Analyzable links do not turn the remembered-history entry into a Saved Match.
 
+When the linked session has a current, complete Riot-synchronized SOLRALOL performance result, the Home row also shows the local player's points, global rank, and MVP/SVP award. Home reuses the exact saved-session ID behind its existing `ANALIZABLE` link, including older entries revealed by **Cargar más**, and confirms the local account before showing its score. The compact summary is stored in the per-account remembered-history JSON, so it remains available if the detailed Saved Match is later deleted. A background reconciliation checks the full remembered history against saved sessions at startup and after synchronization, including when League is offline. Scores are not inferred from incomplete data, and archived summaries from an obsolete scoring version are not presented as current.
+
 ### Champion analysis (`Análisis`)
 
 Choose a champion, lane, and one of the supported rank filters to view locally cached profile and performance data. The analysis UI includes champion attributes and playstyle, damage profile, matchup information, win-rate and duration data where present, rune pages, skill order, summoner spells, core and situational items, and build recommendations.
@@ -216,6 +218,8 @@ These two local systems serve different purposes:
 | Opens detailed session analysis | Only when linked to a matching Saved Match | Yes |
 
 Home synchronization imports the current client history window and merges it with the persistent local copy. It does not automatically delete older remembered matches. Saved-session matching uses the available game identifiers and match metadata; a match is marked analyzable only when a suitable saved session is found.
+
+Performance summaries are copied from the authoritative saved-session ranking for the local participant and stored on the corresponding remembered match. Reconciliation includes older entries beyond the currently rendered `Cargar más` batch. The summary contains only the lightweight score, global rank, award, scoring version, final state, and participant reference; Home does not run a separate scoring formula.
 
 ## Local Data and Privacy
 

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-
+import logging
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
-
 from app.services.match_history_cache import MatchHistoryCache
 from app.services.riot_api_service import RiotApiError, RiotApiService
+
+logger = logging.getLogger(__name__)
 
 
 #: Tipo canónico y nombre legible de cada objetivo oficial (Riot/Live Client).
@@ -40,15 +41,12 @@ def official_objective_kind(
     return "objective", readable
 
 
-
 class PostgameSyncService:
     """Empareja una sesión LIVE finalizada con su Match-V5 oficial."""
-
 
     MAX_CANDIDATES = 30
     START_TOLERANCE_SECONDS = 20 * 60
     DURATION_TOLERANCE_SECONDS = 4 * 60
-
 
     def __init__(
         self,
@@ -71,7 +69,6 @@ class PostgameSyncService:
             platform_region=platform_region,
             cache=self.cache,
         )
-
 
     def sync_session(
         self,
@@ -161,7 +158,6 @@ class PostgameSyncService:
                 f"No se pudo sincronizar la partida: {error}",
             )
 
-
     def _can_sync(self, session: dict[str, Any]) -> bool:
         return bool(
             self.api_key
@@ -169,7 +165,6 @@ class PostgameSyncService:
             and self.tag_line
             and session.get("local_player_key")
         )
-
 
     def _find_candidate(
         self,
@@ -199,7 +194,6 @@ class PostgameSyncService:
             return None
         return best[1], best[2]
 
-
     def _candidate_score(
         self,
         raw_match: dict[str, Any],
@@ -222,12 +216,8 @@ class PostgameSyncService:
         if not isinstance(participant, dict):
             return None
 
-        expected_champion = str(
-            session.get("champion_name", "")
-        ).casefold()
-        actual_champion = str(
-            participant.get("championName", "")
-        ).casefold()
+        expected_champion = str(session.get("champion_name", "")).casefold()
+        actual_champion = str(participant.get("championName", "")).casefold()
         if expected_champion and expected_champion != actual_champion:
             return None
 
@@ -248,7 +238,6 @@ class PostgameSyncService:
 
         return start_difference + duration_difference * 2
 
-
     def _merge_riot_data(
         self,
         session: dict[str, Any],
@@ -257,6 +246,19 @@ class PostgameSyncService:
         match_id: str,
         puuid: str,
     ) -> dict[str, Any]:
+        """Enriquece la sesión con los datos Riot y la cuenta que los identifica.
+
+        Args:
+            session: registro local de la partida.
+            raw_match: detalle oficial de Riot Match-V5.
+            raw_timeline: timeline oficial de la partida.
+            match_id: identificador estable de Riot.
+            puuid: identidad de la cuenta local confirmada en Riot.
+
+        Returns:
+            Sesión enriquecida y lista para calcular el resultado postgame.
+        """
+        session["local_puuid"] = puuid
         info = raw_match.get("info", {})
         participants = info.get("participants", [])
         if not isinstance(participants, list):
@@ -265,7 +267,6 @@ class PostgameSyncService:
                 "failed",
                 "Riot no devolvió participantes para la partida.",
             )
-
 
         local_participant = next(
             (
@@ -276,7 +277,6 @@ class PostgameSyncService:
             {},
         )
         local_team_id = int(local_participant.get("teamId", 0))
-
 
         key_by_riot_id = {
             self._normalise_identity(meta.get("riot_id")): key
@@ -290,10 +290,8 @@ class PostgameSyncService:
             for key, meta in session.get("players", {}).items()
         }
 
-
         participant_key_map: dict[int, str] = {}
         official_scoreboard: dict[str, Any] = {}
-
 
         for participant in participants:
             if not isinstance(participant, dict):
@@ -312,7 +310,6 @@ class PostgameSyncService:
             if not key:
                 continue
 
-
             participant_key_map[participant_id] = key
             meta = session["players"][key]
             meta["win"] = bool(participant.get("win"))
@@ -320,12 +317,14 @@ class PostgameSyncService:
             meta["official_participant_id"] = participant_id
             official_scoreboard[key] = meta["final"]
 
-
         session["final_scoreboard"] = official_scoreboard
         session["winning_team"] = (
-            "ORDER" if local_team_id == 100 and local_participant.get("win")
-            else "CHAOS" if local_team_id == 200 and local_participant.get("win")
-            else "CHAOS" if local_team_id == 100
+            "ORDER"
+            if local_team_id == 100 and local_participant.get("win")
+            else "CHAOS"
+            if local_team_id == 200 and local_participant.get("win")
+            else "CHAOS"
+            if local_team_id == 100
             else "ORDER"
         )
         session["riot_match"] = raw_match
@@ -345,26 +344,69 @@ class PostgameSyncService:
             "message": "Partida sincronizada con Riot Match-V5.",
         }
 
+        campos_epicos = [
+            participant
+            for participant in participants
+            if isinstance(participant, dict) and "epic_monster_damage" in participant
+        ]
+        campos_objetivo_generico = [
+            participant
+            for participant in participants
+            if isinstance(participant, dict)
+            and "damageDealtToObjectives" in participant
+        ]
+        session["epic_damage_diagnostics"] = {
+            "match_id": match_id,
+            "provider": "riot_match_v5",
+            "source_field": "epic_monster_damage",
+            "source_field_present_count": len(campos_epicos),
+            "generic_objective_damage_present_count": len(campos_objetivo_generico),
+            "participants_count": len(participant_key_map),
+            "extracted_count": sum(
+                value.get("epic_monster_damage") is not None
+                for value in official_scoreboard.values()
+            ),
+            "normalized_count": sum(
+                value.get("epic_monster_damage") is not None
+                for value in official_scoreboard.values()
+            ),
+            "persistence_retained": None,
+            "scoring_received_count": None,
+        }
+        logger.info(
+            "Daño épico partido=%s proveedor=riot_match_v5 campo_presente=%s extraído=%s normalizado=%s",
+            match_id,
+            bool(campos_epicos),
+            session["epic_damage_diagnostics"]["extracted_count"],
+            session["epic_damage_diagnostics"]["normalized_count"],
+        )
+
+        from app.services.resumen_rendimiento_historial import (
+            asegurar_puntuacion_guardada,
+        )
+
+        asegurar_puntuacion_guardada(session)
+
         try:
             from app.services.match_log_service import MatchLogService
+
             MatchLogService().save_match_log(session)
         except Exception:
             pass
 
         return session
 
-
     def _official_player_stats(
         self,
         participant: dict[str, Any],
     ) -> dict[str, Any]:
-        """
-        Normaliza todas las estadísticas disponibles de Match-V5 para un jugador.
+        """Normaliza métricas Match-V5 y conserva ausencias significativas.
 
-        Riot no siempre devuelve todos los campos en todos los modos de juego,
-        por lo que los campos ausentes se guardan con valor 0 o False. Además de
-        las estadísticas principales, conserva también estadísticas avanzadas y
-        datos de objetivos, visión, economía, CC, runas, hechizos e inventario.
+        Args:
+            participant: estadísticas oficiales del participante.
+
+        Returns:
+            Campos normalizados y métricas ausentes como None cuando corresponde.
         """
 
         def integer(*keys: str) -> int:
@@ -379,6 +421,18 @@ class PostgameSyncService:
                     continue
 
             return 0
+
+        def integer_opcional(*keys: str) -> int | None:
+            """Lee un campo entero sin convertir la ausencia en un cero medido."""
+            for key in keys:
+                value = participant.get(key)
+                if value is None:
+                    continue
+                try:
+                    return int(value)
+                except (TypeError, ValueError):
+                    continue
+            return None
 
         def decimal(*keys: str) -> float:
             for key in keys:
@@ -414,22 +468,16 @@ class PostgameSyncService:
             "team_id": integer("teamId"),
             "role": participant.get("individualPosition"),
             "lane": participant.get("lane"),
-
             # Resultado y progreso.
             "win": boolean("win"),
-            "game_ended_in_early_surrender": boolean(
-                "gameEndedInEarlySurrender"
-            ),
-            "game_ended_in_surrender": boolean(
-                "gameEndedInSurrender"
-            ),
+            "game_ended_in_early_surrender": boolean("gameEndedInEarlySurrender"),
+            "game_ended_in_surrender": boolean("gameEndedInSurrender"),
             "champ_level": integer("champLevel"),
             "level": integer("champLevel"),
-
             # KDA.
-            "kills": integer("kills"),
-            "deaths": integer("deaths"),
-            "assists": integer("assists"),
+            "kills": integer_opcional("kills"),
+            "deaths": integer_opcional("deaths"),
+            "assists": integer_opcional("assists"),
             "double_kills": integer("doubleKills"),
             "triple_kills": integer("tripleKills"),
             "quadra_kills": integer("quadraKills"),
@@ -437,7 +485,6 @@ class PostgameSyncService:
             "unreal_kills": integer("unrealKills"),
             "largest_killing_spree": integer("largestKillingSpree"),
             "largest_multi_kill": integer("largestMultiKill"),
-
             # CS y economía.
             # Riot usa `minionsKilled` y `jungleMinionsKilled` en el timeline,
             # mientras que `totalMinionsKilled` / `neutralMinionsKilled` aparecen
@@ -462,35 +509,24 @@ class PostgameSyncService:
             ),
             "gold_earned": integer("goldEarned"),
             "gold_spent": integer("goldSpent"),
-
             # Daño total.
             "total_damage_dealt": integer("totalDamageDealt"),
-            "total_damage_dealt_to_champions": integer(
-                "totalDamageDealtToChampions"
-            ),
-            "total_damage_taken": integer("totalDamageTaken"),
-            "damage_dealt_to_champions": integer(
-                "totalDamageDealtToChampions"
-            ),
-            "damage_taken": integer("totalDamageTaken"),
-
+            "total_damage_dealt_to_champions": integer("totalDamageDealtToChampions"),
+            "total_damage_taken": integer_opcional("totalDamageTaken"),
+            "damage_dealt_to_champions": integer("totalDamageDealtToChampions"),
+            "damage_taken": integer_opcional("totalDamageTaken"),
             # Daño por tipo.
             "magic_damage_dealt": integer("magicDamageDealt"),
             "physical_damage_dealt": integer("physicalDamageDealt"),
             "true_damage_dealt": integer("trueDamageDealt"),
-            "magic_damage_dealt_to_champions": integer(
-                "magicDamageDealtToChampions"
-            ),
+            "magic_damage_dealt_to_champions": integer("magicDamageDealtToChampions"),
             "physical_damage_dealt_to_champions": integer(
                 "physicalDamageDealtToChampions"
             ),
-            "true_damage_dealt_to_champions": integer(
-                "trueDamageDealtToChampions"
-            ),
+            "true_damage_dealt_to_champions": integer("trueDamageDealtToChampions"),
             "magic_damage_taken": integer("magicDamageTaken"),
             "physical_damage_taken": integer("physicalDamageTaken"),
             "true_damage_taken": integer("trueDamageTaken"),
-
             # Estructuras, objetivos y torres.
             "damage_dealt_to_turrets": integer(
                 "damageDealtToTurrets",
@@ -500,59 +536,43 @@ class PostgameSyncService:
                 "damageDealtToBuildings",
                 "damageDealtToTurrets",
             ),
-            "damage_dealt_to_objectives": integer(
-                "damageDealtToObjectives"
-            ),
+            "damage_dealt_to_objectives": integer_opcional("damageDealtToObjectives"),
+            "epic_monster_damage": None,
             "turret_kills": integer("turretKills"),
             "inhibitor_kills": integer("inhibitorKills"),
             "objectives_stolen": integer("objectivesStolen"),
-            "objectives_stolen_assists": integer(
-                "objectivesStolenAssists"
-            ),
-
+            "objectives_stolen_assists": integer("objectivesStolenAssists"),
             # Curación y mitigación.
-            "total_heal": integer("totalHeal"),
-            "total_heals_on_teammates": integer(
-                "totalHealsOnTeammates"
-            ),
+            "total_heal": integer_opcional("totalHeal"),
+            "total_heals_on_teammates": integer_opcional("totalHealsOnTeammates"),
             "healing": integer("totalHeal"),
-            "healing_from_teammates": integer(
-                "totalHealsOnTeammates"
+            "healing_from_teammates": integer("totalHealsOnTeammates"),
+            "damage_self_mitigated": integer_opcional("damageSelfMitigated"),
+            "total_absorbed_shields": integer_opcional("totalAbsorbedShields"),
+            "total_damage_shielded_on_teammates": integer_opcional(
+                "totalDamageShieldedOnTeammates"
             ),
-            "damage_self_mitigated": integer(
-                "damageSelfMitigated"
-            ),
-            "total_absorbed_shields": integer(
-                "totalAbsorbedShields"
-            ),
-
             # Control de masas y utilidad.
-            "total_time_crowd_control_dealt": integer(
-                "totalTimeCrowdControlDealt"
+            "total_time_crowd_control_dealt": integer_opcional(
+                "totalTimeCrowdControlDealt",
+                "totalTimeCCDealt",
+                "timeCCingOthers",
             ),
-            "time_cc_dealt": integer(
-                "totalTimeCrowdControlDealt"
+            "time_cc_dealt": integer_opcional(
+                "totalTimeCrowdControlDealt",
+                "totalTimeCCDealt",
+                "timeCCingOthers",
             ),
             "total_units_healed": integer("totalUnitsHealed"),
             "time_played": integer("timePlayed"),
-
             # Visión.
             "vision_score": integer("visionScore"),
             "wards_placed": integer("wardsPlaced"),
             "wards_killed": integer("wardsKilled"),
-            "detector_wards_placed": integer(
-                "detectorWardsPlaced"
-            ),
-            "control_wards_purchased": integer(
-                "detectorWardsPlaced"
-            ),
-            "sight_wards_bought_in_game": integer(
-                "sightWardsBoughtInGame"
-            ),
-            "vision_wards_bought_in_game": integer(
-                "visionWardsBoughtInGame"
-            ),
-
+            "detector_wards_placed": integer("detectorWardsPlaced"),
+            "control_wards_purchased": integer("detectorWardsPlaced"),
+            "sight_wards_bought_in_game": integer("sightWardsBoughtInGame"),
+            "vision_wards_bought_in_game": integer("visionWardsBoughtInGame"),
             # Objetos finales. Se conservan siete posiciones porque
             # Match-V5 puede devolver también el objeto de misión.
             "items": [
@@ -567,7 +587,6 @@ class PostgameSyncService:
             "item4": integer("item4"),
             "item5": integer("item5"),
             "item6": integer("item6"),
-
             # Runas principales.
             "perk0": integer("perk0"),
             "perk1": integer("perk1"),
@@ -575,7 +594,6 @@ class PostgameSyncService:
             "perk3": integer("perk3"),
             "perk4": integer("perk4"),
             "perk5": integer("perk5"),
-
             # Runas de estadísticas.
             "stat_perk_0": integer(
                 "statPerk0",
@@ -589,11 +607,9 @@ class PostgameSyncService:
                 "statPerk2",
                 "statPerk2Id",
             ),
-
             # Hechizos de invocador.
             "spell1_id": integer("spell1Id"),
             "spell2_id": integer("spell2Id"),
-
             # Estadísticas de combate adicionales que pueden aparecer
             # en algunas respuestas o versiones.
             "first_blood_kill": boolean("firstBloodKill"),
@@ -605,7 +621,6 @@ class PostgameSyncService:
             "neutral_minions_killed_enemy_jungle": integer(
                 "neutralMinionsKilledEnemyJungle"
             ),
-
             # Campos numéricos opcionales conservados si Riot los entrega.
             "ability_haste": decimal("abilityHaste"),
             "attack_damage": decimal("attackDamage"),
@@ -626,7 +641,6 @@ class PostgameSyncService:
         result["raw_participant_stats"] = dict(participant)
 
         return result
-
 
     def _normalise_timeline_events(
         self,
@@ -653,7 +667,6 @@ class PostgameSyncService:
                     events.append(normalised)
                     order += 1
         return events
-
 
     def _normalise_event(
         self,
@@ -687,10 +700,9 @@ class PostgameSyncService:
                     if value in key_map
                 ],
             )
-            
-            
+
             return result
-        
+
         if event_type in {
             "ITEM_PURCHASED",
             "ITEM_SOLD",
@@ -727,13 +739,10 @@ class PostgameSyncService:
                 item_image=item_info["image"],
             )
 
-
         if event_type == "BUILDING_KILL":
             team_id = int(event.get("killerTeamId", 0))
             killer_key = key_map.get(int(event.get("killerId", 0)))
-            kind, label = official_objective_kind(
-                event.get("buildingType"), "Edificio"
-            )
+            kind, label = official_objective_kind(event.get("buildingType"), "Edificio")
             lane = str(event.get("laneType") or "").replace("_", " ").title()
             detail = " · ".join(part for part in (label, lane) if part)
             # ``teamId`` = bando DUEÑO del edificio (lo pierde);
@@ -754,7 +763,6 @@ class PostgameSyncService:
                 owner_team=self._riot_team_name(event.get("teamId", 0)),
                 structure=str(event.get("buildingType") or ""),
             )
-
 
         if event_type == "ELITE_MONSTER_KILL":
             team_id = int(event.get("killerTeamId", 0))
@@ -781,8 +789,9 @@ class PostgameSyncService:
             )
         return None
 
-
-    def _event(self, time_value, order, event_type, player_key, session, label, **extra):
+    def _event(
+        self, time_value, order, event_type, player_key, session, label, **extra
+    ):
         meta = session.get("players", {}).get(player_key, {})
         objective_team = str(extra.get("objective_team") or "")
         result = {
@@ -801,7 +810,6 @@ class PostgameSyncService:
         }
         result.update(extra)
         return result
-
 
     def _team_of(
         self,
@@ -850,7 +858,6 @@ class PostgameSyncService:
 
         return ""
 
-
     def _team_label(
         self,
         session: dict[str, Any],
@@ -879,18 +886,14 @@ class PostgameSyncService:
         if not event_team:
             return "Bando sin identificar"
 
-
         if local_team and event_team == local_team:
             return "Equipo aliado"
 
-
         return "Equipo enemigo"
-
 
     @staticmethod
     def _normalise_identity(value: Any) -> str:
         return str(value or "").replace(" ", "").casefold()
-
 
     @staticmethod
     def _participant_name(participant: dict[str, Any]) -> str:
@@ -899,7 +902,6 @@ class PostgameSyncService:
         if game_name and tag_line:
             return f"{game_name}#{tag_line}"
         return str(participant.get("summonerName", ""))
-
 
     @staticmethod
     def _name(session, key, fallback):
@@ -920,14 +922,12 @@ class PostgameSyncService:
         minutes, seconds = divmod(max(0, int(value)), 60)
         return f"{minutes:02d}:{seconds:02d}"
 
-
     @staticmethod
     def _number(value: Any) -> float:
         try:
             return float(value or 0)
         except (TypeError, ValueError):
             return 0.0
-
 
     @staticmethod
     def _parse_time(value: Any) -> datetime:
@@ -938,7 +938,6 @@ class PostgameSyncService:
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=UTC)
         return parsed.astimezone(UTC)
-
 
     @staticmethod
     def _set_status(session, status, message):

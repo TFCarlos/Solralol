@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -86,6 +87,11 @@ from app.services.recording_service import (
     quality_label,
     recording_settings_defaults,
 )
+from app.services.resumen_rendimiento_historial import (
+    asegurar_puntuacion_guardada,
+    etiqueta_puntuacion,
+    resumen_puntuacion_local,
+)
 from app.services.settings_service import SettingsService
 from app.services.tab_hotkey_service import TabHotkeyService
 from app.ui.async_task import AsyncTask, run_async
@@ -126,6 +132,14 @@ class TarjetaPartidaGuardada(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def paintEvent(self, event: Any) -> None:
+        """Pinta el acento de resultado recortado al interior redondeado.
+
+        Args:
+            event: evento de repintado de Qt.
+
+        Returns:
+            None.
+        """
         super().paintEvent(event)
         if self.result_state not in ("win", "loss"):
             return
@@ -137,13 +151,12 @@ class TarjetaPartidaGuardada(QFrame):
             PALETA["ventaja"] if self.result_state == "win" else PALETA["desventaja"]
         )
         accent_color = QColor(color_hex)
-        accent_color.setAlpha(200)
-
-        rect = self.rect()
+        accent_color.setAlpha(185)
+        rect = self.rect().adjusted(1, 1, -1, -1)
         path = QPainterPath()
-        # Dibuja solo la barra izquierda de 4px respetando el radio del borde
-        path.addRoundedRect(0, 0, 4, rect.height(), 16, 16)
-        painter.fillPath(path, accent_color)
+        path.addRoundedRect(rect, 15, 15)
+        painter.setClipPath(path)
+        painter.fillRect(rect.adjusted(0, 0, -rect.width() + 4, 0), accent_color)
 
     @staticmethod
     def extraer_oponente_linea(session: dict[str, Any]) -> str:
@@ -732,9 +745,20 @@ class MainWindow(QMainWindow):
     def synchronize_home_background(
         self, progress_callback: Any = None
     ) -> dict[str, Any]:
-        """Importa partidas LCU y las cruza con sesiones guardadas en disco."""
+        """Cruza todo el historial recordado con sesiones guardadas, incluso offline."""
         repository = HomeHistoryRepository()
-        result = LCUHomeProvider().synchronize(repository, progress_callback)
+        try:
+            result = LCUHomeProvider().synchronize(repository, progress_callback)
+        except (ConnectionError, OSError, RuntimeError, TimeoutError):
+            profile = repository.load_last_profile() or dict(self.home_profile or {})
+            if not profile:
+                raise
+            result = {
+                "profile": profile,
+                "history": repository.load(profile),
+                "collection": profile.get("collection", {}),
+                "connection": "offline",
+            }
         try:
             tracker = LiveMatchTracker(
                 self.item_catalog, game_version=self.version, persist=False
@@ -742,11 +766,55 @@ class MainWindow(QMainWindow):
             sessions = tracker.load_saved_sessions()
         except (OSError, TypeError, ValueError):
             sessions = []
+        puntuaciones_actualizadas = False
+        for session in sessions:
+            puntuaciones_actualizadas |= asegurar_puntuacion_guardada(session)
+        if puntuaciones_actualizadas:
+            tracker._save_sessions(sessions)
         matches = cross_reference_saved_matches(
-            result["history"].get("matches", []), sessions
+            result["history"].get("matches", []),
+            sessions,
+            str(result.get("profile", {}).get("puuid") or "") or None,
         )
         result["history"] = repository.merge(result["profile"], matches)
         return result
+
+    def actualizar_puntuaciones_home_en_segundo_plano(
+        self, perfil: dict[str, Any], historial: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Vincula los resultados postpartida nuevos con el historial local.
+
+        Args:
+            perfil: identidad de la cuenta cuyo historial se está mostrando.
+            historial: copia del historial actual de Home.
+
+        Returns:
+            Historial fusionado y persistido por el repositorio local.
+        """
+        tracker = LiveMatchTracker(
+            self.item_catalog, game_version=self.version, persist=False
+        )
+        sesiones = tracker.load_saved_sessions()
+        puntuaciones_actualizadas = False
+        for sesion in sesiones:
+            puntuaciones_actualizadas |= asegurar_puntuacion_guardada(sesion)
+        if puntuaciones_actualizadas:
+            tracker._save_sessions(sesiones)
+        partidas = cross_reference_saved_matches(
+            historial.get("matches", []),
+            sesiones,
+            str(perfil.get("puuid") or "") or None,
+        )
+        return HomeHistoryRepository().merge(perfil, partidas)
+
+    def _home_saved_scores_finished(
+        self, _token: Any, result: Any, error: str | None
+    ) -> None:
+        """Actualiza Home al terminar el vínculo local de resultados Riot."""
+        if error or not isinstance(result, dict):
+            return
+        self.home_history = result
+        self.refresh_home_dashboard("Historial local actualizado")
 
     def _home_sync_finished(self, _token: Any, result: Any, error: str | None) -> None:
         """Aplica el resultado del worker y conserva el último estado offline."""
@@ -762,7 +830,14 @@ class MainWindow(QMainWindow):
         self.home_history = result["history"]
         self.home_collection = result.get("collection", {})
         self.home_history_error = False
-        self.refresh_home_dashboard("League conectado · historial sincronizado")
+        estado = (
+            "Puntuaciones locales actualizadas · League desconectado"
+            if result.get("connection") == "offline"
+            else "League conectado · historial sincronizado"
+        )
+        self.refresh_home_dashboard(estado)
+        if result.get("connection") == "offline":
+            return
         profile = dict(self.home_profile)
         self._home_collection_generation += 1
         token = (
@@ -1171,6 +1246,11 @@ class MainWindow(QMainWindow):
         def collect() -> tuple:
             """Lee sesiones, vídeos y sidecars (todo I/O) fuera del hilo GUI."""
             sessions = tracker.load_saved_sessions()
+            puntuaciones_actualizadas = False
+            for session in sessions:
+                puntuaciones_actualizadas |= asegurar_puntuacion_guardada(session)
+            if puntuaciones_actualizadas:
+                tracker._save_sessions(sessions)
             videos = library.video_files()
             sidecars: dict[str, tuple[int, dict]] = {}
 
@@ -1598,6 +1678,21 @@ class MainWindow(QMainWindow):
         event_count = QLabel(f"{len(events or [])} eventos registrados")
         event_count.setObjectName("savedGameDetail")
         metadata_row.addWidget(event_count)
+        resumen = resumen_puntuacion_local(session)
+        if resumen is not None:
+            puntuacion = QLabel(etiqueta_puntuacion(resumen))
+            puntuacion.setObjectName("savedGamePerformance")
+            puntuacion.setProperty("award", resumen["award"])
+            puntuacion.setToolTip("Puntuación final SOLRALOL · ranking global")
+            metadata_row.addWidget(puntuacion)
+        elif sync_status == "synced":
+            pendiente = QLabel("Rendimiento incompleto")
+            pendiente.setObjectName("savedGamePerformancePending")
+            pendiente.setToolTip(
+                "La partida está sincronizada, pero faltan datos para validar "
+                "una puntuación final comparable."
+            )
+            metadata_row.addWidget(pendiente)
         metadata_row.addStretch(1)
         details.addLayout(metadata_row)
 
@@ -1871,6 +1966,7 @@ class MainWindow(QMainWindow):
             "source": "live_client_data_api",
             "message": "Pendiente de re-sincronización.",
         }
+        session.pop("performance_scoring", None)
 
         # Quitar eventos oficiales para que se regeneren
         session.pop("official_events", None)
@@ -4012,6 +4108,16 @@ class MainWindow(QMainWindow):
 
         if replaced:
             self.live_match_tracker._save_sessions(sessions)
+            if self.home_profile and self.home_history.get("matches"):
+                perfil = deepcopy(self.home_profile)
+                historial = deepcopy(self.home_history)
+                run_async(
+                    lambda: self.actualizar_puntuaciones_home_en_segundo_plano(
+                        perfil, historial
+                    ),
+                    on_finished=self._home_saved_scores_finished,
+                    token=f"home_saved_score_{session_id}",
+                )
 
         if hasattr(
             self,

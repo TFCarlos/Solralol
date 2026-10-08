@@ -13,6 +13,10 @@ from typing import Any
 
 from _paths import DATA_DIR
 from app.services.repositorio_campeones import RepositorioCampeones
+from app.services.servicio_puntuacion_rendimiento import (
+    EntradaRendimientoJugador,
+    clasificar_jugadores,
+)
 from app.services.synergy_recommendation_service import SynergyRecommendationService
 
 
@@ -345,28 +349,13 @@ class LiveRecommendationService:
             "badges": badges,
         }
 
-    @staticmethod
-    def _mark_strength(rows):
-        """Compare rivals with complete observations; ties remain explicit."""
-        for row in rows:
-            row["strength_label"] = ""
-        measurable = [r for r in rows if r["strength"] is not None]
-        if len(measurable) < 2:
-            return
-        highest = max(r["strength"] for r in measurable)
-        lowest = min(r["strength"] for r in measurable)
-        if highest == lowest:
-            for row in measurable:
-                row["strength_label"] = "FUERZA SIMILAR"
-            return
-        for score, label in ((highest, "MÁS FUERTE"), (lowest, "MÁS DÉBIL")):
-            tied = sum(r["strength"] == score for r in measurable) > 1
-            for row in measurable:
-                if row["strength"] == score:
-                    row["strength_label"] = label + (" · EMPATE" if tied else "")
-
-    def _threats(self, enemies, now, times):
+    def _threats(
+        self, enemies: dict[str, dict[str, Any]], now: float, times: dict[str, float]
+    ) -> list[dict[str, Any]]:
+        """Clasifica enemigos, hora y muestras; devuelve señales con puntaje provisional."""
         rows = []
+        bajas_totales = sum(number(jugador.get("kills")) for jugador in enemies.values())
+        entradas_puntuacion = []
         for key, player in enemies.items():
             champ = str(player.get("champion_name", "?"))
             profile = self.profile(champ)
@@ -435,24 +424,18 @@ class LiveRecommendationService:
             inventory = self.inventory_summary(player)
             stale = key not in times or now - times[key] > 30
             level = number(player.get("level"), None)
-            kda = [number(player.get(k), None) for k in ("kills", "deaths", "assists")]
-            reliable = (
-                inventory["known"]
-                and not inventory["partial"]
-                and level is not None
-                and level >= 1
-                and all(v is not None and v >= 0 for v in kda)
-            )
-            # Item investment and levels dominate; KDA is only a bounded adjustment.
-            strength = (
-                round(
-                    inventory["value"] / 1000
-                    + level * 0.6
-                    + max(-2, min(2, (kda[0] + kda[2] * 0.3 - kda[1]) * 0.15)),
-                    2,
+            datos_puntuacion = {
+                "kills": player.get("kills"),
+                "deaths": player.get("deaths"),
+                "assists": player.get("assists"),
+                "cs": player.get("cs"),
+                "team_kills": bajas_totales,
+            }
+            entradas_puntuacion.append(
+                EntradaRendimientoJugador(
+                    str(key), champ, str(player.get("team") or "enemy"),
+                    str(player.get("role") or "UNKNOWN"), datos_puntuacion
                 )
-                if reliable
-                else None
             )
             rows.append(
                 {
@@ -462,7 +445,7 @@ class LiveRecommendationService:
                     "signals": signals,
                     "inventory": inventory,
                     "level": int(level or 0),
-                    "strength": strength,
+                    "strength": None,
                     "physical": physical,
                     "magic": magic,
                     "weight": weight,
@@ -470,7 +453,23 @@ class LiveRecommendationService:
                     "stale": stale,
                 }
             )
-        self._mark_strength(rows)
+        puntuaciones = clasificar_jugadores(entradas_puntuacion, int(max(0, now)), modo="live")["by_id"]
+        for fila in rows:
+            resultado = puntuaciones.get(str(fila["key"]))
+            fila["performance_score"] = resultado
+            fila["strength"] = resultado["total"] if resultado and resultado["completeness"] > 0 else None
+            fila["strength_label"] = ""
+        medibles = [fila for fila in rows if fila["strength"] is not None]
+        if medibles:
+            mayor = max(fila["strength"] for fila in medibles)
+            menor = min(fila["strength"] for fila in medibles)
+            for fila in medibles:
+                if mayor == menor:
+                    fila["strength_label"] = "FUERZA SIMILAR · PROVISIONAL"
+                elif fila["strength"] == mayor:
+                    fila["strength_label"] = "MÁS FUERTE · PROVISIONAL"
+                elif fila["strength"] == menor:
+                    fila["strength_label"] = "MÁS DÉBIL · PROVISIONAL"
         return sorted(
             rows,
             key=lambda r: (

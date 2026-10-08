@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class LiveMatchTracker:
@@ -97,9 +100,7 @@ class LiveMatchTracker:
         #: sesión no se escribe en disco ni genera log (la guarda el tracker
         #: principal). Evita partidas duplicadas y escrituras de sobra.
         self.persist = bool(persist)
-        self.sessions_path = (
-            Path.home() / ".solralol" / "live_match_sessions.json"
-        )
+        self.sessions_path = Path.home() / ".solralol" / "live_match_sessions.json"
         self.session: dict[str, Any] | None = None
         self.last_sample_time = -1.0
         self.event_order = 0
@@ -116,9 +117,7 @@ class LiveMatchTracker:
     def start(self, snapshot: dict[str, Any]) -> None:
         local_player = snapshot.get("local_player", {})
         started_at = datetime.now(UTC).isoformat()
-        champion_name = str(
-            local_player.get("championName", "Desconocido")
-        )
+        champion_name = str(local_player.get("championName", "Desconocido"))
 
         # El parche ya lo trae la ventana desde el catálogo que descarga al
         # arrancar (o desde su caché en disco): aquí no se consulta la red.
@@ -141,8 +140,7 @@ class LiveMatchTracker:
             "duration": 0.0,
             "players": {},
             "lane_matchups": {
-                role: {"ally_key": None, "enemy_key": None}
-                for role in self.ROLES
+                role: {"ally_key": None, "enemy_key": None} for role in self.ROLES
             },
             "snapshots": [],
             "events": [],
@@ -172,8 +170,7 @@ class LiveMatchTracker:
         game_time = self._float(snapshot.get("game_time", 0))
         if (
             not force
-            and game_time - self.last_sample_time
-            < self.SAMPLE_INTERVAL_SECONDS
+            and game_time - self.last_sample_time < self.SAMPLE_INTERVAL_SECONDS
         ):
             return
 
@@ -195,9 +192,7 @@ class LiveMatchTracker:
         completed = self.session
         self.session = None
         completed["ended_at"] = datetime.now(UTC).isoformat()
-        completed["final_scoreboard"] = self._build_final_scoreboard(
-            completed
-        )
+        completed["final_scoreboard"] = self._build_final_scoreboard(completed)
         completed.pop("seen_event_ids", None)
         completed.pop("last_player_state", None)
 
@@ -209,6 +204,7 @@ class LiveMatchTracker:
 
             try:
                 from app.services.match_log_service import MatchLogService
+
                 MatchLogService().save_match_log(completed)
             except Exception:
                 pass
@@ -272,14 +268,9 @@ class LiveMatchTracker:
         local_team = snapshot.get("local_team", "")
         local_player = snapshot.get("local_player", {})
         local_name = self._identity(local_player)
-        role_candidates = {
-            role: {"ally": [], "enemy": []}
-            for role in self.ROLES
-        }
+        role_candidates = {role: {"ally": [], "enemy": []} for role in self.ROLES}
 
-        for index, player in enumerate(
-            snapshot.get("all_players", [])
-        ):
+        for index, player in enumerate(snapshot.get("all_players", [])):
             if not isinstance(player, dict):
                 continue
 
@@ -295,12 +286,11 @@ class LiveMatchTracker:
                     "side": side,
                     "role": role,
                     "riot_id": self._display_name(player),
-                    "champion_name": player.get(
-                        "championName", "Desconocido"
-                    ),
-                    "is_local_player": (
-                        self._identity(player) == local_name
-                    ),
+                    "summoner_name": str(player.get("summonerName", "")),
+                    "participant_id": player.get("participantId"),
+                    "puuid": player.get("puuid"),
+                    "champion_name": player.get("championName", "Desconocido"),
+                    "is_local_player": (self._identity(player) == local_name),
                     "win": None,
                     "final": {},
                     "items": [],
@@ -318,6 +308,10 @@ class LiveMatchTracker:
                     "items": self._item_ids(player),
                     "summoner_spells": player.get("summonerSpells", {}),
                     "runes": player.get("runes", {}),
+                    "riot_id": self._display_name(player),
+                    "summoner_name": str(player.get("summonerName", "")),
+                    "participant_id": player.get("participantId"),
+                    "puuid": player.get("puuid"),
                 }
             )
 
@@ -346,9 +340,7 @@ class LiveMatchTracker:
         local_live_stats = snapshot.get("local_live_stats", {})
         players: dict[str, dict[str, Any]] = {}
 
-        for index, player in enumerate(
-            snapshot.get("all_players", [])
-        ):
+        for index, player in enumerate(snapshot.get("all_players", [])):
             if not isinstance(player, dict):
                 continue
             key = self._player_key(player, index)
@@ -374,9 +366,7 @@ class LiveMatchTracker:
             scores = {}
 
         items = self._item_ids(player)
-        inventory_value = sum(
-            self._item_cost(item_id) for item_id in items
-        )
+        inventory_value = sum(self._item_cost(item_id) for item_id in items)
         current_gold = self._first_int(
             (local_live_stats, player, scores),
             ("currentGold", "gold", "goldCurrent"),
@@ -426,9 +416,7 @@ class LiveMatchTracker:
             "quality": {
                 "estimated_gold": "live" if current_gold is not None else "estimated",
                 "damage_to_champions": (
-                    "api"
-                    if stats["damage_to_champions"] is not None
-                    else "unavailable"
+                    "api" if stats["damage_to_champions"] is not None else "unavailable"
                 ),
                 "damage_to_structures": (
                     "api"
@@ -436,19 +424,11 @@ class LiveMatchTracker:
                     else "unavailable"
                 ),
                 "damage_taken": (
-                    "api"
-                    if stats["damage_taken"] is not None
-                    else "unavailable"
+                    "api" if stats["damage_taken"] is not None else "unavailable"
                 ),
-                "healing": (
-                    "api"
-                    if stats["healing"] is not None
-                    else "unavailable"
-                ),
+                "healing": ("api" if stats["healing"] is not None else "unavailable"),
                 "vision_score": (
-                    "api"
-                    if stats["vision_score"] is not None
-                    else "unavailable"
+                    "api" if stats["vision_score"] is not None else "unavailable"
                 ),
             },
         }
@@ -588,20 +568,24 @@ class LiveMatchTracker:
         self,
         snapshot: dict[str, Any],
     ) -> None:
+        """Ingiere eventos exactos deduplicando por ID o huella de telemetría."""
         if self.session is None:
             return
 
         seen_ids = set(self.session["seen_event_ids"])
-        for index, raw_event in enumerate(
-            snapshot.get("game_events", [])
-        ):
+        for raw_event in snapshot.get("game_events", []):
             if not isinstance(raw_event, dict):
                 continue
-            event_id = raw_event.get(
-                "EventID",
-                raw_event.get("eventId", index),
+            event_id = self._native_event_identifier(raw_event)
+            killer_key = self._event_player_key(raw_event, "killer")
+            victim_key = self._event_player_key(raw_event, "victim")
+            raw_time = self._float(raw_event.get("EventTime", 0))
+            assister_keys, _ = self._assists_from_event(raw_event)
+            event_key = (
+                f"native:{event_id}"
+                if event_id is not None
+                else f"composite:{self.session.get('match_id')}:{raw_event.get('EventName', '')}:{killer_key}:{victim_key}:{raw_time:.3f}:{','.join(assister_keys)}"
             )
-            event_key = str(event_id)
             if event_key in seen_ids:
                 continue
             seen_ids.add(event_key)
@@ -612,19 +596,23 @@ class LiveMatchTracker:
         self,
         raw_event: dict[str, Any],
     ) -> None:
+        """Convierte un evento nativo en registros canónicos de la sesión."""
         if self.session is None:
             return
 
-        event_name = str(
-            raw_event.get("EventName", "")
-        ).casefold()
-        time_value = self._float(
-            raw_event.get("EventTime", 0)
-        )
+        event_name = str(raw_event.get("EventName", "")).casefold()
+        time_value = self._float(raw_event.get("EventTime", 0))
         killer_name = str(raw_event.get("KillerName", ""))
         victim_name = str(raw_event.get("VictimName", ""))
-        killer_key = self._key_from_identity(killer_name)
-        victim_key = self._key_from_identity(victim_name)
+        killer_key = self._event_player_key(raw_event, "killer")
+        victim_key = self._event_player_key(raw_event, "victim")
+        raw_id = self._native_event_identifier(raw_event)
+        exact_identity = (
+            f"native:{raw_id}"
+            if raw_id is not None
+            else f"{killer_key}:{victim_key}:{time_value:.3f}"
+        )
+        assister_keys, assist_data_complete = self._assists_from_event(raw_event)
 
         if event_name == "championkill":
             if killer_key:
@@ -646,7 +634,9 @@ class LiveMatchTracker:
                     ),
                     killer_key=killer_key,
                     victim_key=victim_key,
-                    assister_keys=self._assister_keys(raw_event),
+                    assister_keys=assister_keys,
+                    assist_data_complete=assist_data_complete,
+                    event_id=exact_identity,
                 )
 
             if victim_key:
@@ -668,6 +658,9 @@ class LiveMatchTracker:
                     ),
                     killer_key=killer_key,
                     victim_key=victim_key,
+                    assister_keys=assister_keys,
+                    assist_data_complete=assist_data_complete,
+                    event_id=exact_identity,
                 )
 
             for assister_key in self._assister_keys(raw_event):
@@ -689,6 +682,9 @@ class LiveMatchTracker:
                     ),
                     killer_key=killer_key,
                     victim_key=victim_key,
+                    assister_keys=assister_keys,
+                    assist_data_complete=assist_data_complete,
+                    event_id=exact_identity,
                 )
             return
 
@@ -725,9 +721,7 @@ class LiveMatchTracker:
                 objective_team=team,
                 structure=structure,
                 monster=str(
-                    raw_event.get("DragonType")
-                    or raw_event.get("MonsterType")
-                    or ""
+                    raw_event.get("DragonType") or raw_event.get("MonsterType") or ""
                 ),
                 stolen=str(raw_event.get("Stolen", "")),
                 assister_keys=assisters,
@@ -867,22 +861,129 @@ class LiveMatchTracker:
         return result
 
     def _assister_keys(self, raw_event: dict[str, Any]) -> list[str]:
-        values = raw_event.get("Assisters", [])
+        """Devuelve claves canónicas de asistentes confirmados."""
+        return self._assists_from_event(raw_event)[0]
+
+    def _assists_from_event(self, raw_event: dict[str, Any]) -> tuple[list[str], bool]:
+        """Normaliza campos de asistencia y conserva si la fuente fue completa."""
+        fields = (
+            "Assisters",
+            "assisters",
+            "assistIds",
+            "AssistIds",
+            "assist_ids",
+            "assisterIds",
+            "AssisterIds",
+        )
+        field = next((name for name in fields if name in raw_event), None)
+        if field is None:
+            return [], False
+        values = raw_event[field]
         if not isinstance(values, list):
-            return []
-        result = []
+            return [], False
+        result: list[str] = []
+        complete = True
+        killer_key = self._event_player_key(raw_event, "killer")
+        killer_team = self._team_from_key(killer_key)
         for value in values:
-            key = self._key_from_identity(str(value))
-            if key:
+            identity = value
+            if isinstance(value, dict):
+                identity = next(
+                    (
+                        value[name]
+                        for name in (
+                            "participantId",
+                            "participant_id",
+                            "puuid",
+                            "riotId",
+                            "summonerName",
+                            "name",
+                        )
+                        if value.get(name) is not None
+                    ),
+                    "",
+                )
+            key = self._key_from_identity(str(identity))
+            if key is None:
+                complete = False
+                continue
+            assister_team = self._team_from_key(key)
+            if killer_team and assister_team and killer_team != assister_team:
+                logger.warning(
+                    "Asistente %s pertenece a un equipo incompatible con la baja", key
+                )
+                complete = False
+                continue
+            if key not in result:
                 result.append(key)
-        return result
+        return result, complete
+
+    @staticmethod
+    def _native_event_identifier(raw_event: dict[str, Any]) -> str | None:
+        """Ignora el cero de muestra y devuelve solo IDs nativos utilizables."""
+        event_id = raw_event.get("EventID", raw_event.get("eventId"))
+        if event_id is None or str(event_id).strip() in {"", "0"}:
+            return None
+        return str(event_id).strip()
+
+    def _event_player_key(self, raw_event: dict[str, Any], role: str) -> str | None:
+        """Resuelve IDs de participante antes de probar alias exactos del roster."""
+        fields = {
+            "killer": (
+                "KillerParticipantId",
+                "killerParticipantId",
+                "killer_participant_id",
+                "KillerId",
+                "killerId",
+                "killer_id",
+                "KillerPuuid",
+                "killerPuuid",
+                "killer_puuid",
+                "KillerName",
+                "killerName",
+                "killer_name",
+            ),
+            "victim": (
+                "VictimParticipantId",
+                "victimParticipantId",
+                "victim_participant_id",
+                "VictimId",
+                "victimId",
+                "victim_id",
+                "VictimPuuid",
+                "victimPuuid",
+                "victim_puuid",
+                "VictimName",
+                "victimName",
+                "victim_name",
+            ),
+        }.get(role, ())
+        for field in fields:
+            value = raw_event.get(field)
+            if isinstance(value, dict):
+                value = next(
+                    (
+                        value[key]
+                        for key in (
+                            "participantId",
+                            "participant_id",
+                            "puuid",
+                            "riotId",
+                            "summonerName",
+                            "name",
+                        )
+                        if value.get(key) is not None
+                    ),
+                    None,
+                )
+            if value is not None:
+                resolved = self._key_from_identity(str(value))
+                if resolved:
+                    return resolved
+        return None
 
     def _team_label(self, team: str) -> str:
-        local_team = str(
-            self.session.get("local_team", "")
-            if self.session
-            else ""
-        )
+        local_team = str(self.session.get("local_team", "") if self.session else "")
         if team and team == local_team:
             return "Equipo aliado"
         if team:
@@ -931,9 +1032,12 @@ class LiveMatchTracker:
         player: dict[str, Any],
         index: int,
     ) -> str:
-        identity = self._identity(player) or f"player-{index}"
         team = str(player.get("team", "unknown")).casefold()
-        return f"{team}:{identity.casefold()}"
+        participant_id = player.get("participantId")
+        if participant_id is not None:
+            return f"{team}:participant:{participant_id}"
+        identity = self._identity(player) or f"player-{index}"
+        return f"{team}:name:{identity.casefold()}"
 
     @staticmethod
     def _identity(player: dict[str, Any]) -> str:
@@ -948,27 +1052,32 @@ class LiveMatchTracker:
         return f"{game_name}#{tag_line}".strip("# ")
 
     def _display_name(self, player: dict[str, Any]) -> str:
-        return self._identity(player) or str(
-            player.get("championName", "Desconocido")
-        )
+        return self._identity(player) or str(player.get("championName", "Desconocido"))
 
     def _key_from_identity(self, identity: str) -> str | None:
+        """Resuelve IDs estables o alias exactos, rechazando nombres ambiguos."""
         if self.session is None or not identity:
             return None
         wanted = identity.casefold()
+        matches: list[str] = []
         for key, metadata in self.session["players"].items():
             candidates = {
+                str(key).casefold(),
                 str(metadata.get("riot_id", "")).casefold(),
-                str(metadata.get("champion_name", "")).casefold(),
+                str(metadata.get("summoner_name", "")).casefold(),
+                str(metadata.get("participant_id", "")).casefold(),
+                str(metadata.get("puuid", "")).casefold(),
             }
             if wanted in candidates:
-                return key
-        return None
+                matches.append(str(key))
+        return matches[0] if len(matches) == 1 else None
 
     def _team_from_key(self, player_key: str | None) -> str:
         if self.session and player_key:
             return str(
-                self.session["players"].get(player_key, {}).get(
+                self.session["players"]
+                .get(player_key, {})
+                .get(
                     "team",
                     "",
                 )
@@ -978,7 +1087,9 @@ class LiveMatchTracker:
     def _role_from_key(self, player_key: str | None) -> str:
         if self.session and player_key:
             return str(
-                self.session["players"].get(player_key, {}).get(
+                self.session["players"]
+                .get(player_key, {})
+                .get(
                     "role",
                     "UNKNOWN",
                 )
@@ -988,11 +1099,7 @@ class LiveMatchTracker:
     def _item_ids(self, player: dict[str, Any]) -> list[int]:
         result = []
         for item in player.get("items", []):
-            value = (
-                item.get("itemID", 0)
-                if isinstance(item, dict)
-                else item
-            )
+            value = item.get("itemID", 0) if isinstance(item, dict) else item
             item_id = self._int(value)
             if item_id > 0:
                 result.append(item_id)
@@ -1012,9 +1119,7 @@ class LiveMatchTracker:
         item = self._catalog_item(item_id)
         gold = item.get("gold", {})
         if isinstance(gold, dict):
-            return self._int(
-                gold.get("total", gold.get("base", 0))
-            )
+            return self._int(gold.get("total", gold.get("base", 0)))
         return self._int(item.get("price", 0))
 
     def _item_name(self, item_id: int) -> str:
@@ -1101,9 +1206,7 @@ class LiveMatchTracker:
         after = Counter(current)
         result = []
         for item_id, count in after.items():
-            result.extend(
-                [item_id] * max(0, count - before[item_id])
-            )
+            result.extend([item_id] * max(0, count - before[item_id]))
         return result
 
     @staticmethod
@@ -1150,9 +1253,7 @@ class LiveMatchTracker:
     ) -> str:
         safe_time = started_at.replace(":", "-").replace(".", "-")
         safe_champion = "".join(
-            char
-            for char in champion_name
-            if char.isalnum() or char in "_-"
+            char for char in champion_name if char.isalnum() or char in "_-"
         )
         return f"{safe_time}_{safe_champion or 'match'}"
 
@@ -1188,6 +1289,7 @@ class LiveMatchTracker:
 
         self._sessions_cache = sessions
         self._sessions_cache_stamp = self._path_stamp()
+
 
 def thin_snapshots(
     session: dict[str, Any],

@@ -94,7 +94,9 @@ class MatchLogService:
         session_id = str(session.get("session_id") or "")
         if not session_id:
             safe_time = started_at.replace(":", "-").replace(".", "-")
-            safe_champion = "".join(c for c in champion_name if c.isalnum() or c in "_-")
+            safe_champion = "".join(
+                c for c in champion_name if c.isalnum() or c in "_-"
+            )
             session_id = f"{safe_time}_{safe_champion or 'match'}"
 
         players = session.get("players", {})
@@ -107,15 +109,28 @@ class MatchLogService:
         if not winning_team and local_player.get("win") is not None:
             local_win = bool(local_player.get("win"))
             if local_team:
-                winning_team = local_team if local_win else ("CHAOS" if local_team == "ORDER" else "ORDER")
+                winning_team = (
+                    local_team
+                    if local_win
+                    else ("CHAOS" if local_team == "ORDER" else "ORDER")
+                )
 
-        user_win = self._determine_player_win(local_key, local_player, session, winning_team)
+        user_win = self._determine_player_win(
+            local_key, local_player, session, winning_team
+        )
+
+        epic_diagnostics = session.get("epic_damage_diagnostics")
+        if isinstance(epic_diagnostics, dict):
+            epic_diagnostics = dict(epic_diagnostics)
+            epic_diagnostics["persistence_retained"] = True
 
         # 1. Metadatos principales
         metadata = {
             "session_id": session_id,
             "champion_name": champion_name,
-            "player_riot_id": session.get("player_riot_id", local_player.get("riot_id", "Desconocido")),
+            "player_riot_id": session.get(
+                "player_riot_id", local_player.get("riot_id", "Desconocido")
+            ),
             "game_mode": game_mode,
             "started_at": started_at,
             "ended_at": ended_at,
@@ -124,6 +139,7 @@ class MatchLogService:
             "result": "VICTORIA" if user_win else "DERROTA",
             "winning_team": winning_team or "DESCONOCIDO",
             "local_team": local_team,
+            "epic_damage_diagnostics": epic_diagnostics,
         }
 
         # 2. Resumen del jugador local
@@ -145,18 +161,20 @@ class MatchLogService:
             p_team = str(p_meta.get("team", "")).upper()
             is_ally = bool(local_team and p_team == local_team) or (key == local_key)
 
-            all_players_summary.append({
-                "player_key": key,
-                "champion": p_meta.get("champion_name", "Desconocido"),
-                "riot_id": p_meta.get("riot_id", "Desconocido"),
-                "team": p_team,
-                "is_ally": is_ally,
-                "role": p_meta.get("role", "UNKNOWN"),
-                "win": p_win,
-                "result": "VICTORIA" if p_win else "DERROTA",
-                "cs_per_min": round(p_stats["cs"] / max(1.0, duration / 60.0), 1),
-                **p_stats,
-            })
+            all_players_summary.append(
+                {
+                    "player_key": key,
+                    "champion": p_meta.get("champion_name", "Desconocido"),
+                    "riot_id": p_meta.get("riot_id", "Desconocido"),
+                    "team": p_team,
+                    "is_ally": is_ally,
+                    "role": p_meta.get("role", "UNKNOWN"),
+                    "win": p_win,
+                    "result": "VICTORIA" if p_win else "DERROTA",
+                    "cs_per_min": round(p_stats["cs"] / max(1.0, duration / 60.0), 1),
+                    **p_stats,
+                }
+            )
 
         # 4. Cronología de eventos registrados (Aliados y Enemigos)
         events_raw = session.get("events", [])
@@ -165,25 +183,34 @@ class MatchLogService:
             if not isinstance(ev, dict):
                 continue
             t = float(ev.get("time", 0.0) or 0.0)
-            events_chronology.append({
-                "order": ev.get("order", index),
-                "time_seconds": t,
-                "time_label": ev.get("time_label", self._format_time(t)),
-                "type": ev.get("type", "unknown"),
-                "player_key": ev.get("player_key", ""),
-                "team": ev.get("team", ""),
-                "label": ev.get("label", ""),
-                "killer_key": ev.get("killer_key"),
-                "victim_key": ev.get("victim_key"),
-                "assister_keys": ev.get("assister_keys", []),
-                "item_name": ev.get("item_name"),
-                "objective": ev.get("objective"),
-            })
+            events_chronology.append(
+                {
+                    "order": ev.get("order", index),
+                    "time_seconds": t,
+                    "time_label": ev.get("time_label", self._format_time(t)),
+                    "type": ev.get("type", "unknown"),
+                    "player_key": ev.get("player_key", ""),
+                    "team": ev.get("team", ""),
+                    "label": ev.get("label", ""),
+                    "killer_key": ev.get("killer_key"),
+                    "victim_key": ev.get("victim_key"),
+                    "assister_keys": ev.get("assister_keys", []),
+                    "item_name": ev.get("item_name"),
+                    "objective": ev.get("objective"),
+                }
+            )
 
         events_chronology.sort(key=lambda x: (x["time_seconds"], x["order"]))
 
         # 5. Formatear texto del log en formato plano comprensible por IA y humanos
-        formatted_log_text = self._generate_formatted_log_text(metadata, user_stats, all_players_summary, events_chronology, players, local_team)
+        formatted_log_text = self._generate_formatted_log_text(
+            metadata,
+            user_stats,
+            all_players_summary,
+            events_chronology,
+            players,
+            local_team,
+        )
 
         return {
             "metadata": metadata,
@@ -192,6 +219,7 @@ class MatchLogService:
             "events_count": len(events_chronology),
             "events_chronology": events_chronology,
             "formatted_log_text": formatted_log_text,
+            "performance_scoring": session.get("performance_scoring"),
         }
 
     def _extract_player_stats(
@@ -200,6 +228,16 @@ class MatchLogService:
         p_meta: dict[str, Any],
         session: dict[str, Any],
     ) -> dict[str, Any]:
+        """Extrae y conserva metricas de juego observadas para un jugador.
+
+        Args:
+            key: identificador del jugador en la sesion.
+            p_meta: identidad y datos del jugador.
+            session: sesion con telemetria y marcador final.
+
+        Returns:
+            Diccionario serializable de metricas sin rellenar ausencias.
+        """
         final_scoreboard = session.get("final_scoreboard", {})
         p_final = final_scoreboard.get(key) or p_meta.get("final") or {}
 
@@ -222,23 +260,112 @@ class MatchLogService:
                             pass
             return default
 
+        def _valor_opcional(*sources: Any, keys: tuple[str, ...]) -> int | None:
+            """Lee un campo numerico opcional entre fuentes ordenadas.
+
+            Args:
+                sources: fuentes de estadisticas en orden de prioridad.
+                keys: alias aceptados para el dato.
+
+            Returns:
+                Valor entero observado o None cuando no esta disponible.
+            """
+            for src in sources:
+                if not isinstance(src, dict):
+                    continue
+                for k in keys:
+                    if k in src and src[k] is not None:
+                        try:
+                            return int(src[k])
+                        except (TypeError, ValueError):
+                            continue
+            return None
+
         snap_stats = latest_snapshot_point.get("stats", {})
 
         kills = _val(p_final, p_meta, latest_snapshot_point, keys=("kills",))
         deaths = _val(p_final, p_meta, latest_snapshot_point, keys=("deaths",))
         assists = _val(p_final, p_meta, latest_snapshot_point, keys=("assists",))
 
-        cs = _val(p_final, p_meta, latest_snapshot_point, keys=("cs_total", "minions_killed", "cs"))
-        gold = _val(p_final, p_meta, latest_snapshot_point, keys=("gold_earned", "estimated_gold", "gold"))
+        cs = _val(
+            p_final,
+            p_meta,
+            latest_snapshot_point,
+            keys=("cs_total", "minions_killed", "cs"),
+        )
+        gold = _val(
+            p_final,
+            p_meta,
+            latest_snapshot_point,
+            keys=("gold_earned", "estimated_gold", "gold"),
+        )
 
-        dmg_champs = _val(p_final, snap_stats, latest_snapshot_point, keys=("total_damage_dealt_to_champions", "damage_dealt_to_champions", "damage_to_champions"))
-        dmg_objs = _val(p_final, snap_stats, latest_snapshot_point, keys=("damage_dealt_to_objectives", "damage_to_structures"))
-        dmg_taken = _val(p_final, snap_stats, latest_snapshot_point, keys=("total_damage_taken", "damage_taken"))
-        vision = _val(p_final, snap_stats, latest_snapshot_point, keys=("vision_score",))
+        dmg_champs = _val(
+            p_final,
+            snap_stats,
+            latest_snapshot_point,
+            keys=(
+                "total_damage_dealt_to_champions",
+                "damage_dealt_to_champions",
+                "damage_to_champions",
+            ),
+        )
+        dmg_objs = _val(
+            p_final,
+            snap_stats,
+            latest_snapshot_point,
+            keys=("damage_dealt_to_objectives", "damage_to_structures"),
+        )
+        dmg_taken = _valor_opcional(
+            p_final,
+            snap_stats,
+            latest_snapshot_point,
+            keys=("total_damage_taken", "damage_taken"),
+        )
+        dano_mitigado = _valor_opcional(
+            p_final,
+            snap_stats,
+            latest_snapshot_point,
+            keys=("damage_self_mitigated",),
+        )
+        vision = _val(
+            p_final, snap_stats, latest_snapshot_point, keys=("vision_score",)
+        )
+        dano_estructuras = _valor_opcional(
+            p_final,
+            snap_stats,
+            latest_snapshot_point,
+            keys=("damage_dealt_to_turrets", "damage_dealt_to_buildings"),
+        )
+        cc_total = _valor_opcional(
+            p_final,
+            snap_stats,
+            latest_snapshot_point,
+            keys=(
+                "total_time_crowd_control_dealt",
+                "time_cc_dealt",
+                "time_ccing_others",
+            ),
+        )
+        curacion_total = _valor_opcional(p_final, keys=("total_heal",))
+        curacion_aliados = _valor_opcional(p_final, keys=("total_heals_on_teammates",))
+        escudos_aliados = _valor_opcional(
+            p_final, keys=("total_damage_shielded_on_teammates",)
+        )
+        dano_objetivos = _valor_opcional(p_final, keys=("damage_dealt_to_objectives",))
 
-        items = p_final.get("items") or p_meta.get("items") or latest_snapshot_point.get("items") or []
+        items = (
+            p_final.get("items")
+            or p_meta.get("items")
+            or latest_snapshot_point.get("items")
+            or []
+        )
         if isinstance(items, list):
-            clean_items = [int(x) for x in items if isinstance(x, (int, float, str)) and str(x).isdigit() and int(x) > 0]
+            clean_items = [
+                int(x)
+                for x in items
+                if isinstance(x, (int, float, str)) and str(x).isdigit() and int(x) > 0
+            ]
         else:
             clean_items = []
 
@@ -250,7 +377,22 @@ class MatchLogService:
             "gold": gold,
             "damage_to_champions": dmg_champs,
             "damage_to_objectives": dmg_objs,
+            "damage_dealt_to_turrets": dano_estructuras,
+            "damage_dealt_to_objectives": dano_objetivos,
+            "total_time_crowd_control_dealt": cc_total,
+            "total_heal": curacion_total,
+            "total_heals_on_teammates": curacion_aliados,
+            "total_damage_shielded_on_teammates": escudos_aliados,
+            "epic_monster_damage": _valor_opcional(
+                p_final, keys=("epic_monster_damage",)
+            ),
+            "self_healing": (
+                max(0, curacion_total - curacion_aliados)
+                if curacion_total is not None and curacion_aliados is not None
+                else None
+            ),
             "damage_taken": dmg_taken,
+            "damage_self_mitigated": dano_mitigado,
             "vision_score": vision,
             "items": clean_items,
         }
@@ -286,24 +428,53 @@ class MatchLogService:
         local_team: str,
     ) -> str:
         lines = []
-        lines.append("================================================================================")
-        lines.append(f"SOLRALOL - REGISTRO COMPLETO DE LOG DE PARTIDA ({metadata['session_id']})")
-        lines.append("================================================================================")
-        lines.append(f"Jugador Analizado: {metadata['champion_name']} (Riot ID: {metadata['player_riot_id']})")
-        lines.append(f"Modo: {metadata['game_mode']} | Resultado: {metadata['result']} | Duración: {metadata['duration_formatted']}")
-        lines.append(f"Equipo Jugador: {metadata['local_team']} | Equipo Ganador: {metadata['winning_team']}")
+        lines.append(
+            "================================================================================"
+        )
+        lines.append(
+            f"SOLRALOL - REGISTRO COMPLETO DE LOG DE PARTIDA ({metadata['session_id']})"
+        )
+        lines.append(
+            "================================================================================"
+        )
+        lines.append(
+            f"Jugador Analizado: {metadata['champion_name']} (Riot ID: {metadata['player_riot_id']})"
+        )
+        lines.append(
+            f"Modo: {metadata['game_mode']} | Resultado: {metadata['result']} | Duración: {metadata['duration_formatted']}"
+        )
+        lines.append(
+            f"Equipo Jugador: {metadata['local_team']} | Equipo Ganador: {metadata['winning_team']}"
+        )
         lines.append(f"Fecha Inicio: {metadata['started_at']}")
-        lines.append("--------------------------------------------------------------------------------")
+        lines.append(
+            "--------------------------------------------------------------------------------"
+        )
         lines.append("ESTADÍSTICAS FINALES DEL JUGADOR:")
-        lines.append(f"  - KDA: {user_stats['kills']} / {user_stats['deaths']} / {user_stats['assists']}")
-        lines.append(f"  - Farmeo: {user_stats['cs']} CS ({user_stats['cs_per_min']} CS/min)")
+        lines.append(
+            f"  - KDA: {user_stats['kills']} / {user_stats['deaths']} / {user_stats['assists']}"
+        )
+        lines.append(
+            f"  - Farmeo: {user_stats['cs']} CS ({user_stats['cs_per_min']} CS/min)"
+        )
         lines.append(f"  - Oro Ganado: {user_stats['gold']:,} oro")
         lines.append(f"  - Daño a Campeones: {user_stats['damage_to_champions']:,}")
         lines.append(f"  - Daño a Objetivos: {user_stats['damage_to_objectives']:,}")
-        lines.append(f"  - Daño Recibido: {user_stats['damage_taken']:,}")
+        dano_recibido = user_stats["damage_taken"]
+        dano_mitigado = user_stats["damage_self_mitigated"]
+        dano_recibido_texto = (
+            f"{dano_recibido:,}" if dano_recibido is not None else "No disponible"
+        )
+        dano_mitigado_texto = (
+            f"{dano_mitigado:,}" if dano_mitigado is not None else "No disponible"
+        )
+        lines.append(f"  - Daño Recibido: {dano_recibido_texto}")
+        lines.append(f"  - Daño Mitigado (propio): {dano_mitigado_texto}")
         lines.append(f"  - Puntuación de Visión: {user_stats['vision_score']}")
         lines.append(f"  - Objetos Finales (IDs): {user_stats['items']}")
-        lines.append("--------------------------------------------------------------------------------")
+        lines.append(
+            "--------------------------------------------------------------------------------"
+        )
         lines.append("RESUMEN DE EQUIPOS Y JUGADORES (ALIADOS Y ENEMIGOS):")
 
         allies = [p for p in all_players if p["is_ally"]]
@@ -311,13 +482,19 @@ class MatchLogService:
 
         lines.append("  [EQUIPO ALIADO]:")
         for p in allies:
-            lines.append(f"    - {p['champion']} ({p['role']}) - Invocador: {p['riot_id']} | KDA: {p['kills']}/{p['deaths']}/{p['assists']} | {p['cs']} CS ({p['cs_per_min']} CS/m) | Oro: {p['gold']:,} | Daño: {p['damage_to_champions']:,} | [{p['result']}] | Build: {p['items']}")
+            lines.append(
+                f"    - {p['champion']} ({p['role']}) - Invocador: {p['riot_id']} | KDA: {p['kills']}/{p['deaths']}/{p['assists']} | {p['cs']} CS ({p['cs_per_min']} CS/m) | Oro: {p['gold']:,} | Daño: {p['damage_to_champions']:,} | [{p['result']}] | Build: {p['items']}"
+            )
 
         lines.append("  [EQUIPO ENEMIGO]:")
         for p in enemies:
-            lines.append(f"    - {p['champion']} ({p['role']}) - Invocador: {p['riot_id']} | KDA: {p['kills']}/{p['deaths']}/{p['assists']} | {p['cs']} CS ({p['cs_per_min']} CS/m) | Oro: {p['gold']:,} | Daño: {p['damage_to_champions']:,} | [{p['result']}] | Build: {p['items']}")
+            lines.append(
+                f"    - {p['champion']} ({p['role']}) - Invocador: {p['riot_id']} | KDA: {p['kills']}/{p['deaths']}/{p['assists']} | {p['cs']} CS ({p['cs_per_min']} CS/m) | Oro: {p['gold']:,} | Daño: {p['damage_to_champions']:,} | [{p['result']}] | Build: {p['items']}"
+            )
 
-        lines.append("--------------------------------------------------------------------------------")
+        lines.append(
+            "--------------------------------------------------------------------------------"
+        )
         lines.append("CRONOLOGÍA COMPLETA DE EVENTOS (AMBOS EQUIPOS):")
 
         if not events:
@@ -333,9 +510,13 @@ class MatchLogService:
                 formatted_label = self._format_event_label(ev, players_meta, local_team)
                 lines.append(f"  [{time_str}] [{ev_type}] {formatted_label}")
 
-        lines.append("================================================================================")
+        lines.append(
+            "================================================================================"
+        )
         lines.append("FIN DEL REGISTRO DE LOG DE PARTIDA")
-        lines.append("================================================================================")
+        lines.append(
+            "================================================================================"
+        )
         return "\n".join(lines)
 
     def _format_event_label(
@@ -365,7 +546,11 @@ class MatchLogService:
             assister_keys = ev.get("assister_keys", [])
             assisters_str = ""
             if assister_keys:
-                ast_names = [players[ak].get("champion_name") for ak in assister_keys if ak in players]
+                ast_names = [
+                    players[ak].get("champion_name")
+                    for ak in assister_keys
+                    if ak in players
+                ]
                 ast_names = [n for n in ast_names if n]
                 if ast_names:
                     assisters_str = f" [Asistencias: {', '.join(ast_names)}]"

@@ -19,7 +19,6 @@ from app.services.draft_analyzer_service import DraftAnalyzerService
 from app.services.live_recommendation_service import LiveRecommendationService
 from app.ui.draft_tool_dialog import DraftPowerCurveWidget
 from app.ui.local_analysis_dialog import DamageBarWidget
-from app.ui.sistema_visual import PALETA
 from app.ui.tema import (
     aplicar_tema,
 )
@@ -49,38 +48,6 @@ class RecommendationPanel(QFrame):
         self._restore_timer.timeout.connect(self._restore_scroll)
         self.setObjectName("recommendationPanel")
         aplicar_tema(self)
-        self.setStyleSheet(
-            self.styleSheet()
-            + f"""
-            QFrame#recommendationPanel QLabel#synergyScore,
-            QFrame#recommendationPanel QLabel#purchaseAffinity {{
-                padding: 4px 9px; border-radius: 8px; border: 1px solid {PALETA["oro_oscuro"]};
-                background: {PALETA["calida"]}; color: {PALETA["oro_suave"]}; font-weight: 700;
-            }}
-            QFrame#recommendationPanel QLabel#synergyScore[intensidad="alta"] {{
-                background: {PALETA["activo"]}; border-color: {PALETA["oro"]}; color: {PALETA["texto"]};
-            }}
-            QFrame#recommendationPanel QLabel#synergyScore[intensidad="media"] {{
-                background: {PALETA["calida"]}; border-color: {PALETA["oro_oscuro"]};
-            }}
-            QFrame#recommendationPanel QLabel#synergyScore[intensidad="baja"] {{
-                background: {PALETA["superficie"]}; border-color: {PALETA["borde_sutil"]};
-                color: {PALETA["secundario"]};
-            }}
-            QFrame#recommendationPanel QLabel#enemyStrengthBadge,
-            QFrame#recommendationPanel QLabel#enemyInventoryBadge,
-            QFrame#recommendationPanel QLabel#enemyBuildGold {{
-                padding: 2px 6px; border-radius: 7px; border: 1px solid {PALETA["oro_oscuro"]};
-                background: {PALETA["calida"]};
-            }}
-            QFrame#recommendationPanel QWidget#recommendationBody,
-            QFrame#recommendationPanel QWidget#recommendationDashboard,
-            QFrame#recommendationPanel QWidget#draftDamageCard,
-            QFrame#recommendationPanel QWidget#draftCurveCard {{
-                background: {PALETA["superficie"]}; border: 1px solid {PALETA["borde"]}; border-radius: 14px;
-            }}
-        """
-        )
         self._build_ui()
 
     @staticmethod

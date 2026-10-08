@@ -15,7 +15,10 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.game_calculator import get_inventory_value
-
+from app.services.servicio_puntuacion_rendimiento import (
+    EntradaRendimientoJugador,
+    clasificar_jugadores,
+)
 
 ROLE_ORDER = (
     "TOP",
@@ -52,14 +55,6 @@ ROLE_ALIASES = {
 GOLD_PER_KILL = 300
 GOLD_PER_ASSIST = 75
 GOLD_PER_CS = 20
-
-# Peso del nivel y de la participación en asesinatos al ordenar por fuerza.
-# El criterio es el mismo que ya usa LiveRecommendationService: la inversión en
-# objetos y el nivel dominan y el KDA solo ajusta de forma acotada.
-LEVEL_GOLD_WEIGHT = 600
-KDA_GOLD_WEIGHT = 150
-KDA_GOLD_LIMIT = 2000
-
 
 def _int(value: Any) -> int:
     try:
@@ -166,44 +161,6 @@ def estimate_gold(
     )
 
 
-def kda_adjustment(player: dict) -> int:
-    """Ajuste acotado por KDA, en oro equivalente."""
-    scores = player.get("scores", {}) if isinstance(player, dict) else {}
-    if not isinstance(scores, dict):
-        scores = {}
-
-    weighted = (
-        _int(scores.get("kills"))
-        + _int(scores.get("assists")) * 0.3
-        - _int(scores.get("deaths"))
-    )
-    bonus = int(round(weighted * KDA_GOLD_WEIGHT))
-
-    return max(-KDA_GOLD_LIMIT, min(KDA_GOLD_LIMIT, bonus))
-
-
-def strength_score(
-    player: dict,
-    item_catalog: dict,
-    current_gold: Any = None,
-) -> int:
-    """Proxy de fuerza comparable entre jugadores (en oro equivalente).
-
-    ``current_gold`` se acepta por compatibilidad y se ignora: la fuerza se mide
-    sobre la build y lo ganado, igual para todos los jugadores.
-    """
-    if not isinstance(player, dict):
-        return 0
-
-    level = max(0, _int(player.get("level")) - 1)
-
-    return (
-        estimate_gold(player, item_catalog)
-        + level * LEVEL_GOLD_WEIGHT
-        + kda_adjustment(player)
-    )
-
-
 def format_gold(value: Any) -> str:
     """Oro compacto: 900, 1.2K, 12.5K, 123K."""
     amount = _int(value)
@@ -244,7 +201,7 @@ def _gold_entry(
         "role": player_role(player),
         "team": str(player.get("team", "")),
         "gold": estimate_gold(player, item_catalog),
-        "score": strength_score(player, item_catalog),
+        "score": None,
     }
 
 
@@ -263,6 +220,36 @@ def _team_players(
         or ""
     )
 
+    participantes = [
+        player for player in snapshot.get("all_players", []) if isinstance(player, dict)
+    ]
+    bajas_equipo: dict[str, int] = {}
+    for jugador in participantes:
+        metricas = jugador.get("scores", {})
+        equipo = str(jugador.get("team", ""))
+        if isinstance(metricas, dict):
+            bajas_equipo[equipo] = bajas_equipo.get(equipo, 0) + _int(metricas.get("kills"))
+    entradas = []
+    for indice, jugador in enumerate(participantes):
+        metricas = jugador.get("scores", {})
+        metricas = metricas if isinstance(metricas, dict) else {}
+        equipo = str(jugador.get("team", ""))
+        datos = {
+            "kills": metricas.get("kills"),
+            "deaths": metricas.get("deaths"),
+            "assists": metricas.get("assists"),
+            "cs": metricas.get("creepScore"),
+            "team_kills": bajas_equipo.get(equipo, 0),
+        }
+        identidad = player_identity(jugador) or f"{player_champion(jugador)}:{indice}"
+        entradas.append(
+            EntradaRendimientoJugador(
+                identidad, player_champion(jugador), equipo, player_role(jugador), datos
+            )
+        )
+    duracion = int(float(snapshot.get("game_time", snapshot.get("gameTime", 0)) or 0))
+    puntuaciones = clasificar_jugadores(entradas, duracion, modo="live")["by_id"]
+
     allies: list[dict] = []
     enemies: list[dict] = []
 
@@ -271,6 +258,10 @@ def _team_players(
             continue
 
         entry = _gold_entry(player, item_catalog)
+        identidad = player_identity(player) or f"{player_champion(player)}:{participantes.index(player)}"
+        resultado = puntuaciones.get(identidad)
+        entry["score"] = resultado["total"] if resultado else None
+        entry["performance"] = resultado
 
         if local_team:
             if entry["team"] == local_team:

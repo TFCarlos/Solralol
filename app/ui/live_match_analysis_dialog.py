@@ -6,7 +6,7 @@ from copy import deepcopy
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import QPointF, Qt, QThreadPool, QTimer, Slot
+from PySide6.QtCore import QPointF, QSize, Qt, QThreadPool, QTimer, Slot
 from PySide6.QtGui import QPainter, QPen, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
@@ -29,13 +29,17 @@ from PySide6.QtWidgets import (
 
 from app.services.data_dragon_assets import DataDragonAssetService
 from app.services.game_calculator import calculate_item_stats
+from app.services.identidad_jugador import nombre_riot_visible
 from app.services.live_analysis_models_and_calculator import (
     attach_achievements,
     calculate_post_stats,
 )
+from app.services.live_event_participation import filter_participating_events
 from app.services.live_match_tracker import LiveMatchTracker
 from app.services.match_log_service import MatchLogService
+from app.services.servicio_puntuacion_rendimiento import puntuar_sesion
 from app.services.settings_service import SettingsService
+from app.ui.desglose_rendimiento_dialogo import DialogoDesgloseRendimiento
 from app.ui.draft_icon_cache import DraftIconCache
 from app.ui.live_analysis_task import AnalysisTask
 from app.ui.live_timeline import TimelineView
@@ -47,6 +51,7 @@ from app.ui.tema import (
     aplicar_color,
     color_con_alfa,
 )
+from app.ui.todos_rendimiento import VistaTodosRendimiento
 
 
 class VersusChart(QWidget):
@@ -62,7 +67,6 @@ class VersusChart(QWidget):
     ) -> None:
         super().__init__(parent)
 
-
         self.title = title
         self.ally_values = sorted(ally_values)
         self.enemy_values = sorted(enemy_values)
@@ -73,24 +77,19 @@ class VersusChart(QWidget):
         self.enemy_name = enemy_name
         self.unit = unit
 
-
         self.hover_position: QPointF | None = None
-
 
         self.setObjectName("versusChart")
         self.setMinimumHeight(178)
         self.setMouseTracking(True)
 
-
     def mouseMoveEvent(self, event):
         self.hover_position = event.position()
         self.update()
 
-
     def leaveEvent(self, event):
         self.hover_position = None
         self.update()
-
 
     def paintEvent(self, event: Any) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -108,12 +107,22 @@ class VersusChart(QWidget):
         bounds = self.rect().adjusted(43, 49, -15, -30)
         if len(self.ally_values) + len(self.enemy_values) < 2:
             painter.setPen(color_con_alfa("teal", 255))
-            painter.drawText(bounds, Qt.AlignmentFlag.AlignCenter, "Esperando snapshots LIVE…")
+            painter.drawText(
+                bounds, Qt.AlignmentFlag.AlignCenter, "Esperando snapshots LIVE…"
+            )
             return
         ranges = self._cached_ranges
         self._draw_grid(painter, bounds, *ranges)
-        self._draw_series(painter, bounds, self.ally_values, *ranges, color_con_alfa("teal", 255))
-        self._draw_series(painter, bounds, self.enemy_values, *ranges, color_con_alfa("desventaja", 255))
+        self._draw_series(
+            painter, bounds, self.ally_values, *ranges, color_con_alfa("teal", 255)
+        )
+        self._draw_series(
+            painter,
+            bounds,
+            self.enemy_values,
+            *ranges,
+            color_con_alfa("desventaja", 255),
+        )
         painter.setPen(color_con_alfa("teal", 255))
         painter.drawText(
             12,
@@ -128,7 +137,6 @@ class VersusChart(QWidget):
         )
         self._draw_hover(painter, bounds, *ranges)
 
-
     @staticmethod
     def _ranges(points):
         times = [point[0] for point in points]
@@ -140,10 +148,22 @@ class VersusChart(QWidget):
         if maximum_value <= minimum_value:
             maximum_value = minimum_value + 1.0
         padding = max((maximum_value - minimum_value) * 0.08, 1.0)
-        return minimum_time, maximum_time, max(0.0, minimum_value - padding), maximum_value + padding
+        return (
+            minimum_time,
+            maximum_time,
+            max(0.0, minimum_value - padding),
+            maximum_value + padding,
+        )
 
-
-    def _draw_grid(self, painter: Any, bounds: Any, minimum_time: Any, maximum_time: Any, minimum_value: Any, maximum_value: Any) -> None:
+    def _draw_grid(
+        self,
+        painter: Any,
+        bounds: Any,
+        minimum_time: Any,
+        maximum_time: Any,
+        minimum_value: Any,
+        maximum_value: Any,
+    ) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         grid_pen = QPen(color_con_alfa("teal", 80))
         grid_pen.setStyle(Qt.PenStyle.DotLine)
@@ -162,14 +182,31 @@ class VersusChart(QWidget):
             painter.drawLine(x, bounds.top(), x, bounds.bottom())
             seconds = minimum_time + (maximum_time - minimum_time) * ratio
             painter.setPen(color_con_alfa("teal", 255))
-            painter.drawText(x - 17, self.height() - 9, LiveMatchTracker.format_time(seconds))
+            painter.drawText(
+                x - 17, self.height() - 9, LiveMatchTracker.format_time(seconds)
+            )
             painter.setPen(grid_pen)
 
-
-    def _draw_series(self, painter, bounds, values, minimum_time, maximum_time, minimum_value, maximum_value, color):
+    def _draw_series(
+        self,
+        painter,
+        bounds,
+        values,
+        minimum_time,
+        maximum_time,
+        minimum_value,
+        maximum_value,
+        color,
+    ):
         if not values:
             return
-        cache_key = (id(values), bounds.x(), bounds.y(), bounds.width(), bounds.height())
+        cache_key = (
+            id(values),
+            bounds.x(),
+            bounds.y(),
+            bounds.width(),
+            bounds.height(),
+        )
         polygon = self._geometry_cache.get(cache_key)
         if polygon is None:
             # At most four points per horizontal pixel, retaining spikes,
@@ -178,17 +215,30 @@ class VersusChart(QWidget):
             bucket = []
             previous_x = None
             for point in values:
-                x = int((point[0] - minimum_time) * max(1, bounds.width()) / (maximum_time - minimum_time))
+                x = int(
+                    (point[0] - minimum_time)
+                    * max(1, bounds.width())
+                    / (maximum_time - minimum_time)
+                )
                 if previous_x is not None and x != previous_x:
                     sampled.extend(self._bucket_extrema(bucket))
                     bucket = []
                 bucket.append(point)
                 previous_x = x
             sampled.extend(self._bucket_extrema(bucket))
-            polygon = QPolygonF([
-                self._map_point(point, bounds, minimum_time, maximum_time, minimum_value, maximum_value)
-                for point in sampled
-            ])
+            polygon = QPolygonF(
+                [
+                    self._map_point(
+                        point,
+                        bounds,
+                        minimum_time,
+                        maximum_time,
+                        minimum_value,
+                        maximum_value,
+                    )
+                    for point in sampled
+                ]
+            )
             if len(self._geometry_cache) >= 2:
                 self._geometry_cache.clear()
             self._geometry_cache[cache_key] = polygon
@@ -202,15 +252,29 @@ class VersusChart(QWidget):
     def _bucket_extrema(bucket):
         if len(bucket) <= 4:
             return bucket
-        indices = sorted({0, len(bucket) - 1,
-                          min(range(len(bucket)), key=lambda i: bucket[i][1]),
-                          max(range(len(bucket)), key=lambda i: bucket[i][1])})
+        indices = sorted(
+            {
+                0,
+                len(bucket) - 1,
+                min(range(len(bucket)), key=lambda i: bucket[i][1]),
+                max(range(len(bucket)), key=lambda i: bucket[i][1]),
+            }
+        )
         return [bucket[i] for i in indices]
 
-
-    def _draw_hover(self, painter: Any, bounds: Any, minimum_time: Any, maximum_time: Any, minimum_value: Any, maximum_value: Any) -> None:
+    def _draw_hover(
+        self,
+        painter: Any,
+        bounds: Any,
+        minimum_time: Any,
+        maximum_time: Any,
+        minimum_value: Any,
+        maximum_value: Any,
+    ) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
-        if self.hover_position is None or not bounds.contains(self.hover_position.toPoint()):
+        if self.hover_position is None or not bounds.contains(
+            self.hover_position.toPoint()
+        ):
             return
         x = self.hover_position.x()
         ratio = (x - bounds.left()) / max(bounds.width(), 1)
@@ -226,34 +290,43 @@ class VersusChart(QWidget):
             lines.append(f"{self.ally_name}: {self._format_value(ally[1])}")
         if enemy:
             lines.append(f"{self.enemy_name}: {self._format_value(enemy[1])}")
-        width = max(painter.fontMetrics().horizontalAdvance(line) for line in lines) + 16
+        width = (
+            max(painter.fontMetrics().horizontalAdvance(line) for line in lines) + 16
+        )
         height = len(lines) * 16 + 10
         tooltip_x = min(int(x) + 9, bounds.right() - width)
         tooltip_y = bounds.top() + 8
-        painter.fillRect(tooltip_x, tooltip_y, width, height, color_con_alfa("base", 238))
+        painter.fillRect(
+            tooltip_x, tooltip_y, width, height, color_con_alfa("base", 238)
+        )
         painter.setPen(color_con_alfa("texto", 255))
         for index, line in enumerate(lines):
             painter.drawText(tooltip_x + 8, tooltip_y + 17 + index * 16, line)
-
 
     @staticmethod
     def _nearest(values, time_value):
         if not values:
             return None
         index = bisect_left(values, time_value, key=lambda point: point[0])
-        return min(values[max(0, index - 1):index + 1],
-                   key=lambda point: abs(point[0] - time_value))
-
+        return min(
+            values[max(0, index - 1) : index + 1],
+            key=lambda point: abs(point[0] - time_value),
+        )
 
     @staticmethod
-    def _map_point(point, bounds, minimum_time, maximum_time, minimum_value, maximum_value):
+    def _map_point(
+        point, bounds, minimum_time, maximum_time, minimum_value, maximum_value
+    ):
         x_ratio = (point[0] - minimum_time) / (maximum_time - minimum_time)
         y_ratio = (point[1] - minimum_value) / (maximum_value - minimum_value)
-        return QPointF(bounds.left() + bounds.width() * x_ratio, bounds.bottom() - bounds.height() * y_ratio)
-
+        return QPointF(
+            bounds.left() + bounds.width() * x_ratio,
+            bounds.bottom() - bounds.height() * y_ratio,
+        )
 
     def _format_value(self, value):
         return f"{int(round(value)):,}{self.unit}"
+
 
 class RiotComparisonBar(QWidget):
     """
@@ -353,13 +426,9 @@ class RiotComparisonBar(QWidget):
             4,
         )
 
-        ally_width = int(
-            available_width * self.ally_value / maximum
-        )
+        ally_width = int(available_width * self.ally_value / maximum)
 
-        enemy_width = int(
-            available_width * self.enemy_value / maximum
-        )
+        enemy_width = int(available_width * self.enemy_value / maximum)
 
         painter.setBrush(ally_color)
         painter.drawRoundedRect(
@@ -404,10 +473,101 @@ class RiotComparisonBar(QWidget):
     def _short_name(name: str) -> str:
         return name[:12] + "…" if len(name) > 13 else name
 
-class LiveMatchAnalysisDialog(QDialog):
-    ROLE_LABELS = {"TOP": "TOP VS TOP", "JUNGLE": "JGL VS JGL", "MIDDLE": "MID VS MID", "BOTTOM": "BOT VS BOT", "UTILITY": "SUP VS SUP"}
-    UI_REFRESH_INTERVAL_SECONDS = 5.0
 
+class HighlightFlow(QWidget):
+    """Acomoda badges en filas según el ancho disponible de la tarjeta."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Inicializa el contenedor responsivo de destacados."""
+        super().__init__(parent)
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setHorizontalSpacing(5)
+        self._grid.setVerticalSpacing(5)
+        self._badges: list[QLabel] = []
+        self._badge_widths: dict[QLabel, int] = {}
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+    def hasHeightForWidth(self) -> bool:
+        """Indica que la altura del flujo depende del ancho disponible."""
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        """Calcula las filas necesarias para acomodar chips completos."""
+        if not self._badges:
+            return 0
+        available = max(1, width)
+        rows = 1
+        used = 0
+        for badge in self._badges:
+            chip_width = self._badge_widths.get(badge, 104)
+            if used and used + 5 + chip_width > available:
+                rows += 1
+                used = chip_width
+            else:
+                used += (5 if used else 0) + chip_width
+        return rows * 34 + max(0, rows - 1) * 5
+
+    def sizeHint(self) -> QSize:
+        """Devuelve un tamaño natural compacto para las etiquetas actuales."""
+        return QSize(300, self.heightForWidth(300))
+
+    def minimumSizeHint(self) -> QSize:
+        """Devuelve el ancho mínimo que conserva legible un distintivo."""
+        return QSize(104, self.heightForWidth(104))
+
+    def add_badge(self, badge: QLabel) -> None:
+        """Añade un distintivo y recalcula las filas visibles."""
+        self._badges.append(badge)
+        badge.setWordWrap(True)
+        badge.setMinimumWidth(104)
+        badge.setMinimumHeight(32)
+        badge.setMaximumHeight(44)
+        natural_width = badge.fontMetrics().horizontalAdvance(badge.text()) + 26
+        self._badge_widths[badge] = min(210, max(104, natural_width))
+        self._reflow()
+        self.updateGeometry()
+
+    def resizeEvent(self, event: Any) -> None:
+        """Recoloca los distintivos cuando cambia el ancho disponible."""
+        super().resizeEvent(event)
+        self._reflow()
+
+    def _reflow(self) -> None:
+        """Distribuye los badges en filas sin exceder el ancho del panel."""
+        while self._grid.count():
+            self._grid.takeAt(0)
+        available = max(104, self.width())
+        row = 0
+        column = 0
+        row_width = 0
+        for badge in self._badges:
+            badge_width = min(available, self._badge_widths.get(badge, 104))
+            badge.setFixedWidth(badge_width)
+            if (
+                column
+                and row_width + self._grid.horizontalSpacing() + badge_width > available
+            ):
+                row += 1
+                column = 0
+                row_width = 0
+            self._grid.addWidget(badge, row, column, Qt.AlignmentFlag.AlignLeft)
+            row_width += badge_width + self._grid.horizontalSpacing()
+            column += 1
+        self.updateGeometry()
+
+
+class LiveMatchAnalysisDialog(QDialog):
+    ROLE_LABELS = {
+        "TOP": "TOP VS TOP",
+        "JUNGLE": "JGL VS JGL",
+        "MIDDLE": "MID VS MID",
+        "BOTTOM": "BOT VS BOT",
+        "UTILITY": "SUP VS SUP",
+    }
+    UI_REFRESH_INTERVAL_SECONDS = 5.0
 
     def __init__(
         self,
@@ -418,16 +578,15 @@ class LiveMatchAnalysisDialog(QDialog):
     ) -> None:
         super().__init__(parent)
 
-
         self.session = session or {}
         self.assets = assets
         self.item_catalog = item_catalog or {}
-
 
         self.timeline_mode = "lane"
         self.current_role = "TOP"
         self.current_view = "role"
         self.role_buttons: dict[str, QPushButton] = {}
+        self.all_players_button: QPushButton | None = None
         self.recommendation_button: QPushButton | None = None
         self.recommendation_panel: RecommendationPanel | None = None
         self.ai_tab_button: QPushButton | None = None
@@ -436,10 +595,15 @@ class LiveMatchAnalysisDialog(QDialog):
         self._last_ui_refresh = 0.0
         self._revision = 0
         self._role_pages = {}
+        self._all_players_page = None
         self._series_cache = {}
         self._event_cache = {}
         self._post_stats = {}
         self._stats_task = None
+        self._performance_cache_signature = None
+        self._performance_cache: dict[str, dict[str, Any]] = {}
+        self._dialogo_rendimiento_activo: DialogoDesgloseRendimiento | None = None
+        self._jugador_rendimiento_activo: str | None = None
         self._closed = False
         self._ai_page = None
         self._ai_page_key = None
@@ -451,17 +615,14 @@ class LiveMatchAnalysisDialog(QDialog):
         self._refresh_timer.timeout.connect(self._flush_session)
         self._icon_cache = DraftIconCache(self)
 
-
         self.setObjectName("liveMatchAnalysisDialog")
         self.setWindowTitle("Análisis LIVE · SolraLoL")
         self.resize(1640, 1000)
         self.setMinimumSize(1200, 760)
 
-
         self._build_ui()
         self.show_role("TOP")
         self._prepare_session()
-
 
     def done(self, result):
         self._closed = True
@@ -491,10 +652,17 @@ class LiveMatchAnalysisDialog(QDialog):
                     break
                 points.update(snapshot.get("players", {}))
             checkpoints.append({"time": seconds, "players": points})
-        compact = deepcopy({
-            key: source.get(key, {})
-            for key in ("players", "lane_matchups", "winning_team", "final_scoreboard")
-        })
+        compact = deepcopy(
+            {
+                key: source.get(key, {})
+                for key in (
+                    "players",
+                    "lane_matchups",
+                    "winning_team",
+                    "final_scoreboard",
+                )
+            }
+        )
         compact["snapshots"] = deepcopy(checkpoints)
         catalog, version = self.item_catalog, self.assets.version
 
@@ -507,7 +675,9 @@ class LiveMatchAnalysisDialog(QDialog):
             return compact["achievements"], stats
 
         task = AnalysisTask(self._revision, calculate)
-        task.signals.finished.connect(self._stats_ready, Qt.ConnectionType.QueuedConnection)
+        task.signals.finished.connect(
+            self._stats_ready, Qt.ConnectionType.QueuedConnection
+        )
         self._stats_task = task
         QThreadPool.globalInstance().start(task)
 
@@ -520,7 +690,9 @@ class LiveMatchAnalysisDialog(QDialog):
             self._prepare_session()
             return
         if error:
-            self.header_badge.setToolTip(f"No se pudieron calcular los atributos: {error}")
+            self.header_badge.setToolTip(
+                f"No se pudieron calcular los atributos: {error}"
+            )
             return
         self.session["achievements"], self._post_stats = result
         for page in self._role_pages.values():
@@ -537,10 +709,15 @@ class LiveMatchAnalysisDialog(QDialog):
 
         self._pending_session = session
         elapsed = time.monotonic() - self._last_ui_refresh
-        if session.get("final_sync", {}).get("status") != self._sync_status or elapsed >= self.UI_REFRESH_INTERVAL_SECONDS:
+        if (
+            session.get("final_sync", {}).get("status") != self._sync_status
+            or elapsed >= self.UI_REFRESH_INTERVAL_SECONDS
+        ):
             self._flush_session()
         elif not self._refresh_timer.isActive():
-            self._refresh_timer.start(max(1, int((self.UI_REFRESH_INTERVAL_SECONDS - elapsed) * 1000)))
+            self._refresh_timer.start(
+                max(1, int((self.UI_REFRESH_INTERVAL_SECONDS - elapsed) * 1000))
+            )
 
     def _flush_session(self):
         if self._pending_session is None:
@@ -553,14 +730,21 @@ class LiveMatchAnalysisDialog(QDialog):
         self._revision += 1
         self._series_cache.clear()
         self._event_cache.clear()
+        if self._dialogo_rendimiento_activo and self._jugador_rendimiento_activo:
+            resultado = self._player_performance_result(
+                self._jugador_rendimiento_activo
+            )
+            if resultado:
+                self._dialogo_rendimiento_activo.actualizar_resultado(resultado)
         self._refresh_header()
         self._prepare_session()
         if self.current_view == "recommendations":
             self.show_recommendations()
         elif self.current_view == "role":
             self.show_role(self.current_role)
+        elif self.current_view == "all_players":
+            self.show_all_players()
         # Never interrupt reading/analyzing AI with an automatic role switch.
-
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -570,6 +754,7 @@ class LiveMatchAnalysisDialog(QDialog):
         root.addWidget(self.header)
         root.addLayout(self._create_role_tabs())
         self.content = QStackedWidget()
+        self.content.setObjectName("liveAnalysisContent")
         root.addWidget(self.content, 1)
         footer = QHBoxLayout()
         footer.addStretch(1)
@@ -578,7 +763,6 @@ class LiveMatchAnalysisDialog(QDialog):
         close_button.clicked.connect(self.accept)
         footer.addWidget(close_button)
         root.addLayout(footer)
-
 
     def _create_header(self):
         header = QFrame()
@@ -595,13 +779,17 @@ class LiveMatchAnalysisDialog(QDialog):
         self._refresh_header()
         return header
 
-
     def _refresh_header(self):
         if not hasattr(self, "header_title"):
             return
-        self.header_title.setText(f"{self.session.get('champion_name', 'Partida LIVE')} · {self.session.get('game_mode', 'UNKNOWN')}")
-        self.header_badge.setText("TELEMETRÍA POSTGAME" if self.session.get("final_sync", {}).get("status") == "synced" else "TELEMETRÍA LIVE")
-
+        self.header_title.setText(
+            f"{self.session.get('champion_name', 'Partida LIVE')} · {self.session.get('game_mode', 'UNKNOWN')}"
+        )
+        self.header_badge.setText(
+            "TELEMETRÍA POSTGAME"
+            if self.session.get("final_sync", {}).get("status") == "synced"
+            else "TELEMETRÍA LIVE"
+        )
 
     def _create_role_tabs(self):
         layout = QHBoxLayout()
@@ -612,12 +800,21 @@ class LiveMatchAnalysisDialog(QDialog):
             button = QPushButton(label)
             button.setObjectName("liveRoleButton")
             button.setCheckable(True)
-            button.clicked.connect(lambda checked=False, value=role: self.show_role(value))
+            button.clicked.connect(
+                lambda checked=False, value=role: self.show_role(value)
+            )
             self.role_group.addButton(button)
             self.role_buttons[role] = button
             layout.addWidget(button)
+        self.all_players_button = QPushButton("TODOS")
+        self.all_players_button.setObjectName("liveRoleButton")
+        self.all_players_button.setCheckable(True)
+        self.all_players_button.clicked.connect(
+            lambda checked=False: self.show_all_players()
+        )
+        layout.addWidget(self.all_players_button)
         layout.addStretch(1)
-        
+
         # Botón de recomendaciones
         self.recommendation_button = QPushButton("📊 RECOMENDACIONES")
         self.recommendation_button.setObjectName("recommendationTabButton")
@@ -635,17 +832,19 @@ class LiveMatchAnalysisDialog(QDialog):
             lambda checked=False: self.show_ai_analysis()
         )
         layout.addWidget(self.ai_tab_button)
-        
+
         return layout
 
-
-    def show_role(self, role):
+    def show_role(self, role: str) -> None:
+        """Selecciona el enfrentamiento y refresca sus paneles laterales."""
         self.current_view = "role"
         self.current_role = role
         self.role_group.setExclusive(False)
         for key, button in self.role_buttons.items():
             button.setChecked(key == role)
         self.role_group.setExclusive(True)
+        if self.all_players_button is not None:
+            self.all_players_button.setChecked(False)
         self.recommendation_button.setChecked(False)
         self.ai_tab_button.setChecked(False)
         matchup = self.session.get("lane_matchups", {}).get(role, {})
@@ -657,16 +856,24 @@ class LiveMatchAnalysisDialog(QDialog):
             page = None
         if page is None:
             if not all(keys):
-                widget = QLabel("No se pudo identificar este enfrentamiento en la telemetría actual.")
+                widget = QLabel(
+                    "No se pudo identificar este enfrentamiento en la telemetría actual."
+                )
                 widget.setObjectName("liveAnalysisEmpty")
                 widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 page = {"widget": widget, "keys": keys, "revision": self._revision}
             else:
                 players = self.session.get("players", {})
-                widget = self._create_role_content(players.get(keys[0], {}), keys[0],
-                                                   players.get(keys[1], {}), keys[1])
-                page = {"widget": widget, "keys": keys, "revision": self._revision,
-                        "timeline": self.timeline_view, "filters": self._timeline_filters}
+                widget = self._create_role_content(
+                    players.get(keys[0], {}), keys[0], players.get(keys[1], {}), keys[1]
+                )
+                page = {
+                    "widget": widget,
+                    "keys": keys,
+                    "revision": self._revision,
+                    "timeline": self.timeline_view,
+                    "filters": self._timeline_filters,
+                }
             self._role_pages[role] = page
             self.content.addWidget(page["widget"])
         self.content.setCurrentWidget(page["widget"])
@@ -683,7 +890,9 @@ class LiveMatchAnalysisDialog(QDialog):
                     scroll = body.itemAt(index).widget()
                     position = scroll.verticalScrollBar().value()
                     old = scroll.takeWidget()
-                    scroll.setWidget(self._create_side_panel(players.get(key, {}), key, side))
+                    scroll.setWidget(
+                        self._create_side_panel(players.get(key, {}), key, side)
+                    )
                     if old is not None:
                         old.deleteLater()
                     scroll.verticalScrollBar().setValue(position)
@@ -694,13 +903,45 @@ class LiveMatchAnalysisDialog(QDialog):
             button.setChecked(mode == self.timeline_mode)
         timeline_key = (self._revision, self.timeline_mode)
         if page.get("timeline_key") != timeline_key:
-            self.timeline_view.set_events(self._events_for_mode(*keys), *keys)
+            self.timeline_view.set_events(
+                self._events_for_mode(*keys), *keys, self.session.get("players", {})
+            )
             page["timeline_key"] = timeline_key
 
+    def show_all_players(self) -> None:
+        """Muestra el resumen de ambos equipos desde el ranking autoritativo."""
+        self.current_view = "all_players"
+        self.role_group.setExclusive(False)
+        for button in self.role_buttons.values():
+            button.setChecked(False)
+        self.role_group.setExclusive(True)
+        if self.all_players_button is not None:
+            self.all_players_button.setChecked(True)
+        if self.recommendation_button is not None:
+            self.recommendation_button.setChecked(False)
+        if self.ai_tab_button is not None:
+            self.ai_tab_button.setChecked(False)
+        if self._all_players_page is not None:
+            self.content.removeWidget(self._all_players_page)
+            self._all_players_page.deleteLater()
+        ranking = puntuar_sesion(self.session, "live")
+        self._performance_cache = ranking.get("by_id", {})
+        self._performance_cache_signature = self._performance_signature()
+        self._all_players_page = VistaTodosRendimiento(
+            self.session,
+            ranking,
+            self.assets,
+            self._show_player_performance,
+            self.content,
+        )
+        self.content.addWidget(self._all_players_page)
+        self.content.setCurrentWidget(self._all_players_page)
 
     def show_recommendations(self) -> None:
         """Muestra el panel de recomendaciones reutilizando su instancia."""
         self.current_view = "recommendations"
+        if self.all_players_button is not None:
+            self.all_players_button.setChecked(False)
 
         self.role_group.setExclusive(False)
         for button in self.role_buttons.values():
@@ -714,9 +955,7 @@ class LiveMatchAnalysisDialog(QDialog):
             self.ai_tab_button.setChecked(False)
 
         if self.recommendation_panel is None:
-            self.recommendation_panel = RecommendationPanel(
-                self.content
-            )
+            self.recommendation_panel = RecommendationPanel(self.content)
             self.recommendation_panel.configure(
                 self.assets,
                 self.item_catalog,
@@ -735,6 +974,8 @@ class LiveMatchAnalysisDialog(QDialog):
     def show_ai_analysis(self) -> None:
         """Muestra la pestaña de Análisis de Partida con IA."""
         self.current_view = "ai_analysis"
+        if self.all_players_button is not None:
+            self.all_players_button.setChecked(False)
 
         self.role_group.setExclusive(False)
         for button in self.role_buttons.values():
@@ -747,7 +988,11 @@ class LiveMatchAnalysisDialog(QDialog):
         if self.ai_tab_button is not None:
             self.ai_tab_button.setChecked(True)
 
-        key = (self.is_analyzing_ai, self.session.get("ai_analysis"), self.session.get("ai_analysis_model"))
+        key = (
+            self.is_analyzing_ai,
+            self.session.get("ai_analysis"),
+            self.session.get("ai_analysis_model"),
+        )
         if self._ai_page is None or self._ai_page_key != key:
             if self._ai_page is not None:
                 self.content.removeWidget(self._ai_page)
@@ -778,7 +1023,10 @@ class LiveMatchAnalysisDialog(QDialog):
         title.setObjectName("aiHeaderTitle")
         info_vbox.addWidget(title)
 
-        log_path_str = self.session.get("match_log_txt_path") or f"~/.solralol/match_logs/match_{self.session.get('session_id', 'id')}.log"
+        log_path_str = (
+            self.session.get("match_log_txt_path")
+            or f"~/.solralol/match_logs/match_{self.session.get('session_id', 'id')}.log"
+        )
         path_label = QLabel(f"📄 Fichero de Log: {log_path_str}")
         path_label.setObjectName("aiLogPathLabel")
         info_vbox.addWidget(path_label)
@@ -792,7 +1040,9 @@ class LiveMatchAnalysisDialog(QDialog):
 
         # Botón para ejecutar/re-ejecutar el análisis
         has_analysis = bool(self.session.get("ai_analysis"))
-        analyze_btn = QPushButton("🔄 Re-analizar con IA" if has_analysis else "🤖 Analizar Partida con IA")
+        analyze_btn = QPushButton(
+            "🔄 Re-analizar con IA" if has_analysis else "🤖 Analizar Partida con IA"
+        )
         analyze_btn.setObjectName("primaryAiButton")
         analyze_btn.setEnabled(not getattr(self, "is_analyzing_ai", False))
         analyze_btn.clicked.connect(self._start_ai_analysis)
@@ -814,7 +1064,9 @@ class LiveMatchAnalysisDialog(QDialog):
             spin_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             l_layout.addWidget(spin_lbl)
 
-            desc_lbl = QLabel("Procesando la cronología de eventos, farmeo, builds, asesinatos y muertes...")
+            desc_lbl = QLabel(
+                "Procesando la cronología de eventos, farmeo, builds, asesinatos y muertes..."
+            )
             aplicar_apariencia(desc_lbl, "metadatos")
             desc_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             l_layout.addWidget(desc_lbl)
@@ -881,8 +1133,12 @@ class LiveMatchAnalysisDialog(QDialog):
         if getattr(self, "_log_task", None) is not None:
             return
         session = deepcopy(self.session)
-        task = AnalysisTask(self._revision, lambda: MatchLogService().get_match_log(session)[1])
-        task.signals.finished.connect(self._log_ready, Qt.ConnectionType.QueuedConnection)
+        task = AnalysisTask(
+            self._revision, lambda: MatchLogService().get_match_log(session)[1]
+        )
+        task.signals.finished.connect(
+            self._log_ready, Qt.ConnectionType.QueuedConnection
+        )
         self._log_task = task
         QThreadPool.globalInstance().start(task)
 
@@ -908,7 +1164,7 @@ class LiveMatchAnalysisDialog(QDialog):
                 "Gemini API Key Requerida",
                 "No has configurado tu Gemini API Key.\n\n"
                 "Por favor, ve a la pestaña de 'Ajustes' en la ventana principal de SolraLoL "
-                "y añade tu API Key gratuita de Google AI Studio."
+                "y añade tu API Key gratuita de Google AI Studio.",
             )
             return
 
@@ -942,7 +1198,7 @@ class LiveMatchAnalysisDialog(QDialog):
         QMessageBox.critical(
             self,
             "Error en Análisis IA",
-            f"No se pudo completar el análisis de la partida con IA:\n\n{error_msg}"
+            f"No se pudo completar el análisis de la partida con IA:\n\n{error_msg}",
         )
         if self.current_view == "ai_analysis":
             self.show_ai_analysis()
@@ -971,9 +1227,11 @@ class LiveMatchAnalysisDialog(QDialog):
 
         copy_btn = QPushButton("📋 Copiar Log")
         copy_btn.setObjectName("secondaryAiButton")
+
         def copy_log():
             QApplication.clipboard().setText(formatted_log)
             copy_btn.setText("✓ ¡Copiado!")
+
         copy_btn.clicked.connect(copy_log)
         btn_layout.addWidget(copy_btn)
 
@@ -990,6 +1248,7 @@ class LiveMatchAnalysisDialog(QDialog):
         body = QHBoxLayout(content)
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(12)
+
         def side_scroll(player, key, side):
             scroll = QScrollArea()
             scroll.setObjectName("analysisFullScroll")
@@ -1004,7 +1263,6 @@ class LiveMatchAnalysisDialog(QDialog):
         body.addWidget(self._create_timeline_panel(ally_key, enemy_key), 4)
         body.addWidget(side_scroll(enemy, enemy_key, "enemy"), 3)
         return content
-
 
     def _create_side_panel(self, player, player_key, side):
         panel = QFrame()
@@ -1022,128 +1280,109 @@ class LiveMatchAnalysisDialog(QDialog):
         layout.addStretch(1)
         return panel
 
-
     def _player_match_rank(
         self,
         player_key: str,
     ) -> str:
-        """
-        Clasifica los 10 jugadores por oro estimado final.
-
-
-        MVP = mayor oro.
-        2º a 10º = resto de posiciones.
-        Si hay empate de oro, se ordena por KDA y después por CS.
-        """
-        rows = []
-
-
-        for key in self.session.get(
-            "players",
-            {},
+        """Formatea puntos, puesto y estado de premio del resultado compartido."""
+        datos = self._player_performance_result(player_key)
+        if not datos:
+            return "—"
+        puesto = f"{datos['global_rank']}º"
+        if datos.get("awards_finalized") and datos.get("awards"):
+            return f"{datos['total']}p · {puesto} · {'/'.join(datos['awards'])}"
+        if datos.get("finalization_state") == "POSTGAME_PENDING":
+            return f"{datos['total']}p · {puesto} · PENDIENTE"
+        if (
+            datos.get("finalization_state") == "LIVE_PROVISIONAL"
+            and datos["global_rank"] == 1
         ):
-            point = self._latest_player_point(key)
+            return f"{datos['total']}p · LÍDER PROVISIONAL"
+        return f"{datos['total']}p · {puesto}"
 
-
-            gold = float(
-                point.get(
-                    "estimated_gold",
-                    0,
-                ) or 0
+    def _player_performance_result(self, player_key: str) -> dict[str, Any] | None:
+        """Busca por clave el resultado LIVE y lo devuelve desde una caché por snapshot."""
+        firma = self._performance_signature()
+        if firma != self._performance_cache_signature:
+            self._performance_cache = puntuar_sesion(self.session, "live").get(
+                "by_id", {}
             )
+            self._performance_cache_signature = firma
+        return self._performance_cache.get(player_key)
 
-
-            kills = float(
-                point.get(
-                    "kills",
-                    0,
-                ) or 0
-            )
-
-
-            deaths = float(
-                point.get(
-                    "deaths",
-                    0,
-                ) or 0
-            )
-
-
-            assists = float(
-                point.get(
-                    "assists",
-                    0,
-                ) or 0
-            )
-
-
-            cs = float(
-                point.get(
-                    "cs",
-                    0,
-                ) or 0
-            )
-
-
-            kda_score = (
-                kills + assists
-            ) / max(1.0, deaths)
-
-
-            rows.append(
-                (
-                    key,
-                    gold,
-                    kda_score,
-                    cs,
+    def _performance_signature(self) -> tuple[Any, ...]:
+        """Genera la firma de los datos que invalidan la clasificación en caché."""
+        snapshots = self.session.get("snapshots", [])
+        ultimo = (
+            snapshots[-1].get("time")
+            if snapshots and isinstance(snapshots[-1], dict)
+            else None
+        )
+        final = self.session.get("final_scoreboard", {})
+        final_sync = self.session.get("final_sync")
+        final_status = (
+            final_sync.get("status") if isinstance(final_sync, dict) else None
+        )
+        return (
+            self.session.get("duration"),
+            len(snapshots),
+            ultimo,
+            repr(final),
+            self.session.get("winning_team"),
+            final_status,
+            bool(self.session.get("postgame")),
+            tuple(
+                sorted(
+                    (
+                        str(clave),
+                        str(jugador.get("riot_id") or ""),
+                        str(jugador.get("team") or ""),
+                        jugador.get("win"),
+                    )
+                    for clave, jugador in self.session.get("players", {}).items()
+                    if isinstance(jugador, dict)
                 )
-            )
-
-
-        rows.sort(
-            key=lambda row: (
-                row[1],
-                row[2],
-                row[3],
             ),
-            reverse=True,
         )
 
+    def _show_player_performance(self, player_key: str) -> None:
+        """Abre el diálogo del jugador identificado; no devuelve un valor."""
+        resultado = self._player_performance_result(player_key)
+        if resultado:
+            diálogo = DialogoDesgloseRendimiento(resultado, self)
+            self._dialogo_rendimiento_activo = diálogo
+            self._jugador_rendimiento_activo = player_key
+            try:
+                diálogo.exec()
+            finally:
+                self._dialogo_rendimiento_activo = None
+                self._jugador_rendimiento_activo = None
 
-        for index, row in enumerate(
-            rows,
-            start=1,
-        ):
-            if row[0] != player_key:
-                continue
-
-
-            if index == 1:
-                return "MVP"
-
-
-            return f"{index}º"
-
-
-        return "—"
-
-
-    def _create_player_header(self, player, player_key, side):
+    def _create_player_header(
+        self, player: dict[str, Any], player_key: str, side: str
+    ) -> QWidget:
+        """Presenta campeón, cuenta, rol, nivel e impacto KDA del jugador."""
         header = QWidget()
         layout = QHBoxLayout(header)
         layout.setContentsMargins(0, 0, 0, 0)
         champion = player.get("champion_name", "Desconocido")
         portrait = QLabel(champion[:3].upper())
         portrait.setObjectName("livePlayerPortrait")
-        portrait.setFixedSize(62, 62)
+        portrait.setProperty("side", side)
+        portrait.setFixedSize(76, 76)
         portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.assets.set_label_image(portrait, self.assets.champion_url(champion), f"live-champion:{champion}:62", 62)
+        self.assets.set_label_image(
+            portrait,
+            self.assets.champion_url(champion),
+            f"live-champion:{champion}:76",
+            68,
+        )
         layout.addWidget(portrait)
         text = QVBoxLayout()
         champion_label = QLabel(champion)
         champion_label.setObjectName("livePlayerChampion")
         text.addWidget(champion_label)
-        name = QLabel(player.get("riot_id", "Desconocido"))
+        name = QLabel(nombre_riot_visible(player) or "Desconocido")
         name.setObjectName("livePlayerName")
         text.addWidget(name)
         role = QLabel(player.get("role", "UNKNOWN"))
@@ -1151,31 +1390,40 @@ class LiveMatchAnalysisDialog(QDialog):
         text.addWidget(role)
         layout.addLayout(text, 1)
         point = self._latest_player_point(player_key)
-        rank = self._player_match_rank(
-            player_key
+        metrics = QVBoxLayout()
+        metrics.setSpacing(3)
+        level = QLabel(f"NV {int(point.get('level', 1) or 1)}")
+        level.setObjectName("livePlayerLevel")
+        level.setAlignment(Qt.AlignmentFlag.AlignRight)
+        metrics.addWidget(level)
+        identity = QPushButton(self._player_match_rank(player_key))
+        identity.setObjectName("livePlayerRank")
+        identity.setFlat(True)
+        identity.setToolTip("Abrir desglose de rendimiento")
+        identity.clicked.connect(
+            lambda _checked=False, clave=player_key: self._show_player_performance(
+                clave
+            )
         )
-
-
-        rank_label = QLabel(rank)
-        rank_label.setObjectName("livePlayerRank")
-
-
-        layout.addWidget(rank_label)
-
-
+        metrics.addWidget(identity, alignment=Qt.AlignmentFlag.AlignRight)
+        kills = float(point.get("kills", 0) or 0)
+        deaths = float(point.get("deaths", 0) or 0)
+        assists = float(point.get("assists", 0) or 0)
         score = QLabel(
-            f"{point.get('kills', 0)} / "
-            f"{point.get('deaths', 0)} / "
-            f"{point.get('assists', 0)}"
+            f"<span style='color:#eee8d8'>{int(kills)}</span> / "
+            f"<span style='color:{PALETA['desventaja']}'>{int(deaths)}</span> / "
+            f"<span style='color:{PALETA['teal']}'>{int(assists)}</span>"
         )
-
-
         score.setObjectName("livePlayerScore")
-
-
-        layout.addWidget(score)
+        score.setTextFormat(Qt.TextFormat.RichText)
+        score.setAlignment(Qt.AlignmentFlag.AlignRight)
+        metrics.addWidget(score)
+        ratio = QLabel(f"{(kills + assists) / max(1.0, deaths):.2f} KDA")
+        ratio.setObjectName("livePlayerKdaRatio")
+        ratio.setAlignment(Qt.AlignmentFlag.AlignRight)
+        metrics.addWidget(ratio)
+        layout.addLayout(metrics)
         return header
-
 
     def _extract_runes_data(self, player: dict) -> list[dict[str, Any]]:
         runes = player.get("runes", {})
@@ -1189,7 +1437,7 @@ class LiveMatchAnalysisDialog(QDialog):
 
         def _val(x):
             if isinstance(x, dict):
-                return x.get('displayName') or x.get('name') or ""
+                return x.get("displayName") or x.get("name") or ""
             return str(x) if x else ""
 
         k_name = _val(keystone)
@@ -1213,20 +1461,43 @@ class LiveMatchAnalysisDialog(QDialog):
             champ_name = player.get("champion_name", "")
             try:
                 from data_dragon import CHAMPION_MEMORY_CACHE
+
                 champ_info = CHAMPION_MEMORY_CACHE.get(champ_name, {})
-                common_runes = champ_info.get("common_runes", []) if isinstance(champ_info, dict) else []
-                if common_runes and isinstance(common_runes, list) and len(common_runes) > 0:
+                common_runes = (
+                    champ_info.get("common_runes", [])
+                    if isinstance(champ_info, dict)
+                    else []
+                )
+                if (
+                    common_runes
+                    and isinstance(common_runes, list)
+                    and len(common_runes) > 0
+                ):
                     first_page = common_runes[0]
                     if isinstance(first_page, dict):
                         k = first_page.get("keystone")
                         p = first_page.get("primary_tree")
                         s = first_page.get("secondary_tree")
                         if k:
-                            items.append({"label": "Clave", "name": str(k), "is_keystone": True})
+                            items.append(
+                                {"label": "Clave", "name": str(k), "is_keystone": True}
+                            )
                         if p:
-                            items.append({"label": "Principal", "name": str(p), "is_keystone": False})
+                            items.append(
+                                {
+                                    "label": "Principal",
+                                    "name": str(p),
+                                    "is_keystone": False,
+                                }
+                            )
                         if s:
-                            items.append({"label": "Secundaria", "name": str(s), "is_keystone": False})
+                            items.append(
+                                {
+                                    "label": "Secundaria",
+                                    "name": str(s),
+                                    "is_keystone": False,
+                                }
+                            )
             except Exception:
                 pass
 
@@ -1271,7 +1542,9 @@ class LiveMatchAnalysisDialog(QDialog):
             icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self._icon_cache.assign(
-                icon_lbl, ("live-rune", self.assets.version, rune_name), size,
+                icon_lbl,
+                ("live-rune", self.assets.version, rune_name),
+                size,
                 partial(get_rune_icon_path, rune_name, self.assets.version),
                 "⚡" if is_ks else "🔹",
             )
@@ -1297,7 +1570,7 @@ class LiveMatchAnalysisDialog(QDialog):
         layout.addLayout(runes_row)
         return frame
 
-    def _create_awards_panel(self, player_key: Any, side: Any) -> Any:
+    def _create_awards_panel(self, player_key: str, side: str) -> QFrame:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         frame = QFrame()
         frame.setObjectName("liveAwardsPanel")
@@ -1313,15 +1586,33 @@ class LiveMatchAnalysisDialog(QDialog):
             aplicar_apariencia(empty_lbl, "metadatos")
             layout.addWidget(empty_lbl)
         else:
-            grid_layout = QGridLayout()
-            grid_layout.setContentsMargins(0, 0, 0, 0)
-            grid_layout.setSpacing(5)
-
-            for index, award in enumerate(awards):
+            badge_row = HighlightFlow(frame)
+            post_stats = self._post_stats.get(player_key, {})
+            for award in awards[:6]:
                 text = str(award)
+                normalized = text.casefold()
+                if "crítico" in normalized:
+                    critical = float(post_stats.get("crit", 0) or 0)
+                    critical = critical * 100 if 0 < critical <= 1 else critical
+                    if critical:
+                        text = f"Crítico · {critical:.0f}%"
+                elif "penetración" in normalized:
+                    penetration = float(post_stats.get("armor_pen_percent", 0) or 0)
+                    penetration = (
+                        penetration * 100 if 0 < penetration <= 1 else penetration
+                    )
+                    if penetration:
+                        text = f"Pen. armadura · {penetration:.0f}%"
+                elif "armadura" in normalized:
+                    armor = float(post_stats.get("armor", 0) or 0)
+                    if armor:
+                        text = f"Armadura · {armor:.0f}"
                 badge = QLabel(text)
                 badge.setObjectName("liveAchievementBadge")
-                badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                badge.setAlignment(
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+                )
+                badge.setWordWrap(True)
 
                 lower_text = text.lower()
                 if "early" in lower_text or "inicio" in lower_text:
@@ -1332,22 +1623,25 @@ class LiveMatchAnalysisDialog(QDialog):
                     state_type = "late"
                 elif "victoria" in lower_text or "mvp" in lower_text:
                     state_type = "victory"
-                elif "crítico" in lower_text or "penetración" in lower_text or "daño" in lower_text:
+                elif (
+                    "crítico" in lower_text
+                    or "penetración" in lower_text
+                    or "daño" in lower_text
+                ):
                     state_type = "offense"
-                elif "armadura" in lower_text or "antiheal" in lower_text or "resistencia" in lower_text:
+                elif (
+                    "armadura" in lower_text
+                    or "antiheal" in lower_text
+                    or "resistencia" in lower_text
+                ):
                     state_type = "defense"
                 else:
                     state_type = "default"
 
                 badge.setProperty("type", state_type)
-
-                row = index // 2
-                col = index % 2
-                grid_layout.addWidget(badge, row, col)
-
-            layout.addLayout(grid_layout)
+                badge_row.add_badge(badge)
+            layout.addWidget(badge_row)
         return frame
-
 
     def _create_metrics_panel(self, player: Any, player_key: Any) -> Any:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -1388,63 +1682,89 @@ class LiveMatchAnalysisDialog(QDialog):
             critical *= 100
 
         metrics = [
-            ("KDA", f"{int(point.get('kills', 0) or 0)}/{int(point.get('deaths', 0) or 0)}/{int(point.get('assists', 0) or 0)}", PALETA["texto"]),
+            (
+                "KDA",
+                f"{int(point.get('kills', 0) or 0)}/{int(point.get('deaths', 0) or 0)}/{int(point.get('assists', 0) or 0)}",
+                PALETA["texto"],
+            ),
             ("Nivel", f"{int(point.get('level', 1) or 1)}", PALETA["texto"]),
             ("CS", f"{int(cs or 0)}", PALETA["teal"]),
-            ("Oro estim.", f"{int(point.get('estimated_gold', 0) or 0):,}", PALETA["oro_suave"]),
-            ("Visión", f"{int(raw_stats.get('vision_score', 0) or 0)}", PALETA["magenta"]),
+            (
+                "Oro estim.",
+                f"{int(point.get('estimated_gold', 0) or 0):,}",
+                PALETA["oro_suave"],
+            ),
+            (
+                "Visión",
+                f"{int(raw_stats.get('vision_score', 0) or 0)}",
+                PALETA["magenta"],
+            ),
             ("Vida máx.", f"{int(post_stats.get('hp', 0) or 0):,}", PALETA["ventaja"]),
             ("AD", f"{float(post_stats.get('ad', 0) or 0):.1f}", PALETA["desventaja"]),
             ("AP", f"{float(post_stats.get('ap', 0) or 0):.1f}", PALETA["magenta"]),
-            ("Armadura", f"{float(post_stats.get('armor', 0) or 0):.1f}", PALETA["oro_suave"]),
+            (
+                "Armadura",
+                f"{float(post_stats.get('armor', 0) or 0):.1f}",
+                PALETA["oro_suave"],
+            ),
             ("MR", f"{float(post_stats.get('mr', 0) or 0):.1f}", PALETA["teal"]),
-            ("Letalidad", f"{float(post_stats.get('lethality', 0) or 0):.1f}", PALETA["oro_suave"]),
+            (
+                "Letalidad",
+                f"{float(post_stats.get('lethality', 0) or 0):.1f}",
+                PALETA["oro_suave"],
+            ),
             ("Pen. arm.", f"{armor_pen:.0f}%", PALETA["oro_suave"]),
             ("Robo vida", f"{life_steal:.0f}%", PALETA["desventaja"]),
             ("Crítico", f"{critical:.0f}%", PALETA["oro_suave"]),
         ]
 
-        for index, (label, val, val_color) in enumerate(metrics):
-            row_idx = index // 2
-            col_idx = (index % 2) * 2
-
-            lbl = QLabel(f"{label}:")
-            aplicar_apariencia(lbl, "etiqueta")
-
-            val_lbl = QLabel(str(val))
-            aplicar_color(val_lbl, val_color)
-            val_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-
-            grid.addWidget(lbl, row_idx, col_idx)
-            grid.addWidget(val_lbl, row_idx, col_idx + 1)
+        grouped_metrics = (
+            ("COMBATE", ("KDA", "AD", "AP", "Letalidad", "Pen. arm.", "Crítico")),
+            ("SUPERVIVENCIA", ("Vida máx.", "Armadura", "MR", "Robo vida")),
+            ("ECONOMÍA Y MAPA", ("CS", "Oro estim.", "Visión", "Nivel")),
+        )
+        metrics_by_name = {label: (value, color) for label, value, color in metrics}
+        row_idx = 0
+        for group_name, labels in grouped_metrics:
+            group_label = QLabel(group_name)
+            group_label.setObjectName("liveMetricGroup")
+            grid.addWidget(group_label, row_idx, 0, 1, 4)
+            row_idx += 1
+            for index in range(0, len(labels), 2):
+                for column, label in enumerate(labels[index : index + 2]):
+                    value, value_color = metrics_by_name[label]
+                    label_widget = QLabel(f"{label}:")
+                    aplicar_apariencia(label_widget, "etiqueta")
+                    value_widget = QLabel(str(value))
+                    aplicar_color(value_widget, value_color)
+                    value_widget.setAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    column_idx = column * 2
+                    grid.addWidget(label_widget, row_idx, column_idx)
+                    grid.addWidget(value_widget, row_idx, column_idx + 1)
+                row_idx += 1
 
         layout.addLayout(grid)
 
-        quality = QLabel("≈ Base + nivel + objetos" if post_stats else "Calculando atributos en segundo plano…")
-        quality.setObjectName("liveMetricEstimate")
-        aplicar_apariencia(quality, "metadatos")
-        layout.addWidget(quality)
+        if not post_stats:
+            quality = QLabel("Calculando atributos en segundo plano…")
+            quality.setObjectName("liveMetricEstimate")
+            aplicar_apariencia(quality, "metadatos")
+            layout.addWidget(quality)
 
         return frame
-
 
     def _metric_line(
         self,
         label: str,
         value: object,
     ) -> QLabel:
-        row = QLabel(
-            f"{label}: {value}"
-        )
+        row = QLabel(f"{label}: {value}")
 
-
-        row.setObjectName(
-            "liveMetricLine"
-        )
-
+        row.setObjectName("liveMetricLine")
 
         return row
-
 
     def _build_item_metrics(
         self,
@@ -1465,29 +1785,25 @@ class LiveMatchAnalysisDialog(QDialog):
         """
         from data_dragon import get_champion_data
 
-
         champion_name = player.get(
             "champion_name",
             "Desconocido",
         )
 
-
         level = int(
             point.get(
                 "level",
                 1,
-            ) or 1
+            )
+            or 1
         )
-
 
         item_ids = point.get(
             "items",
             player.get("items", []),
         )
 
-
         normalized_items = []
-
 
         for item_id in item_ids:
             try:
@@ -1499,37 +1815,30 @@ class LiveMatchAnalysisDialog(QDialog):
             except (TypeError, ValueError):
                 continue
 
-
         item_player = {
             **player,
             "items": normalized_items,
         }
-
 
         item_stats = calculate_item_stats(
             item_player,
             self.item_catalog,
         )
 
-
         champion_data = get_champion_data(
             champion_name,
             self.assets.version,
         )
-
 
         champion_stats = champion_data.get(
             "stats",
             {},
         )
 
-
         if not isinstance(champion_stats, dict):
             champion_stats = {}
 
-
         levels_gained = max(0, level - 1)
-
 
         def stat(
             base_key: str,
@@ -1538,11 +1847,9 @@ class LiveMatchAnalysisDialog(QDialog):
         ) -> float:
             return (
                 float(champion_stats.get(base_key, 0))
-                + float(champion_stats.get(growth_key, 0))
-                * levels_gained
+                + float(champion_stats.get(growth_key, 0)) * levels_gained
                 + float(item_stats.get(item_key, 0))
             )
-
 
         calculated = {
             "hp": stat(
@@ -1587,16 +1894,13 @@ class LiveMatchAnalysisDialog(QDialog):
             ),
         }
 
-
         live_stats = point.get(
             "live_stats",
             {},
         )
 
-
         if not isinstance(live_stats, dict):
             live_stats = {}
-
 
         live_stat_keys = {
             "hp": (
@@ -1632,31 +1936,24 @@ class LiveMatchAnalysisDialog(QDialog):
             ),
         }
 
-
         for output_key, source_keys in live_stat_keys.items():
             for source_key in source_keys:
                 value = live_stats.get(source_key)
 
-
                 if value is None:
                     continue
-
 
                 try:
                     value = float(value)
                 except (TypeError, ValueError):
                     continue
 
-
                 if value > 0:
                     calculated[output_key] = value
 
-
                 break
 
-
         return calculated
-
 
     def _create_inventory_panel(self, player: Any, player_key: Any) -> Any:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -1697,7 +1994,11 @@ class LiveMatchAnalysisDialog(QDialog):
 
             catalog = self.item_catalog.get("items", self.item_catalog)
             item_info = catalog.get(str(item_id), catalog.get(item_id, {}))
-            item_name = item_info.get("name", f"Objeto {item_id}") if isinstance(item_info, dict) else f"Objeto {item_id}"
+            item_name = (
+                item_info.get("name", f"Objeto {item_id}")
+                if isinstance(item_info, dict)
+                else f"Objeto {item_id}"
+            )
             icon.setToolTip(item_name)
 
             icon_url = self.assets.item_url(item_id)
@@ -1706,7 +2007,7 @@ class LiveMatchAnalysisDialog(QDialog):
                 icon_url,
                 f"analysis-item:{item_id}:32",
                 32,
-                Qt.AspectRatioMode.KeepAspectRatio
+                Qt.AspectRatioMode.KeepAspectRatio,
             )
             row.addWidget(icon)
 
@@ -1721,10 +2022,7 @@ class LiveMatchAnalysisDialog(QDialog):
     ) -> float | None:
         final_sync = self.session.get("final_sync", {})
 
-        if (
-            not isinstance(final_sync, dict)
-            or final_sync.get("status") != "synced"
-        ):
+        if not isinstance(final_sync, dict) or final_sync.get("status") != "synced":
             return None
 
         player = self.session.get("players", {}).get(
@@ -1756,9 +2054,8 @@ class LiveMatchAnalysisDialog(QDialog):
                 return None
 
             try:
-                return (
-                    float(final.get("cs_minions", 0) or 0)
-                    + float(final.get("cs_jungle", 0) or 0)
+                return float(final.get("cs_minions", 0) or 0) + float(
+                    final.get("cs_jungle", 0) or 0
                 )
             except (TypeError, ValueError):
                 return None
@@ -1768,9 +2065,7 @@ class LiveMatchAnalysisDialog(QDialog):
                 "gold_earned",
                 "goldEarned",
             ),
-            "kills": (
-                "kills",
-            ),
+            "kills": ("kills",),
             "vision": (
                 "vision_score",
                 "visionScore",
@@ -1910,21 +2205,15 @@ class LiveMatchAnalysisDialog(QDialog):
                 continue
 
             if riot_bars_added == 0:
-                riot_title = QLabel(
-                    "COMPARACIÓN FINAL · DATOS OFICIALES RIOT"
-                )
+                riot_title = QLabel("COMPARACIÓN FINAL · DATOS OFICIALES RIOT")
                 riot_title.setObjectName("livePanelTitle")
-                riot_title.setAlignment(
-                    Qt.AlignmentFlag.AlignCenter
-                )
+                riot_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 layout.addWidget(riot_title)
 
             if winner_key == "tie":
                 tie_label = QLabel("EMPATE")
                 tie_label.setObjectName("liveChartTie")
-                tie_label.setAlignment(
-                    Qt.AlignmentFlag.AlignCenter
-                )
+                tie_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 layout.addWidget(tie_label)
 
             bar = RiotComparisonBar(
@@ -2001,13 +2290,9 @@ class LiveMatchAnalysisDialog(QDialog):
                 continue
 
             if live_charts_added == 0:
-                live_title = QLabel(
-                    "EVOLUCIÓN TEMPORAL · DATOS LIVE"
-                )
+                live_title = QLabel("EVOLUCIÓN TEMPORAL · DATOS LIVE")
                 live_title.setObjectName("livePanelTitle")
-                live_title.setAlignment(
-                    Qt.AlignmentFlag.AlignCenter
-                )
+                live_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 layout.addWidget(live_title)
 
             chart_wrapper = QWidget()
@@ -2019,9 +2304,7 @@ class LiveMatchAnalysisDialog(QDialog):
             if winner_key == "tie":
                 tie_label = QLabel("EMPATE")
                 tie_label.setObjectName("liveChartTie")
-                tie_label.setAlignment(
-                    Qt.AlignmentFlag.AlignCenter
-                )
+                tie_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 chart_layout.addWidget(tie_label)
 
             chart = VersusChart(
@@ -2054,7 +2337,6 @@ class LiveMatchAnalysisDialog(QDialog):
 
         return container
 
-
     def _metric_winner(
         self,
         key,
@@ -2086,8 +2368,8 @@ class LiveMatchAnalysisDialog(QDialog):
 
         return ally_key if ally_value > enemy_value else enemy_key
 
-
-    def _create_timeline_panel(self, ally_key, enemy_key):
+    def _create_timeline_panel(self, ally_key: str, enemy_key: str) -> QFrame:
+        """Construye la cronología con filtros y filas virtualizadas."""
         panel = QFrame()
         panel.setObjectName("liveTimelinePanel")
         layout = QVBoxLayout(panel)
@@ -2101,53 +2383,66 @@ class LiveMatchAnalysisDialog(QDialog):
         filters.addStretch(1)
         group = QButtonGroup(panel)
         self._timeline_filters = {}
-        for text, mode in (("Eventos de línea", "lane"), ("Eventos globales", "global"), ("TODO", "all")):
+        for text, mode in (
+            ("Eventos de línea", "lane"),
+            ("Eventos globales", "global"),
+            ("TODO", "all"),
+        ):
             button = QPushButton(text)
             button.setObjectName("timelineFilterButton")
             button.setCheckable(True)
             button.setChecked(mode == self.timeline_mode)
-            button.clicked.connect(lambda checked=False, selected=mode: self._change_timeline_mode(selected))
+            button.clicked.connect(
+                lambda checked=False, selected=mode: self._change_timeline_mode(
+                    selected
+                )
+            )
             group.addButton(button)
             self._timeline_filters[mode] = button
             filters.addWidget(button)
         filters.addStretch(1)
         layout.addLayout(filters)
-        self.timeline_view = TimelineView(self.item_catalog, panel)
-        self.timeline_view.set_events(self._events_for_mode(ally_key, enemy_key), ally_key, enemy_key)
+        self.timeline_view = TimelineView(self.item_catalog, self.assets, panel)
+        self.timeline_view.set_events(
+            self._events_for_mode(ally_key, enemy_key),
+            ally_key,
+            enemy_key,
+            self.session.get("players", {}),
+        )
         layout.addWidget(self.timeline_view, 1)
         return panel
 
-
-    def _events_for_mode(self, ally_key, enemy_key):
+    def _events_for_mode(
+        self, ally_key: str | None, enemy_key: str | None
+    ) -> list[dict[str, Any]]:
+        """Filtra eventos de línea, globales o completos para el emparejamiento."""
         cache_key = (ally_key, enemy_key, self.timeline_mode)
         if cache_key in self._event_cache:
             return self._event_cache[cache_key]
-        result = []
-        for event in self.session.get("events", []):
-            player_key = event.get("player_key")
-            lane_event = player_key in (ally_key, enemy_key)
-            global_event = event.get("type") == "objective" or event.get("scope") == "global" or event.get("global") is True
-            if self.timeline_mode == "lane" and lane_event:
-                result.append(event)
-            elif self.timeline_mode == "global" and global_event:
-                result.append(event)
-            elif self.timeline_mode == "all" and (lane_event or global_event):
-                result.append(event)
-        result.sort(key=lambda item: (item.get("time", 0), item.get("order", 0)))
+        result = filter_participating_events(
+            self.session.get("events", []),
+            self.timeline_mode,
+            ally_key,
+            enemy_key,
+        )
         self._event_cache[cache_key] = result
         return result
 
-
-    def _change_timeline_mode(self, mode):
+    def _change_timeline_mode(self, mode: str) -> None:
+        """Aplica un filtro y repinta la cronología del rol seleccionado."""
         self.timeline_mode = mode
         matchup = self.session.get("lane_matchups", {}).get(self.current_role, {})
         ally_key, enemy_key = matchup.get("ally_key"), matchup.get("enemy_key")
-        self.timeline_view.set_events(self._events_for_mode(ally_key, enemy_key), ally_key, enemy_key)
+        self.timeline_view.set_events(
+            self._events_for_mode(ally_key, enemy_key),
+            ally_key,
+            enemy_key,
+            self.session.get("players", {}),
+        )
         page = self._role_pages.get(self.current_role, {})
         page["timeline_key"] = (self._revision, mode)
         for value, button in page.get("filters", {}).items():
             button.setChecked(value == mode)
-
 
     def _player_series(
         self,
@@ -2171,10 +2466,7 @@ class LiveMatchAnalysisDialog(QDialog):
             "healing",
         )
 
-        series = {
-            key: []
-            for key in keys
-        }
+        series = {key: [] for key in keys}
 
         for snapshot in self.session.get(
             "snapshots",
@@ -2188,7 +2480,8 @@ class LiveMatchAnalysisDialog(QDialog):
                     snapshot.get(
                         "time",
                         0,
-                    ) or 0
+                    )
+                    or 0
                 )
             except (TypeError, ValueError):
                 continue
@@ -2253,7 +2546,6 @@ class LiveMatchAnalysisDialog(QDialog):
 
         self._series_cache[player_key] = series
         return series
-
 
     def _latest_player_point(self, player_key):
         for snapshot in reversed(self.session.get("snapshots", [])):

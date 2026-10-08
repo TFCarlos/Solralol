@@ -23,6 +23,10 @@ PALETA = MappingProxyType(
         "magenta": "#8e657d",
         "ventaja": "#79af99",
         "desventaja": "#ca8580",
+        "superficie_victoria": "#17201e",
+        "superficie_victoria_fin": "#131c20",
+        "superficie_derrota": "#21191b",
+        "superficie_derrota_fin": "#1c171a",
         "hover": "#29251e",
         "activo": "#352c1b",
         "deshabilitado": "#15191f",
@@ -32,6 +36,15 @@ PALETA = MappingProxyType(
         "informacion": "#86b5b0",
         "borde_sutil": "#252a31",
         "cyan": "#82afb5",
+    }
+)
+COLORES_CATEGORIA_RENDIMIENTO = MappingProxyType(
+    {
+        "combate": "#c47d70",
+        "economia": "#b69a50",
+        "objetivos": "#829bb6",
+        "vision": "#70a99b",
+        "supervivencia": "#a08bb5",
     }
 )
 

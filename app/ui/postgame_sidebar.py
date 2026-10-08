@@ -46,6 +46,8 @@ from app.services.recording_service import (
     format_duration,
     normalise_marker_kind,
 )
+from app.services.servicio_puntuacion_rendimiento import puntuar_sesion
+from app.ui.desglose_rendimiento_dialogo import DialogoDesgloseRendimiento
 from app.ui.sistema_visual import PALETA
 from app.ui.tema import (
     aplicar_apariencia,
@@ -223,9 +225,7 @@ def kind_label(kind: Any) -> str:
     if not text:
         return EVENT_KIND_LABELS["default"]
 
-    return EVENT_KIND_LABELS.get(
-        text, text.replace("_", " ").capitalize()
-    )
+    return EVENT_KIND_LABELS.get(text, text.replace("_", " ").capitalize())
 
 
 def normalise_objective_kind(value: Any) -> str:
@@ -378,9 +378,6 @@ def event_polarity(kind: str, side: str) -> str:
     return ""
 
 
-
-
-
 def local_player_key(session: dict[str, Any]) -> str:
     return str(session.get("local_player_key") or "")
 
@@ -415,9 +412,7 @@ def latest_point(session: dict[str, Any], player_key: str) -> dict[str, Any]:
     return {}
 
 
-def player_final_stats(
-    session: dict[str, Any], player_key: str
-) -> dict[str, Any]:
+def player_final_stats(session: dict[str, Any], player_key: str) -> dict[str, Any]:
     """Estadísticas del jugador calculadas solo con la telemetría local.
 
     El resultado no cambia si la sesión está sincronizada con Riot: el
@@ -515,10 +510,7 @@ def ordered_player_keys(session: dict[str, Any]) -> list[str]:
         values.sort(
             key=lambda value: (
                 value != local_key,
-                str(
-                    (session_players(session).get(value) or {}).get("role")
-                    or ""
-                ),
+                str((session_players(session).get(value) or {}).get("role") or ""),
             )
         )
 
@@ -629,15 +621,12 @@ def build_review_events(
     death_exact_times: list[tuple[str, float]] = [
         (
             str(
-                (event or {}).get("victim_key")
-                or (event or {}).get("player_key")
-                or ""
+                (event or {}).get("victim_key") or (event or {}).get("player_key") or ""
             ),
             _number((event or {}).get("time")),
         )
         for event in events
-        if isinstance(event, dict)
-        and str(event.get("type") or "") == "death_exact"
+        if isinstance(event, dict) and str(event.get("type") or "") == "death_exact"
     ]
     result: list[dict[str, Any]] = []
 
@@ -787,11 +776,7 @@ def build_review_events(
                 "detail": detail,
                 "glyph": kind_glyph(kind),
                 "team": row_team
-                or str(
-                    event.get("objective_team")
-                    or event.get("owner_team")
-                    or ""
-                ),
+                or str(event.get("objective_team") or event.get("owner_team") or ""),
                 "side": side,
                 "role": row_role,
                 "player_key": row_owner or None,
@@ -810,9 +795,7 @@ def build_review_events(
     return result
 
 
-def review_feedback(
-    kind: str, event: dict[str, Any], session: dict[str, Any]
-) -> str:
+def review_feedback(kind: str, event: dict[str, Any], session: dict[str, Any]) -> str:
     """Explicación corta del suceso, construida con datos locales."""
     label = str(event.get("label") or "").strip()
     side = team_side(session, event.get("team"))
@@ -825,16 +808,10 @@ def review_feedback(
         return "Participación en la pelea del equipo."
     if kind == "tower":
         return (
-            "Torre derribada del rival."
-            if side == "ally"
-            else "Torre propia perdida."
+            "Torre derribada del rival." if side == "ally" else "Torre propia perdida."
         )
     if kind == "dragon":
-        return (
-            "Dragón para tu equipo."
-            if side == "ally"
-            else "Dragón para el rival."
-        )
+        return "Dragón para tu equipo." if side == "ally" else "Dragón para el rival."
     if kind == "baron":
         return (
             "Barón (Nashor) para tu equipo."
@@ -842,11 +819,7 @@ def review_feedback(
             else "Barón (Nashor) para el rival."
         )
     if kind == "rift_herald":
-        return (
-            "Heraldo para tu equipo."
-            if side == "ally"
-            else "Heraldo para el rival."
-        )
+        return "Heraldo para tu equipo." if side == "ally" else "Heraldo para el rival."
     if kind == "inhibitor":
         return (
             "Inhibidor del rival destruido."
@@ -861,9 +834,7 @@ def review_feedback(
     return label or kind_label(kind)
 
 
-def _teamfight_row(
-    rows: list[dict[str, Any]], cluster: list[int]
-) -> dict[str, Any]:
+def _teamfight_row(rows: list[dict[str, Any]], cluster: list[int]) -> dict[str, Any]:
     """Fila "Teamfight" a partir de las bajas agrupadas de una pelea."""
     first = rows[cluster[0]]
     last = rows[cluster[-1]]
@@ -895,7 +866,9 @@ def _teamfight_row(
         scorer = (
             "enemy"
             if victim_side == "ally"
-            else "ally" if victim_side == "enemy" else ""
+            else "ally"
+            if victim_side == "enemy"
+            else ""
         )
 
         if not scorer:
@@ -916,7 +889,9 @@ def _teamfight_row(
     winner = (
         "ally"
         if ally_kills > enemy_kills
-        else "enemy" if enemy_kills > ally_kills else ""
+        else "enemy"
+        if enemy_kills > ally_kills
+        else ""
     )
 
     participants: list[str] = []
@@ -958,9 +933,7 @@ def _teamfight_row(
         "player_key": None,
         "player_name": roster,
         "evaluation": _evaluation_for("teamfight", winner),
-        "feedback": (
-            f"{len(cluster)} bajas en {max(0, int(round(end - start)))} s"
-        ),
+        "feedback": (f"{len(cluster)} bajas en {max(0, int(round(end - start)))} s"),
     }
 
 
@@ -980,7 +953,7 @@ def group_teamfights(
 
     clusters: list[list[int]] = []
     current: list[int] = []
-    last_time = -10.0**9
+    last_time = -(10.0**9)
 
     for index, row in enumerate(rows):
         if str(row.get("kind") or "") not in ("kill", "death"):
@@ -1053,9 +1026,7 @@ def link_objective_notes(
 
         # En las peleas se mira desde que TERMINAN: el objetivo llega después
         # de la última baja, no de la primera.
-        start = _number(
-            row.get("end") if kind == "teamfight" else row.get("time")
-        )
+        start = _number(row.get("end") if kind == "teamfight" else row.get("time"))
         best: tuple[float, str] | None = None
 
         for moment, objective_side, label in objectives:
@@ -1127,9 +1098,7 @@ class RadarChartWidget(QWidget):
         super().__init__(parent)
         self.setObjectName("postgameRadar")
         self.setMinimumHeight(210)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.player_values: list[float] = [0.0] * len(self.METRICS)
         self.enemy_values: list[float] = [0.0] * len(self.METRICS)
         self.player_label = "Yo"
@@ -1155,9 +1124,7 @@ class RadarChartWidget(QWidget):
             value = values[index] if index < len(values) else 0.0
             angle = -math.pi / 2 + index * step
             length = radius * max(0.0, min(1.0, value))
-            points.append(
-                QPointF(length * math.cos(angle), length * math.sin(angle))
-            )
+            points.append(QPointF(length * math.cos(angle), length * math.sin(angle)))
 
         points.append(points[1])
 
@@ -1244,9 +1211,7 @@ class IconWarmupThread(QThread):
     def run(self) -> None:  # pragma: no cover - hilo con red
         for item_id in self._item_ids:
             try:
-                get_item_icon_path(
-                    item_id, self._catalog, self._version, download=True
-                )
+                get_item_icon_path(item_id, self._catalog, self._version, download=True)
             except (OSError, ValueError, RuntimeError):
                 continue
 
@@ -1290,7 +1255,7 @@ class EventRow(QFrame):
 
     activated = Signal(float)
 
-    def __init__(self, event: dict[str, Any], parent: QWidget | None=None) -> None:
+    def __init__(self, event: dict[str, Any], parent: QWidget | None = None) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setObjectName("postgameEventRow")
@@ -1471,12 +1436,8 @@ class PostgameSidebar(QWidget):
         scroll.setObjectName("postgameOverviewScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         content = QWidget()
         content.setObjectName("postgameOverviewContent")
@@ -1555,9 +1516,7 @@ class PostgameSidebar(QWidget):
         filters.setSpacing(6)
         self.player_combo = QComboBox()
         self.player_combo.setObjectName("postgamePlayerCombo")
-        self.player_combo.currentIndexChanged.connect(
-            self._on_player_combo_changed
-        )
+        self.player_combo.currentIndexChanged.connect(self._on_player_combo_changed)
         filters.addWidget(self.player_combo, 1)
 
         self.scope_group = QButtonGroup(page)
@@ -1632,11 +1591,7 @@ class PostgameSidebar(QWidget):
         self._rebuild_timeline()
 
     def set_scope(self, scope: str) -> None:
-        value = (
-            self.SCOPE_ALL
-            if str(scope) == self.SCOPE_ALL
-            else self.SCOPE_PLAYER
-        )
+        value = self.SCOPE_ALL if str(scope) == self.SCOPE_ALL else self.SCOPE_PLAYER
 
         if value == self.scope:
             self._sync_scope_buttons()
@@ -1681,11 +1636,39 @@ class PostgameSidebar(QWidget):
         self.source_badge.style().polish(self.source_badge)
 
     def _fill_scoreboard(self) -> None:
+        """Reconstruye tarjetas desde la sesión y recalcula sus puntuaciones."""
         # Marcador "MI EQUIPO vs EQUIPO ENEMIGO" en dos columnas paralelas:
         # imagen, KDA, CS, oro, visión y build de cada jugador. Ambas columnas
         # se ordenan por rol (TOP→JUNGLA→MEDIO→TIRADOR→APOYO) para que cada
         # jugador quede ENFRENTADO a su homólogo del otro bando: el local no
         # se fuerza arriba, va en la fila de su rol.
+        final_sync = self.session.get("final_sync", {})
+        modo_puntuacion = (
+            "postgame"
+            if self.session.get("postgame")
+            or (isinstance(final_sync, dict) and final_sync.get("status") == "synced")
+            else "live"
+        )
+        self.performance_scores = puntuar_sesion(self.session, modo_puntuacion)
+        self.session["performance_scoring"] = {
+            "version": self.performance_scores["version"],
+            "calibration_version": self.performance_scores["calibration_version"],
+            "metric_sources": self.performance_scores["metric_sources"],
+            "state": self.performance_scores["finalization_state"],
+            "awards_finalized": self.performance_scores["awards_finalized"],
+            "duration_multiplier": self.performance_scores["multiplicador_duracion"],
+            "players": self.performance_scores["players"],
+            "teams": self.performance_scores["teams"],
+        }
+        if self.performance_scores["awards_finalized"] and self.session.get(
+            "session_id"
+        ):
+            try:
+                from app.services.match_log_service import MatchLogService
+
+                MatchLogService().save_match_log(self.session)
+            except (OSError, TypeError, ValueError):
+                pass
         players = session_players(self.session)
         version = str(self.session.get("game_version") or "").strip()
         dd_version = ""
@@ -1711,12 +1694,11 @@ class PostgameSidebar(QWidget):
             values.sort(
                 key=lambda value: (
                     ROLE_ORDER.index(
-                        str(
-                            (players.get(value) or {}).get("role") or "UNKNOWN"
-                        ).upper()
-                    ) if str(
-                        (players.get(value) or {}).get("role") or "UNKNOWN"
-                    ).upper() in ROLE_ORDER else len(ROLE_ORDER),
+                        str((players.get(value) or {}).get("role") or "UNKNOWN").upper()
+                    )
+                    if str((players.get(value) or {}).get("role") or "UNKNOWN").upper()
+                    in ROLE_ORDER
+                    else len(ROLE_ORDER),
                 )
             )
 
@@ -1745,9 +1727,7 @@ class PostgameSidebar(QWidget):
                 if not isinstance(player, dict):
                     continue
 
-                card = self._create_player_card(
-                    key, player, version, key == local_key
-                )
+                card = self._create_player_card(key, player, version, key == local_key)
                 layout.insertWidget(max(0, layout.count() - 1), card)
 
         ally_layout = self.ally_column.layout()
@@ -1763,11 +1743,7 @@ class PostgameSidebar(QWidget):
 
         # Los jugadores sin bando conocido van a la columna con menos filas.
         if unknown_keys:
-            target = (
-                ally_layout
-                if len(ally_keys) <= len(enemy_keys)
-                else enemy_layout
-            )
+            target = ally_layout if len(ally_keys) <= len(enemy_keys) else enemy_layout
 
             if target is not None:
                 fill_column(unknown_keys, target)
@@ -1864,7 +1840,9 @@ class PostgameSidebar(QWidget):
 
         return value or DEFAULT_DD_VERSION
 
-    def _create_player_card(self, key: str, player: dict, version: str, is_local: bool=False) -> QFrame:
+    def _create_player_card(
+        self, key: str, player: dict, version: str, is_local: bool = False
+    ) -> QFrame:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         card = PlayerCard(key)
         card.setObjectName("postgamePlayerCard")
@@ -1939,18 +1917,13 @@ class PostgameSidebar(QWidget):
             + (ROLE_LABELS_ES.get(role, role or "SIN DATO") or "SIN DATO").upper()
         )
         role_chip.setObjectName("postgameRoleBadge")
-        role_chip.setToolTip(
-            "Tu jugador" if is_local else f"Rol: {role or 'sin dato'}"
-        )
+        role_chip.setToolTip("Tu jugador" if is_local else f"Rol: {role or 'sin dato'}")
         meta_row.addWidget(role_chip)
 
-        level_chip = QLabel(
-            f"NIVEL · {stats['level']}" + (" · TÚ" if is_local else "")
-        )
+        level_chip = QLabel(f"NIVEL · {stats['level']}" + (" · TÚ" if is_local else ""))
         level_chip.setObjectName("postgameLevelBadge")
         level_chip.setToolTip(
-            f"Nivel final {stats['level']}"
-            + (" · es tu jugador" if is_local else "")
+            f"Nivel final {stats['level']}" + (" · es tu jugador" if is_local else "")
         )
         meta_row.addWidget(level_chip)
 
@@ -1970,20 +1943,39 @@ class PostgameSidebar(QWidget):
         kda_caption.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         kda_box.addWidget(kda_caption)
 
-        kda = QLabel(
-            f"{stats['kills']} / {stats['deaths']} / {stats['assists']}"
-        )
+        kda = QLabel(f"{stats['kills']} / {stats['deaths']} / {stats['assists']}")
         kda.setObjectName("postgameStatKda")
-        aplicar_color(kda, _kda_colour(stats['kda']))
+        aplicar_color(kda, _kda_colour(stats["kda"]))
         kda.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        kda.setToolTip(
-            f"KDA {stats['kda']:.2f} · asesinatos / muertes / asistencias"
-        )
+        kda.setToolTip(f"KDA {stats['kda']:.2f} · asesinatos / muertes / asistencias")
         kda_box.addWidget(kda)
 
         header_row.addWidget(kda_frame, 0, Qt.AlignmentFlag.AlignTop)
 
         layout.addLayout(header_row)
+        resultado = getattr(self, "performance_scores", {}).get("by_id", {}).get(key)
+        if resultado:
+            pendiente = resultado.get("finalization_state") == "POSTGAME_PENDING"
+            insignia = QPushButton(
+                f"{resultado['total']}p · {resultado['global_rank']}º"
+                + (" · " + "/".join(resultado["awards"]) if resultado["awards"] else "")
+                + (" · PENDIENTE" if pendiente else "")
+            )
+            insignia.setObjectName("postgamePerformanceScore")
+            insignia.setToolTip(
+                "Faltan datos oficiales comparables para cerrar los premios."
+                if pendiente
+                else "Puntuación SOLRALOL provisional"
+                if not resultado.get("awards_finalized")
+                else "Puntuación SOLRALOL final. Pulsa para ver el desglose."
+            )
+            insignia.setFlat(True)
+            insignia.clicked.connect(
+                lambda _checked=False, valor=resultado: (
+                    self._show_performance_breakdown(valor)
+                )
+            )
+            layout.addWidget(insignia, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(_divider())
 
         # -- métricas clave en chips con fondo (lectura inmediata) ---------
@@ -2077,8 +2069,7 @@ class PostgameSidebar(QWidget):
             elif item_id is not None:
                 slot.setText(str(item_id)[:3])
                 slot.setToolTip(
-                    _item_tooltip(item_id, catalog)
-                    + "\n(Sin icono en la caché local)"
+                    _item_tooltip(item_id, catalog) + "\n(Sin icono en la caché local)"
                 )
             else:
                 slot.setText("+")
@@ -2099,6 +2090,9 @@ class PostgameSidebar(QWidget):
 
         return card
 
+    def _show_performance_breakdown(self, resultado: dict[str, Any]) -> None:
+        """Abre el diálogo con resultado del jugador; no devuelve un valor."""
+        DialogoDesgloseRendimiento(resultado, self).exec()
 
     def _fill_player_combo(self) -> None:
         self.player_combo.blockSignals(True)
@@ -2163,10 +2157,7 @@ class PostgameSidebar(QWidget):
             key
             for key in ordered_player_keys(self.session)
             if key != player_key
-            and team_side(
-                self.session, (players.get(key) or {}).get("team")
-            )
-            == target
+            and team_side(self.session, (players.get(key) or {}).get("team")) == target
         ]
 
         for key in candidates:
@@ -2221,9 +2212,7 @@ class PostgameSidebar(QWidget):
             partner = ""
 
         if partner:
-            focus_side = team_side(
-                self.session, (players.get(key) or {}).get("team")
-            )
+            focus_side = team_side(self.session, (players.get(key) or {}).get("team"))
             rival_side = team_side(
                 self.session, (players.get(partner) or {}).get("team")
             )
@@ -2246,9 +2235,7 @@ class PostgameSidebar(QWidget):
         allies_kills = team_kills(self.session, "ally")
         participation = stats["kills"] + stats["assists"]
         share = (
-            f"{participation / allies_kills * 100:.0f}%"
-            if allies_kills > 0
-            else "—"
+            f"{participation / allies_kills * 100:.0f}%" if allies_kills > 0 else "—"
         )
 
         self.stats_label.setText(
@@ -2302,9 +2289,7 @@ class PostgameSidebar(QWidget):
         for event in self.review_events:
             row = EventRow(event, self.review_container)
             row.activated.connect(self.event_activated.emit)
-            self.review_layout.insertWidget(
-                max(0, self.review_layout.count() - 1), row
-            )
+            self.review_layout.insertWidget(max(0, self.review_layout.count() - 1), row)
             self.event_rows.append(row)
 
         has_events = bool(self.review_events)

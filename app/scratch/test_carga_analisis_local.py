@@ -170,6 +170,7 @@ def dialogo(
     repositorio = RepositorioCampeones(tmp_path / "champion_data")
     for entrada in perfiles:
         repositorio.guardar_perfil(entrada)
+    monkeypatch.setattr(repositorio, "perfiles", lambda: copy.deepcopy(perfiles))
     monkeypatch.setattr(
         "app.ui.local_analysis_dialog.RepositorioCampeones", lambda raiz: repositorio
     )

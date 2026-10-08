@@ -42,7 +42,7 @@ class RecursosPrueba(QObject):
 
     def set_label_image(self, label: QLabel, *args: object, **kwargs: object) -> None:
         """Conserva el fallback del label recibido sin acceder a red."""
-        return None
+        return
 
 
 @pytest.fixture
@@ -176,6 +176,13 @@ def test_ventanas_secundarias(
         for _ in range(10):
             aplicacion.processEvents()
         assert not componente.grab().isNull()
+    for ancho, alto in ((1200, 760), (1640, 1000)):
+        live.resize(ancho, alto)
+        for _ in range(10):
+            aplicacion.processEvents()
+        assert live.size().width() == ancho
+        assert live.size().height() == alto
+        assert not live.grab().isNull()
     assert fila.property("estado") == "error"
     arranque.stop()
     inspector.close()

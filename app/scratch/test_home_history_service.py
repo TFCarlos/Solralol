@@ -32,6 +32,38 @@ def test_home_repository_merges_and_keeps_accounts_separate(tmp_path) -> None:
     assert repository.load_last_profile()["puuid"] in {"account-a", "account-b"}
 
 
+def test_lcu_participant_normalizes_defense_stats_and_preserves_absence() -> None:
+    """Normaliza estadísticas LCU y distingue cero medido de campo ausente."""
+    participant = LCUHomeProvider._normalize_participant(
+        {
+            "participantId": 1,
+            "championId": 201,
+            "stats": {
+                "totalDamageTaken": 100_000,
+                "damageSelfMitigated": 80_000,
+            },
+        },
+        {},
+    )
+    zero = LCUHomeProvider._normalize_participant(
+        {
+            "participantId": 2,
+            "championId": 201,
+            "stats": {"totalDamageTaken": 0, "damageSelfMitigated": 0},
+        },
+        {},
+    )
+    unavailable = LCUHomeProvider._normalize_participant(
+        {"participantId": 3, "championId": 201, "stats": {}}, {}
+    )
+    assert participant["damage_taken"] == 100_000
+    assert participant["damage_self_mitigated"] == 80_000
+    assert zero["damage_taken"] == 0
+    assert zero["damage_self_mitigated"] == 0
+    assert unavailable["damage_taken"] is None
+    assert unavailable["damage_self_mitigated"] is None
+
+
 def test_home_repository_does_not_downgrade_enriched_participants(tmp_path) -> None:
     """Conserva el detalle LCU frente a una fila posterior de resumen parcial."""
     repository = HomeHistoryRepository(tmp_path)

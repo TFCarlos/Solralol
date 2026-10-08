@@ -3,7 +3,12 @@
 from string import Template
 
 from _paths import DATA_DIR
-from app.ui.sistema_visual import PALETA, RADIOS, TIPOGRAFIA
+from app.ui.sistema_visual import (
+    COLORES_CATEGORIA_RENDIMIENTO,
+    PALETA,
+    RADIOS,
+    TIPOGRAFIA,
+)
 
 ESTILO_GLOBAL = Template("""
 QWidget {font-family:"Segoe UI"; font-size:${cuerpo}px; color:$texto;}
@@ -23,6 +28,24 @@ QFrame[superficie="compacta"], QWidget[superficie="compacta"] {
 }
 QFrame[superficie="interactiva"] {background:$superficie; border:1px solid $borde; border-radius:${compacto}px;}
 QFrame[superficie="interactiva"]:hover {background:$hover; border-color:$oro;}
+QFrame#recommendationPanel QLabel#synergyScore, QFrame#recommendationPanel QLabel#purchaseAffinity {
+ padding:4px 9px; border-radius:8px; border:1px solid $oro_oscuro;
+ background:$calida; color:$oro_suave; font-weight:700;
+}
+QFrame#recommendationPanel QLabel#synergyScore[intensidad="alta"] {background:$activo; border-color:$oro; color:$texto;}
+QFrame#recommendationPanel QLabel#synergyScore[intensidad="media"] {background:$calida; border-color:$oro_oscuro;}
+QFrame#recommendationPanel QLabel#synergyScore[intensidad="baja"] {background:$superficie; border-color:$borde_sutil; color:$secundario;}
+QFrame#recommendationPanel QLabel#enemyStrengthBadge,
+QFrame#recommendationPanel QLabel#enemyInventoryBadge,
+QFrame#recommendationPanel QLabel#enemyBuildGold {
+ padding:2px 6px; border-radius:7px; border:1px solid $oro_oscuro; background:$calida;
+}
+QFrame#recommendationPanel QWidget#recommendationBody,
+QFrame#recommendationPanel QWidget#recommendationDashboard,
+QFrame#recommendationPanel QWidget#draftDamageCard,
+QFrame#recommendationPanel QWidget#draftCurveCard {
+ background:$superficie; border:1px solid $borde; border-radius:14px;
+}
 QFrame#situationalCategory {background:$elevada; border:1px solid $borde_sutil; border-radius:${compacto}px;}
 QFrame#situationalCategoryDivider {background:$borde_sutil; border:none;}
 QWidget#situationalItemRow {background:transparent; border:none;}
@@ -55,6 +78,18 @@ QLabel#cardLevelBadge[densidad="compacta"] {font-size:${nivel_live_compacto}px;}
 QLabel#cardLevelBadge[densidad="estandar"] {font-size:${nivel_live_estandar}px;}
 QLabel#cardLevelBadge[densidad="amplia"] {font-size:${nivel_live_amplio}px;}
 QLabel#cardKDA {min-width:70px; color:$marfil; font-size:${cuerpo}px; font-weight:700;}
+QLabel#livePlayerPortrait {background:$base; border:2px solid $borde; border-radius:12px; padding:3px;}
+QLabel#livePlayerPortrait[side="ally"] {border-color:$teal;}
+QLabel#livePlayerPortrait[side="enemy"] {border-color:$desventaja;}
+QLabel#livePlayerChampion {color:$texto; font-size:16px; font-weight:700;}
+QLabel#livePlayerRole {color:$oro_suave; background:$calida; border:1px solid $oro_oscuro; border-radius:8px; padding:2px 7px;}
+QLabel#livePlayerLevel, QLabel#livePlayerKdaRatio {color:$oro_suave; font-weight:600;}
+QLabel#livePlayerScore {color:$marfil; font-size:17px; font-weight:700;}
+QLabel#liveAchievementBadge {color:$marfil; background:$calida; border:1px solid $oro_oscuro; border-radius:9px; padding:5px 10px; min-height:22px; font-size:${metadatos}px;}
+QLabel#liveAchievementBadge[type="victory"] {color:$ventaja; background:$superficie; border-color:$teal; font-weight:700;}
+QLabel#liveAchievementBadge[type="early"], QLabel#liveAchievementBadge[type="mid"], QLabel#liveAchievementBadge[type="late"] {color:$teal; background:$elevada; border-color:$teal;}
+QLabel#liveAchievementBadge[type="defense"], QLabel#liveAchievementBadge[type="offense"] {color:$oro_suave; background:$elevada; border-color:$oro_oscuro;}
+QLabel#liveMetricGroup {color:$oro_suave; font-weight:600; font-size:${metadatos}px;}
 QLabel#cardMeBadge {color:$oro_suave; background:$calida; border:1px solid $oro; border-radius:${pequeno}px; padding:2px 5px; font-size:${metadatos}px; font-weight:700;}
 QLabel#cardCombatValue {color:$texto; font-size:12px;}
 QLabel#cardInventoryTitle, QLabel#cardInventoryCount {color:$secundario; font-size:${metadatos}px;}
@@ -63,8 +98,21 @@ QLabel#cardRuneIcon {background:$base; border:1px solid $borde_sutil; border-rad
 QLabel#cardLoadoutEmpty {color:$tenue; font-size:${metadatos}px;}
 QLabel#itemSlot, QLabel#trinketSlot, QLabel#bootsQuestSlot, QLabel#pinkWardQuestSlot {background:$base; border:1px solid $borde_sutil; border-radius:${pequeno}px;}
 QFrame#savedGameRow {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $elevada,stop:1 $superficie); border:1px solid $borde; border-top:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
-QFrame#savedGameRow[result="win"] {border-left:3px solid $ventaja;}
-QFrame#savedGameRow[result="loss"] {border-left:3px solid $desventaja;}
+QFrame#savedGameRow[result="win"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_victoria,stop:1 $superficie_victoria_fin); border-color:#354840; border-top-color:$teal;}
+QFrame#savedGameRow[result="loss"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_derrota,stop:1 $superficie_derrota_fin); border-color:#4a3637; border-top-color:$desventaja;}
+QFrame#savedGameRow[result="win"]:hover {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #1b2924,stop:1 #162225); border-color:$teal;}
+QFrame#savedGameRow[result="loss"]:hover {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #2a1e20,stop:1 #211a1d); border-color:$desventaja;}
+QFrame#savedGameRow[history="true"][result="win"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_victoria,stop:1 $superficie_victoria_fin); border:1px solid #354840; border-left:3px solid $ventaja; border-radius:9px;}
+QFrame#savedGameRow[history="true"][result="loss"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_derrota,stop:1 $superficie_derrota_fin); border:1px solid #4a3637; border-left:3px solid $desventaja; border-radius:9px;}
+QFrame#savedGameRow[history="true"][result="unknown"] {background:$elevada; border:1px solid $borde_sutil; border-radius:9px;}
+QLabel#savedGamePerformance, QLabel#homePerformanceScore {color:$oro_suave; background:rgba(16,21,30,190); border:1px solid $oro_oscuro; border-radius:8px; padding:4px 9px; font-weight:700;}
+QLabel#savedGamePerformance[award="MVP"] {color:$oro_suave; border-color:$oro;}
+QLabel#savedGamePerformance[award="SVP"] {color:$informacion; border-color:$teal;}
+QLabel#savedGamePerformance[award="MVP/SVP"] {color:$marfil; border-color:$oro; background:$calida;}
+QLabel#savedGamePerformancePending {color:$secundario; font-size:${metadatos}px; padding:3px 6px;}
+QLabel#homePerformanceScore[award="MVP"] {color:$oro_suave; border-color:$oro;}
+QLabel#homePerformanceScore[award="SVP"] {color:$informacion; border-color:$teal;}
+QLabel#homePerformanceScore[award="MVP/SVP"] {color:$marfil; border-color:$oro; background:$calida;}
 QLabel#savedGameChampIcon {background:$base; border:1px solid $oro; border-radius:12px;}
 QLabel#savedGameEnemyIcon {background:$base; border:1px solid $desventaja; border-radius:6px;}
 QLabel#savedGameMatchup {color:$oro_suave; font-size:13px; font-weight:600;}
@@ -254,9 +302,86 @@ QWidget#startupWindow {border:1px solid $oro_oscuro; border-radius:${modal}px;}
 QLabel#emptyItemSlot {background:rgba(5,7,12,100); border:1px dashed $borde_sutil; border-radius:${pequeno}px;}
 QWidget#recordingVideo, QWidget#postgameVideo {background:$base;}
 QFrame#overlayCard {background:$superficie; border:1px solid $oro_oscuro; border-radius:${compacto}px;}
+QFrame#performanceHeader, QFrame#performanceSummary {background:$superficie; border:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
+QFrame#performanceCategoryCard {background:$elevada; border:1px solid $borde; border-left:3px solid $oro; border-radius:${compacto}px;}
+QFrame#performanceCategoryCard[category="combate"] {border-left-color:$rendimiento_combate;}
+QFrame#performanceCategoryCard[category="economia"] {border-left-color:$rendimiento_economia;}
+QFrame#performanceCategoryCard[category="objetivos"] {border-left-color:$rendimiento_objetivos;}
+QFrame#performanceCategoryCard[category="vision"] {border-left-color:$rendimiento_vision;}
+QFrame#performanceCategoryCard[category="supervivencia"] {border-left-color:$rendimiento_supervivencia;}
+QLabel#performanceEyebrow, QLabel#performanceRole {color:$oro_suave; font-size:${ayuda}px; font-weight:700;}
+QLabel#performanceChampionName {color:$marfil; font-size:${tarjeta}px; font-weight:700;}
+QLabel#performancePlayerName {color:$texto; font-size:${metadatos}px;}
+QLabel#performanceTotal {color:$marfil; font-size:${pagina}px; font-weight:700;}
+QLabel#performanceCategoryTitle {color:$marfil; font-size:${metadatos}px; font-weight:700;}
+QLabel#performanceCategoryPoints, QLabel#performancePercentage, QLabel#performanceSummaryValue, QLabel#performanceMetricValue, QLabel#performanceAwardValue {color:$oro_suave; font-weight:700;}
+QLabel#performanceFooterMeta {color:$secundario; font-size:${ayuda}px;}
+QLabel#performanceCategoryMeta {color:$secundario; font-size:${metadatos}px;}
+QLabel#performanceAchievement {color:$oro_suave; font-weight:700;}
+QPushButton#performanceDetailsButton {min-height:30px; text-align:left; color:$secundario; border:1px solid $borde; border-radius:6px; padding:4px 8px; background:$superficie;}
+QPushButton#performanceDetailsButton:hover {color:$oro_suave; border-color:$oro_oscuro; background:$elevada;}
+QLabel#performanceDetailHeading {color:$oro_suave; font-weight:700; letter-spacing:1px;}
+QLabel#performanceDetailSecondaryHeading {color:$secundario; font-size:9pt; font-weight:700; letter-spacing:1px;}
+QLabel#performanceCalculationLabel {color:$secundario; font-size:9pt;}
+QProgressBar#performanceProgressBar {min-height:9px; max-height:9px; border-radius:4px;}
+QProgressBar#performanceProgressBar[category="combate"]::chunk {background:$rendimiento_combate;}
+QProgressBar#performanceProgressBar[category="economia"]::chunk {background:$rendimiento_economia;}
+QProgressBar#performanceProgressBar[category="objetivos"]::chunk {background:$rendimiento_objetivos;}
+QProgressBar#performanceProgressBar[category="vision"]::chunk {background:$rendimiento_vision;}
+QProgressBar#performanceProgressBar[category="supervivencia"]::chunk {background:$rendimiento_supervivencia;}
+QFrame#allPlayerPerformanceCard {background:$elevada; border:1px solid $borde; border-radius:${compacto}px;}
+QFrame#allPlayerPerformanceCard[side="ally"] {border-top:2px solid #70a99b;}
+QFrame#allPlayerPerformanceCard[side="enemy"] {border-top:2px solid #c47d70;}
+QLabel#allPlayerChampion, QLabel#allPlayersTeamTitle {color:$marfil; font-weight:700;}
+QLabel#allPlayersTeamTitle[side="ally"] {color:#80b7aa;}
+QLabel#allPlayersTeamTitle[side="enemy"] {color:#d18a80;}
+QLabel#allPlayerRiotId {color:$texto; font-size:${ayuda}px;}
+QLabel#allPlayerRole {color:$secundario; font-size:${ayuda}px;}
+QLabel#allPlayerCategoryName, QLabel#allPlayerKda {color:$secundario; font-size:${ayuda}px;}
+QLabel#allPlayerRank {color:$texto; font-size:${pagina}px; font-weight:700;}
+QLabel#allPlayerRank[rank="1"] {color:$oro_suave;}
+QLabel#allPlayerRank[rank="2"] {color:#c8d0d5;}
+QLabel#allPlayerRank[rank="3"] {color:#c69570;}
+QLabel#allPlayerTotal {color:$marfil; font-size:${tarjeta}px; font-weight:700;}
+QLabel#teamPerformanceScore {color:$marfil; font-weight:700;}
+QLabel#allPlayerAward {color:#70d69b; font-weight:700;}
+QLabel#allPlayerCategoryPercent {color:$texto; font-size:${ayuda}px;}
+QFrame#teamPerformanceComparison {background:$superficie; border:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
+QLabel#teamMatchResult {color:$secundario; font-size:${ayuda}px; font-weight:700;}
+QLabel#teamPerformanceLead {color:$oro_suave; font-size:${ayuda}px; font-weight:700;}
+QLabel#teamMatchResult[result="victoria"] {color:#70d69b;}
+QLabel#teamMatchResult[result="derrota"] {color:#d18a80;}
+QLabel#specialPerformanceAchievement {color:$oro_suave; background:#251d10; border:1px solid $oro_oscuro; border-radius:8px; padding:3px 8px; font-weight:700;}
+QLabel#performanceIncomplete {color:$secundario; font-size:${ayuda}px;}
+QLabel#allPlayersOverviewTitle {color:$oro_suave; font-weight:700; letter-spacing:1px;}
+QLabel#allPlayersOverviewState {color:$secundario; background:$superficie; border:1px solid $borde; border-radius:8px; padding:3px 8px; font-size:${ayuda}px; font-weight:700;}
+QLabel#allPlayerPortrait {background:$superficie; color:$marfil; border:1px solid $borde; border-radius:8px;}
+QFrame#allPlayerPerformanceCard:hover, QFrame#allPlayerPerformanceCard:focus {background:#202832; border-color:$oro_oscuro;}
+QLabel#allPlayerAward {background:#20352f; border:1px solid #4e8175; border-radius:8px; padding:3px 7px;}
+QLabel#allPlayerAward[award="mvp"] {color:$oro_suave; background:#2a2417; border-color:$oro_oscuro;}
+QLabel#allPlayerAward[award="svp"] {color:#b9d0ca; background:#1b2a2b; border-color:#4e8175;}
+QLabel#allPlayerAward[award="mvpsvp"] {color:$oro_suave; background:#30291a; border-color:$oro;}
+QLabel#allPlayerAward[award="provisional"] {color:$secundario; background:$superficie; border-color:$borde;}
+QLabel#allPlayerRole {background:#111820; border:1px solid $borde; border-radius:7px; padding:2px 6px;}
+QWidget#performanceMiniBar {background:transparent;}
+QFrame#teamPerformancePanel {background:$elevada; border:1px solid $borde; border-radius:${tarjeta}px;}
+QFrame#teamPerformancePanel[side="ally"] {border-top:3px solid $teal;}
+QFrame#teamPerformancePanel[side="enemy"] {border-top:3px solid $desventaja;}
+QLabel#teamPerformanceScore {font-size:${seccion}px; color:$marfil; font-weight:700;}
+QLabel#teamPerformanceAverage {color:$secundario; font-size:${ayuda}px;}
+QLabel#teamCategoryValue {color:$texto; font-size:${ayuda}px;}
+QLabel#teamCategoryAdvantage {font-size:${ayuda}px; font-weight:700;}
+QLabel#teamCategoryAdvantage[advantage="ahead"] {color:$oro_suave;}
+QLabel#teamCategoryAdvantage[advantage="behind"] {color:$secundario;}
+QFrame#teamComparisonDivider {background:transparent; border:none;}
+QLabel#teamComparisonVs {color:$oro_suave; font-size:${tarjeta}px; font-weight:700;}
 """).substitute(
     **PALETA,
     **RADIOS,
+    **{
+        f"rendimiento_{categoria}": color
+        for categoria, color in COLORES_CATEGORIA_RENDIMIENTO.items()
+    },
     **{clave: valor for clave, valor in TIPOGRAFIA.items() if clave != "tarjeta"},
     titulo_tarjeta=TIPOGRAFIA["tarjeta"],
     **{
