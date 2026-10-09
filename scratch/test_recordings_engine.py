@@ -10,6 +10,8 @@ import time
 import unittest
 from pathlib import Path
 
+import imageio_ffmpeg
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
@@ -29,7 +31,8 @@ class RecordingEngineTests(unittest.TestCase):
             self.app.processEvents()
             time.sleep(0.05)
 
-    def test_start_stop_real_ffmpeg(self):
+    def test_start_stop_real_ffmpeg(self) -> None:
+        """Graba unos segundos con el FFmpeg local y finaliza el MP4."""
         directory = Path(tempfile.mkdtemp()) / "recs"
         config = RecordingConfig(
             output_dir=directory,
@@ -38,6 +41,7 @@ class RecordingEngineTests(unittest.TestCase):
             video_bitrate=1500,
         )
         service = RecordingService()
+        service.apply_ffmpeg_result(imageio_ffmpeg.get_ffmpeg_exe())
         failures = []
         finished = []
         service.failed.connect(failures.append)
@@ -52,6 +56,13 @@ class RecordingEngineTests(unittest.TestCase):
             ),
             msg=service.last_error,
         )
+        self.assertFalse(service.start(config, champion="Duplicada"))
+        self.assertTrue(service.is_starting_or_recording)
+        deadline = time.time() + 8.0
+
+        while not service.is_recording and time.time() < deadline:
+            self.pump(0.05)
+
         self.assertTrue(service.is_recording)
         self.pump(3.0)
         self.assertGreater(service.elapsed_seconds(), 1.0)

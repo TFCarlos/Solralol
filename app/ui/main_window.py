@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from copy import deepcopy
 from datetime import datetime
@@ -16,6 +17,7 @@ from PySide6.QtCore import (
     Slot,
 )
 from PySide6.QtGui import (
+    QCloseEvent,
     QColor,
     QDesktopServices,
     QPainter,
@@ -51,11 +53,21 @@ from app.services.home_history_service import (
     HomeHistoryRepository,
     LCUHomeProvider,
     analyze_home_history,
-    cross_reference_saved_matches,
 )
 from app.services.live_data_worker import LiveDataWorker
 from app.services.live_match_tracker import (
     LiveMatchTracker,
+)
+from app.services.postgame_lcu_sync import (
+    RETRASOS_REINTENTO_LCU,
+    actualizar_estado_sync_final,
+    conservar_enriquecimiento_final,
+    contador_intentos_lcu,
+    historial_contiene_enlace,
+    marcar_sincronizacion_lcu_completa,
+    marcar_sincronizacion_lcu_pendiente,
+    reconciliar_puntuaciones_home,
+    siguiente_retraso_lcu,
 )
 from app.services.postgame_sync_worker import (
     PostgameSyncWorker,
@@ -316,6 +328,9 @@ class RejillaTarjetasEquipo(QWidget):
         return QSize(0, 0)
 
 
+logger = logging.getLogger(__name__)
+
+
 class MainWindow(QMainWindow):
     """Ventana única de Solralol."""
 
@@ -373,9 +388,14 @@ class MainWindow(QMainWindow):
                 if self.home_profile
                 else {"matches": [], "last_sync": None}
             )
-        except (OSError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError) as error:
             self.home_history = {"matches": [], "last_sync": None}
             self.home_history_error = True
+            logger.error(
+                "[home] fallo al cargar historial: category=%s detail=%s",
+                type(error).__name__,
+                str(error)[:240],
+            )
         self._home_sync_in_progress = False
         self._home_collection_generation = 0
         self.riot_api_key = self.settings.get(
@@ -438,6 +458,7 @@ class MainWindow(QMainWindow):
         # hacen en workers para que la ventana aparezca sin esperar.
         self._ffmpeg_ready = False
         self._refresh_ffmpeg_task: AsyncTask | None = None
+        self._pending_recording_snapshot: dict[str, Any] | None = None
         self._devices_task: AsyncTask | None = None
         self._system_devices_task: AsyncTask | None = None
         self._start_background_ffmpeg_check()
@@ -469,6 +490,7 @@ class MainWindow(QMainWindow):
 
         self.postgame_sync_in_progress = False
         self.pending_postgame_session_id = ""
+        self._postgame_lcu_scheduled: set[str] = set()
         #: Hay una lectura de «Partidas guardadas» en curso en un worker.
         self.saved_games_refreshing = False
         #: Mientras el worker trabaja, otra petición de refresco queda en cola.
@@ -766,17 +788,15 @@ class MainWindow(QMainWindow):
             sessions = tracker.load_saved_sessions()
         except (OSError, TypeError, ValueError):
             sessions = []
-        puntuaciones_actualizadas = False
-        for session in sessions:
-            puntuaciones_actualizadas |= asegurar_puntuacion_guardada(session)
-        if puntuaciones_actualizadas:
-            tracker._save_sessions(sessions)
-        matches = cross_reference_saved_matches(
+        matches, puntuaciones_actualizadas = reconciliar_puntuaciones_home(
             result["history"].get("matches", []),
             sessions,
             str(result.get("profile", {}).get("puuid") or "") or None,
         )
+        if puntuaciones_actualizadas:
+            tracker._save_sessions(sessions)
         result["history"] = repository.merge(result["profile"], matches)
+        result["saved_scores_updated"] = puntuaciones_actualizadas
         return result
 
     def actualizar_puntuaciones_home_en_segundo_plano(
@@ -795,16 +815,13 @@ class MainWindow(QMainWindow):
             self.item_catalog, game_version=self.version, persist=False
         )
         sesiones = tracker.load_saved_sessions()
-        puntuaciones_actualizadas = False
-        for sesion in sesiones:
-            puntuaciones_actualizadas |= asegurar_puntuacion_guardada(sesion)
-        if puntuaciones_actualizadas:
-            tracker._save_sessions(sesiones)
-        partidas = cross_reference_saved_matches(
+        partidas, puntuaciones_actualizadas = reconciliar_puntuaciones_home(
             historial.get("matches", []),
             sesiones,
             str(perfil.get("puuid") or "") or None,
         )
+        if puntuaciones_actualizadas:
+            tracker._save_sessions(sesiones)
         return HomeHistoryRepository().merge(perfil, partidas)
 
     def _home_saved_scores_finished(
@@ -825,6 +842,7 @@ class MainWindow(QMainWindow):
                 if self.home_history_error
                 else "League cerrado · mostrando historial local"
             )
+            self._revisar_sincronizaciones_lcu_pendientes(None)
             return
         self.home_profile = result["profile"]
         self.home_history = result["history"]
@@ -836,6 +854,9 @@ class MainWindow(QMainWindow):
             else "League conectado · historial sincronizado"
         )
         self.refresh_home_dashboard(estado)
+        self._revisar_sincronizaciones_lcu_pendientes(self.home_history)
+        if result.get("saved_scores_updated") and hasattr(self, "saved_games_layout"):
+            self.refresh_saved_games()
         if result.get("connection") == "offline":
             return
         profile = dict(self.home_profile)
@@ -1387,6 +1408,15 @@ class MainWindow(QMainWindow):
             video_path = self.find_recording_for_session(session)
 
         self.live_match_tracker.delete_saved_session(session_id)
+        if isinstance(session, dict):
+            session.pop("ai_match_analysis", None)
+            session.pop("ai_analysis", None)
+        for dialogo in (
+            getattr(self, "live_analysis_dialog", None),
+            getattr(getattr(self, "replay_window", None), "live_view", None),
+        ):
+            if dialogo is not None:
+                dialogo.invalidar_analisis_guardado(session_id)
 
         if video_path:
             self.delete_recording_file(video_path)
@@ -2001,15 +2031,7 @@ class MainWindow(QMainWindow):
             if session.get("session_id") != session_id:
                 continue
 
-            final_sync = session.setdefault(
-                "final_sync",
-                {},
-            )
-
-            final_sync["status"] = status
-            final_sync["message"] = message
-
-            changed = True
+            changed = actualizar_estado_sync_final(session, status, message)
             break
 
         if changed:
@@ -2024,6 +2046,7 @@ class MainWindow(QMainWindow):
             self.data_dragon_assets,
             self.item_catalog,
             self,
+            tracker=self.live_match_tracker,
         )
         dialog.exec()
 
@@ -2655,14 +2678,31 @@ class MainWindow(QMainWindow):
             on_finished=self._apply_ffmpeg_check,
         )
 
-    def _apply_ffmpeg_check(self, _token, found, error) -> None:
-        """Publica en la GUI el resultado de la búsqueda de ffmpeg."""
+    def _apply_ffmpeg_check(
+        self, _token: Any, found: str | None, error: str | None
+    ) -> None:
+        """Publica el binario detectado y reanuda una grabación aplazada.
+
+        Parámetros:
+            _token: Identificador opaco de la tarea.
+            found: Ruta detectada o None.
+            error: Error del worker o None.
+
+        Retorno:
+            None.
+        """
         self._refresh_ffmpeg_task = None
 
         if not error:
             self.recording_service.apply_ffmpeg_result(found)
 
         self._ffmpeg_ready = bool(found) and not error
+
+        pending_snapshot = self._pending_recording_snapshot
+        self._pending_recording_snapshot = None
+
+        if pending_snapshot is not None:
+            self.start_match_recording(pending_snapshot)
 
         if hasattr(self, "recording_status"):
             self.sync_recording_controls()
@@ -3166,9 +3206,24 @@ class MainWindow(QMainWindow):
 
     # -- grabación automática de la partida -----------------------------
 
-    def start_match_recording(self, snapshot: dict) -> None:
-        """Arranca la grabación al empezar la partida (si está activada)."""
-        if self.recording_service.is_recording:
+    def start_match_recording(self, snapshot: dict[str, Any]) -> None:
+        """Arranca la grabación al empezar la partida si está activada.
+
+        Parámetros:
+            snapshot: Telemetría inicial de la partida.
+
+        Retorno:
+            None.
+        """
+        if (
+            self.recording_service.is_recording
+            or self.recording_service.is_starting_or_recording
+        ):
+            return
+
+        if self._refresh_ffmpeg_task is not None:
+            self._pending_recording_snapshot = dict(snapshot)
+
             return
 
         local_player = snapshot.get("local_player", {})
@@ -3941,6 +3996,7 @@ class MainWindow(QMainWindow):
             self.data_dragon_assets,
             self.item_catalog,
             self,
+            tracker=self.live_match_tracker,
         )
 
         self.live_analysis_dialog = dialog
@@ -3964,21 +4020,14 @@ class MainWindow(QMainWindow):
         self,
         session: dict,
     ) -> None:
+        """Persiste el fin de partida y programa Home LCU más Match-V5 opcional.
+
+        Args:
+            session: sesión finalizada y guardada por el tracker LIVE.
+
+        Returns:
+            ``None``; inicia los flujos asíncronos de conciliación.
         """
-        Marca la sesión como pendiente y espera antes de consultar Riot.
-
-        Match-V5 puede tardar unos segundos en registrar una partida
-        terminada; no consultamos inmediatamente.
-        """
-        if not self.riot_api_key:
-            return
-
-        game_name = self.riot_game_name
-        tag_line = self.riot_tag_line
-
-        if not game_name or not tag_line:
-            return
-
         session_id = str(
             session.get(
                 "session_id",
@@ -3990,6 +4039,18 @@ class MainWindow(QMainWindow):
             return
 
         self.pending_postgame_session_id = session_id
+        sesiones = self.live_match_tracker.load_saved_sessions()
+        for sesion in sesiones:
+            if str(sesion.get("session_id") or "") == session_id:
+                marcar_sincronizacion_lcu_pendiente(sesion)
+                break
+        self.live_match_tracker._save_sessions(sesiones)
+        self._programar_intento_sync_lcu(session_id, 2)
+
+        game_name = self.riot_game_name
+        tag_line = self.riot_tag_line
+        if not self.riot_api_key or not game_name or not tag_line:
+            return
 
         self.update_saved_session_sync_status(
             session_id,
@@ -4054,6 +4115,93 @@ class MainWindow(QMainWindow):
             self.riot_platform_region,
         )
 
+    def _intentar_sync_lcu_home(self, session_id: str) -> None:
+        """Inicia un intento de historial LCU en el worker existente.
+
+        Args:
+            session_id: identificador de la sesión postpartida pendiente.
+
+        Returns:
+            ``None``; el worker comunica el resultado mediante su callback.
+        """
+        self._postgame_lcu_scheduled.discard(session_id)
+        sesiones = self.live_match_tracker.load_saved_sessions()
+        sesion = next(
+            (
+                valor
+                for valor in sesiones
+                if str(valor.get("session_id") or "") == session_id
+            ),
+            None,
+        )
+        if not isinstance(sesion, dict):
+            return
+        estado = sesion.get("lcu_postgame_sync")
+        if not isinstance(estado, dict) or estado.get("state") != "pending":
+            return
+        if self._home_sync_in_progress:
+            self._programar_intento_sync_lcu(session_id, 5)
+            return
+        intentos = contador_intentos_lcu(estado)
+        estado["attempts"] = intentos + 1
+        self.live_match_tracker._save_sessions(sesiones)
+        self.synchronize_home_history()
+
+    def _programar_intento_sync_lcu(self, session_id: str, retraso: int) -> None:
+        """Programa un único intento LCU por sesión y demora.
+
+        Args:
+            session_id: identificador de la sesión pendiente.
+            retraso: segundos hasta la siguiente lectura LCU.
+
+        Returns:
+            ``None``; delega la espera al temporizador de Qt.
+        """
+        if not session_id or session_id in self._postgame_lcu_scheduled:
+            return
+        self._postgame_lcu_scheduled.add(session_id)
+        QTimer.singleShot(
+            max(0, retraso) * 1_000,
+            lambda value=session_id: self._intentar_sync_lcu_home(value),
+        )
+
+    def _revisar_sincronizaciones_lcu_pendientes(
+        self, historial: dict[str, Any] | None
+    ) -> None:
+        """Reconcilia tareas guardadas después de cada carga de Home.
+
+        Args:
+            historial: historial fusionado o ``None`` cuando falló la lectura.
+
+        Returns:
+            ``None``; persiste tareas completadas y agenda reintentos pendientes.
+        """
+        sesiones = self.live_match_tracker.load_saved_sessions()
+        cambiadas = False
+        pendientes: list[tuple[str, int]] = []
+        for sesion in sesiones:
+            estado = sesion.get("lcu_postgame_sync")
+            if not isinstance(estado, dict) or estado.get("state") != "pending":
+                continue
+            session_id = str(sesion.get("session_id") or "")
+            if historial is not None and historial_contiene_enlace(
+                historial, session_id
+            ):
+                marcar_sincronizacion_lcu_completa(sesion)
+                cambiadas = True
+                continue
+            intentos = contador_intentos_lcu(estado)
+            pendientes.append((session_id, intentos))
+        if cambiadas:
+            self.live_match_tracker._save_sessions(sesiones)
+        for session_id, intentos in pendientes:
+            retraso = (
+                RETRASOS_REINTENTO_LCU[intentos]
+                if intentos < len(RETRASOS_REINTENTO_LCU)
+                else siguiente_retraso_lcu(intentos)
+            )
+            self._programar_intento_sync_lcu(session_id, retraso)
+
     @Slot(int, int, str)
     def on_postgame_sync_progress(
         self,
@@ -4102,7 +4250,8 @@ class MainWindow(QMainWindow):
             if session.get("session_id") != session_id:
                 continue
 
-            sessions[index] = updated_session
+            sessions[index] = conservar_enriquecimiento_final(session, updated_session)
+            updated_session = sessions[index]
             replaced = True
             break
 
@@ -4738,22 +4887,39 @@ class MainWindow(QMainWindow):
         if hasattr(self, "live_button"):
             self.live_button.setChecked(True)
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Detiene workers y cierra de forma segura la grabación activa.
+
+        Parámetros:
+            event: Evento Qt de cierre de ventana.
+
+        Retorno:
+            None.
+        """
         self.poll_timer.stop()
         self.tab_hotkey.stop()
         self.overlay.close()
 
-        if self.recording_service.is_recording:
-            live_session = self.live_match_tracker.get_live_session()
-            self.recording_service.stop(
-                reason="app_close",
-                session=live_session,
-            )
-            self.recording_service.wait_for_stop(4000)
+        if (
+            self.recording_service.is_recording
+            or self.recording_service.is_starting_or_recording
+        ):
+            self._pending_recording_snapshot = None
 
-            if self.recording_service.is_recording:
+            if self.recording_service.pending_process is not None:
                 self.recording_service.abort()
                 self.recording_service.wait_for_stop(3000)
+            else:
+                live_session = self.live_match_tracker.get_live_session()
+                self.recording_service.stop(
+                    reason="app_close",
+                    session=live_session,
+                )
+                self.recording_service.wait_for_stop(4000)
+
+                if self.recording_service.is_recording:
+                    self.recording_service.abort()
+                    self.recording_service.wait_for_stop(3000)
 
         if (
             hasattr(self, "champ_select_worker")

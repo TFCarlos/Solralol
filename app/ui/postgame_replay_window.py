@@ -203,6 +203,7 @@ class PostgameReplayWindow(QMainWindow):
                 self.assets,
                 dict(self.item_catalog or {}),
                 self,
+                tracker=self.tracker,
             )
         except (RuntimeError, TypeError, ValueError):
             return

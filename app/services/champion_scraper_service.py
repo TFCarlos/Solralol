@@ -17,6 +17,11 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 from _paths import DATA_DIR
+from app.services.calidad_muestra import (
+    UMBRAL_MUESTRA_NORMAL,
+    EstadoMuestra,
+    clasificar_muestra,
+)
 from app.services.preparador_datos_campeon import PreparadorDatosCampeon
 from app.services.rangos_campeones import (
     OPCIONES_RANGO,
@@ -49,7 +54,7 @@ _TREES = {"Precision", "Domination", "Sorcery", "Resolve", "Inspiration"}
 #: Muestra mínima por tramo de duración / por línea para publicar un winrate.
 #: Por debajo de estos umbrales un porcentaje es ruido estadístico (p. ej. 100% con 1 partida).
 _MIN_CURVE_GAMES = 20
-_MIN_LANE_GAMES = 20
+_MIN_LANE_GAMES = UMBRAL_MUESTRA_NORMAL
 _KEYSTONES = {
     "Press the Attack",
     "Lethal Tempo",
@@ -112,6 +117,7 @@ class ChampionScraperService:
         self._builds_cache: dict[int, Any] = {}
         self._archetype_cache: dict[tuple[int, str], Any] = {}
         self._versiones_fuente: dict[str, str] = {}
+        self._errores_parciales: list[str] = []
         root = self.champions_path.parent
         catalog = json.loads(
             (root / "champion_catalog.json").read_text(encoding="utf-8")
@@ -216,6 +222,9 @@ class ChampionScraperService:
         ).get("version", "")
         patches = [patch.replace(".", "_") for patch in self._patches()]
         patches.append(str(local_version).rsplit(".", 1)[0].replace(".", "_"))
+        patch_base = self._versiones_fuente.get("U.GG overview")
+        if patch_base:
+            patches = [patch_base.replace(".", "_")]
         for patch in dict.fromkeys(patches):
             for version in ("1.5.0", "1.4.0"):
                 url = f"https://stats2.u.gg/lol/1.5/overview/{patch}/ranked_solo_5x5/{champion_id}/{version}.json"
@@ -312,6 +321,9 @@ class ChampionScraperService:
         patches = [patch.replace(".", "_") for patch in self._patches()]
         patches.append(str(local_version).rsplit(".", 1)[0].replace(".", "_"))
         headers = {"Referer": "https://u.gg/"}
+        patch_base = self._versiones_fuente.get("U.GG overview")
+        if patch_base:
+            patches = [patch_base.replace(".", "_")]
         for patch in dict.fromkeys(patches):
             for version in ("1.5.0", "1.4.0"):
                 url = f"https://stats2.u.gg/lol/1.5/builds/{patch}/ranked_solo_5x5/{champion_id}/{version}.json"
@@ -358,6 +370,9 @@ class ChampionScraperService:
         headers = {"Referer": "https://u.gg/"}
         # `kind` es el prefijo: "" da "overview", "lethality-" da "lethality-overview".
         endpoint = f"{kind}overview"
+        patch_base = self._versiones_fuente.get("U.GG overview")
+        if patch_base:
+            patches = [patch_base.replace(".", "_")]
         for patch in dict.fromkeys(patches):
             for version in ("1.5.0", "1.4.0"):
                 url = f"https://stats2.u.gg/lol/1.5/{endpoint}/{patch}/ranked_solo_5x5/{champion_id}/{version}.json"
@@ -391,7 +406,7 @@ class ChampionScraperService:
             rune_block[3],
             rune_block[4],
         )
-        if not isinstance(games, (int, float)) or games < self._ARCHETYPE_MIN_GAMES:
+        if not isinstance(games, (int, float)) or games <= 0:
             return None
         if not isinstance(perks, list):
             return None
@@ -404,6 +419,10 @@ class ChampionScraperService:
         page["source"] = f"U.GG {label}"
         page["win_rate"] = round(float(wins) / float(games), 4)
         page["games"] = int(games)
+        page["sample_status"] = clasificar_muestra(
+            games, True, self._ARCHETYPE_MIN_GAMES
+        ).value
+        page["sample_threshold"] = self._ARCHETYPE_MIN_GAMES
 
         # Objetos iniciales (bloque 2) y core (bloque 3).
         starters = self._ids_to_names(blocks[2][2] if len(blocks) > 2 else None)
@@ -435,11 +454,40 @@ class ChampionScraperService:
                     "priority": str(priority).upper(),
                 }
 
-        # Build completa: core + opción más jugada de cada ranura (bloque 5).
-        late = self._situational_ids(blocks[5] if len(blocks) > 5 else None)
-        full_build = list(dict.fromkeys([*(core or []), *late]))[:6]
-        if full_build:
-            page["build"] = full_build
+        if core:
+            page["build"] = list(core[:3])
+        options: dict[str, list[dict[str, Any]]] = {}
+        if len(blocks) > 5 and isinstance(blocks[5], list):
+            for slot, choices in enumerate(blocks[5][:3], start=4):
+                if not isinstance(choices, list):
+                    continue
+                slot_options = []
+                for choice in choices:
+                    if not isinstance(choice, list) or len(choice) < 3:
+                        continue
+                    item_id, wins, games = choice[:3]
+                    if (
+                        str(item_id) not in self.item_names
+                        or not isinstance(games, (int, float))
+                        or games <= 0
+                    ):
+                        continue
+                    slot_options.append(
+                        {
+                            "item_id": int(item_id),
+                            "name": self.item_names[str(item_id)],
+                            "slot": slot,
+                            "wins": int(wins),
+                            "games": int(games),
+                            "win_rate": round(float(wins) / float(games), 4)
+                            if isinstance(wins, (int, float))
+                            else None,
+                        }
+                    )
+                if slot_options:
+                    options[str(slot)] = slot_options
+        if options:
+            page["item_options"] = options
         return page
 
     def _ugg_archetype_pages(self, champion_id: int, role: str) -> list[dict[str, Any]]:
@@ -464,6 +512,8 @@ class ChampionScraperService:
             seen.add(signature)
             pages.append(page)
 
+        pages.sort(key=lambda page: int(page.get("games") or 0), reverse=True)
+
         # Si el endpoint overview trae shard_ids globales, poblar shards si faltan
         overview = self._overview(champion_id)
         if overview:
@@ -474,7 +524,20 @@ class ChampionScraperService:
                     self._PERK_NAMES.get(value, str(value)) for value in shard_ids[:3]
                 ]
                 for page in pages:
-                    if not page.get("shards"):
+                    referencia = next(
+                        (
+                            candidato
+                            for candidato in parsed.get("runes", [])
+                            if isinstance(candidato, dict)
+                            and candidato.get("games") == page.get("games")
+                            and candidato.get("keystone_id") == page.get("keystone_id")
+                        ),
+                        None,
+                    )
+                    if referencia:
+                        page["shards"] = shards
+                        page["shard_ids"] = list(shard_ids[:3])
+                    elif not page.get("shards"):
                         page["shards"] = shards
 
         return pages
@@ -487,6 +550,28 @@ class ChampionScraperService:
             self.item_names[str(value)]
             for value in ids
             if str(value) in self.item_names
+        ]
+
+    def _starter_item_entries(self, item_ids: list[int]) -> list[dict[str, Any]]:
+        """Agrupa objetos iniciales repetidos y conserva su cantidad y orden.
+
+        Parámetros:
+            item_ids: IDs canónicos en el orden recibido de la fuente.
+
+        Retorna:
+            Entradas únicas con nombre, ID y cantidad observada.
+        """
+        cantidades: dict[int, int] = {}
+        for item_id in item_ids:
+            cantidades[item_id] = cantidades.get(item_id, 0) + 1
+        return [
+            {
+                "item_id": item_id,
+                "name": self.item_names[str(item_id)],
+                "quantity": cantidad,
+            }
+            for item_id, cantidad in cantidades.items()
+            if str(item_id) in self.item_names
         ]
 
     def _situational_ids(self, block: Any) -> list[str]:
@@ -537,12 +622,11 @@ class ChampionScraperService:
             and isinstance(node[5], list)
         )
 
-    #: Una segunda página de runas solo se publica si el arquetipo rival tiene
-    #: volumen suficiente (muestra absoluta y relativa al arquetipo principal).
-    #: Por debajo de estos umbrales el porcentaje es ruido estadístico.
+    #: Una segunda página se conserva con una muestra positiva y relativa al
+    #: arquetipo principal; su confianza se comunica en la propia página.
     #: No se exige que mejore el winrate: U.GG muestra las dos páginas más
     #: jugadas aunque la segunda rinda igual o peor.
-    _MIN_ALT_GAMES = 500
+    _MIN_ALT_GAMES = 1
     _MIN_ALT_RATIO = 0.02
 
     def _ugg_rune_pages(
@@ -623,6 +707,10 @@ class ChampionScraperService:
             page["games"] = int(entry["games"])
             page["name"] = name
             page["source"] = "U.GG"
+            page["sample_status"] = clasificar_muestra(
+                entry["games"], True, self._ARCHETYPE_MIN_GAMES
+            ).value
+            page["sample_threshold"] = self._ARCHETYPE_MIN_GAMES
             return page
 
         candidates = sorted(
@@ -660,24 +748,22 @@ class ChampionScraperService:
             entry = bucket.get(position)
             blocks = entry[0] if isinstance(entry, list) and entry else None
             summary = (
-                blocks[1] if isinstance(blocks, list) and len(blocks) > 1 else None
+                blocks[6] if isinstance(blocks, list) and len(blocks) > 6 else None
             )
             if not (isinstance(summary, list) and len(summary) >= 2):
                 continue
-            games, wins = summary[0], summary[1]
+            wins, games = summary[0], summary[1]
             if (
                 not isinstance(games, (int, float))
                 or not games
                 or not isinstance(wins, (int, float))
             ):
                 continue
-            if games < _MIN_LANE_GAMES:
-                # Muestra insuficiente: se publica la línea sin winrate para no engañar.
-                stats[lane] = {"win_rate": None, "games": int(games)}
-                continue
             stats[lane] = {
                 "win_rate": round(float(wins) / float(games), 4),
                 "games": int(games),
+                "sample_status": clasificar_muestra(games, True, _MIN_LANE_GAMES).value,
+                "sample_threshold": _MIN_LANE_GAMES,
             }
         return stats
 
@@ -687,6 +773,7 @@ class ChampionScraperService:
         "common_runes",
         "most_played_build",
         "starter_items",
+        "starter_item_entries",
         "summoner_spells",
         "situational_items",
         "matchups",
@@ -694,6 +781,28 @@ class ChampionScraperService:
         "win_rate_vs_game_length",
         "lane_stats",
         "skill_order",
+        "overall_matches",
+        "overall_win_rate",
+        "section_sample_sizes",
+        "section_status",
+        "source_patch",
+        "patch_label",
+        "item_options",
+        "situational_item_pipeline",
+        "core_build",
+        "core_build_matches",
+        "core_build_win_rate",
+        "skill_priority_matches",
+        "skill_priority_win_rate",
+        "starting_item_matches",
+        "starting_item_win_rate",
+        "summoner_spell_matches",
+        "summoner_spell_win_rate",
+        "summoner_spell_ids",
+        "starter_item_ids",
+        "starting_items_source_status",
+        "starting_items_provenance",
+        "rune_page_matches",
     )
 
     def fetch_variant(self, profile: dict[str, Any], role: str) -> dict[str, Any]:
@@ -740,11 +849,11 @@ class ChampionScraperService:
         stop_check: Callable[[], bool] | None = None,
         min_games: int = _MIN_LANE_GAMES,
     ) -> dict[str, Any]:
-        """Genera líneas con muestra suficiente para los seis rangos compatibles del campeón.
+        """Genera líneas disponibles para los seis rangos compatibles del campeón.
 
         Devuelve ``{"rank": {"line": {..variante..}}}`` listo para persistir en el JSON
-        del campeón. Solo se rellenan las combinaciones con muestra suficiente: por
-        debajo de `min_games` el winrate es ruido y no merece ocupar espacio.
+        del campeón. ``min_games`` clasifica la confianza; toda muestra positiva se
+        conserva para que los datos de baja frecuencia sigan siendo consultables.
 
         Las dos descargas grandes de U.GG (`overview` y `builds`) cubren todos los
         rangos y líneas a la vez y están memoizadas, así que el coste real está en las
@@ -755,6 +864,7 @@ class ChampionScraperService:
             return {}
 
         matrix: dict[str, Any] = {}
+        self._errores_parciales = []
         ranks = [key for key, _ in OPCIONES_RANGO]
         overview = self._overview(self.champion_ids.get(name.casefold() or ""))
         if not isinstance(overview, dict) or not isinstance(overview.get("12"), dict):
@@ -771,8 +881,7 @@ class ChampionScraperService:
                 lanes = [
                     lane
                     for lane, entry in stats.items()
-                    if isinstance(entry, dict)
-                    and int(entry.get("games") or 0) >= min_games
+                    if isinstance(entry, dict) and int(entry.get("games") or 0) > 0
                 ]
                 if not lanes:
                     # Sin muestra por línea en este rango: se conserva el resumen de WR
@@ -790,14 +899,137 @@ class ChampionScraperService:
                 for lane in lanes:
                     if stop_check and stop_check():
                         break
-                    variant = self.fetch_variant(profile, lane)
-                    if variant.get("updated") is not True:
+                    muestra = stats.get(lane, {}).get("games")
+                    muestra_valida = isinstance(muestra, (int, float)) and muestra > 0
+                    try:
+                        variant = self.fetch_variant(profile, lane)
+                    except (
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                        IndexError,
+                        OSError,
+                        requests.RequestException,
+                    ) as error:
+                        self._errores_parciales.append(f"{rank_key}/{lane}: {error}")
+                        consulta_previa = self.repositorio.consultar(
+                            name, lane, rank_key
+                        )
+                        variant = copy.deepcopy(consulta_previa.datos or {})
+                        patch_actual = self._versiones_fuente.get("U.GG overview")
+                        if patch_actual and variant.get("source_patch") != patch_actual:
+                            variant = {}
+                        variant.update(
+                            {"role": lane, "rank": rank_key, "updated": True}
+                        )
+                        if not variant:
+                            variant = {"role": lane, "rank": rank_key, "updated": True}
+                        variant["lane_stats"] = {
+                            "rank": rank_key,
+                            "lanes": copy.deepcopy(stats),
+                        }
+                        variant["data_status"] = EstadoMuestra.PARTIAL_DATA.value
+                        variant["overall_matches"] = (
+                            int(muestra) if muestra_valida else None
+                        )
+                        variant["overall_win_rate"] = stats.get(lane, {}).get(
+                            "win_rate"
+                        )
+                        variant["sample_size"] = (
+                            int(muestra) if muestra_valida else None
+                        )
+                        variant["sample_status"] = (
+                            EstadoMuestra.LOW_SAMPLE.value
+                            if muestra_valida and muestra < min_games
+                            else EstadoMuestra.NORMAL_SAMPLE.value
+                            if muestra_valida
+                            else EstadoMuestra.PARTIAL_DATA.value
+                        )
+                    estado_iniciales = str(
+                        variant.get("starting_items_source_status") or "NOT_PROVIDED"
+                    )
+                    if estado_iniciales in {"NOT_PROVIDED", "PARTIAL_DATA"}:
+                        parche_nuevo = str(
+                            variant.get("source_patch")
+                            or self._versiones_fuente.get("U.GG overview")
+                            or ""
+                        )
+                        consulta_previa = self.repositorio.consultar(
+                            name, lane, rank_key
+                        )
+                        anterior = consulta_previa.datos or {}
+                        parche_anterior = str(anterior.get("source_patch") or "")
+                        if (
+                            parche_nuevo
+                            and parche_nuevo == parche_anterior
+                            and anterior.get("starter_items")
+                        ):
+                            for campo in (
+                                "starter_items",
+                                "starter_item_ids",
+                                "starter_item_entries",
+                                "starting_item_matches",
+                                "starting_item_win_rate",
+                                "starting_items_provenance",
+                            ):
+                                if campo in anterior:
+                                    variant[campo] = copy.deepcopy(anterior[campo])
+                            variant["starting_items_source_status"] = "AVAILABLE"
+                            variant.setdefault("section_status", {})[
+                                "starting_items"
+                            ] = "AVAILABLE"
+                    if variant.get("updated") is not True and not muestra_valida:
                         raise ValueError(f"No se pudo generar {name}/{lane}/{rank_key}")
-                    if (
-                        variant.get("runes")
-                        or variant.get("most_played_build")
-                        or variant.get("matchups")
-                    ):
+                    if muestra_valida:
+                        variant["updated"] = True
+                    variant["overall_matches"] = muestra if muestra_valida else None
+                    variant["overall_win_rate"] = stats.get(lane, {}).get("win_rate")
+                    secciones = any(
+                        variant.get(campo)
+                        for campo in (
+                            "runes",
+                            "most_played_build",
+                            "matchups",
+                            "summoner_spells",
+                            "skill_order",
+                            "starter_items",
+                        )
+                    )
+                    estado = clasificar_muestra(muestra, secciones)
+                    variant["sample_size"] = muestra
+                    variant["sample_status"] = (
+                        estado.value
+                        if estado
+                        not in {EstadoMuestra.PARTIAL_DATA, EstadoMuestra.NO_DATA}
+                        else (
+                            EstadoMuestra.LOW_SAMPLE.value
+                            if muestra_valida and muestra < min_games
+                            else EstadoMuestra.NORMAL_SAMPLE.value
+                            if muestra_valida
+                            else EstadoMuestra.NO_DATA.value
+                        )
+                    )
+                    variant["data_status"] = estado.value
+                    variant["sample_threshold"] = min_games
+                    variant["section_sample_sizes"] = {
+                        "overall": muestra,
+                        "champion_lane": muestra,
+                        "runes": [
+                            int(pagina["games"])
+                            for pagina in variant.get("runes", [])
+                            if isinstance(pagina, dict)
+                            and isinstance(pagina.get("games"), int)
+                        ],
+                        "summoner_spells": variant.get("summoner_spell_matches"),
+                        "skill_priority": variant.get("skill_priority_matches"),
+                        "starting_items": variant.get("starting_item_matches"),
+                        "core_build": variant.get("core_build_matches"),
+                    }
+                    variant["source_patch"] = self._versiones_fuente.get(
+                        "U.GG overview"
+                    )
+                    variant["retrieved_at"] = datetime.now(timezone.utc).isoformat()
+                    if secciones or muestra_valida:
                         block[lane] = variant
                     if stop_check is None:
                         time.sleep(self.request_delay)
@@ -918,6 +1150,31 @@ class ChampionScraperService:
             if self._is_finished_item(str(i))
         ]
 
+        if boot_ids:
+            boot_entry = boots[0] if boots and isinstance(boots[0], dict) else {}
+            boot_games = boot_entry.get("play") or boot_entry.get("games")
+            boot_wins = boot_entry.get("win") or boot_entry.get("wins")
+            result["boots"] = [
+                {
+                    "item_id": item_id,
+                    "name": self.item_names[item_id],
+                    "origin": "OP.GG",
+                    "source": "OP.GG",
+                    "rank": self.rank,
+                    "lane": role,
+                    "games": int(boot_games)
+                    if isinstance(boot_games, (int, float))
+                    else None,
+                    "win_rate": round(float(boot_wins) / float(boot_games), 4)
+                    if isinstance(boot_games, (int, float))
+                    and boot_games > 0
+                    and isinstance(boot_wins, (int, float))
+                    else None,
+                }
+                for item_id in boot_ids
+                if item_id in self.item_names
+            ]
+
         full_ids: list[str] = []
         for i in core_ids:
             if i not in full_ids:
@@ -935,12 +1192,8 @@ class ChampionScraperService:
                 break
 
         core_names = [self.item_names[i] for i in core_ids[:3] if i in self.item_names]
-        full_names = [self.item_names[i] for i in full_ids[:6] if i in self.item_names]
-
         if core_names:
             result["items"] = core_names[:3]
-        if full_names:
-            result["full_build"] = full_names[:6]
 
         if starters and isinstance(starters, list) and isinstance(starters[0], dict):
             s_ids = starters[0].get("ids", [])
@@ -1034,178 +1287,350 @@ class ChampionScraperService:
 
         return result
 
-    def _parse_overview(self, data: Any, role: str) -> dict[str, Any]:
-        """
-        Extrae la información completa del endpoint Overview de U.GG:
-        - Hechizos de invocador (summoner_spells)
-        - Ítems iniciales (starter_items)
-        - Core items e Ítems finales / Full Build (most_played_build)
-        - Páginas de runas (Recomendada y Mayor Winrate)
-        """
-        pd = self._position_data(data, role)
-        if not isinstance(pd, list):
+    def _normalizar_build_completa(self, nombres: Any) -> list[str]:
+        """Normaliza una secuencia de objetos completos y elimina repeticiones accidentales."""
+        if not isinstance(nombres, list):
+            return []
+        ids_por_nombre = {
+            nombre.casefold(): item_id for item_id, nombre in self.item_names.items()
+        }
+        resultado: list[str] = []
+        vistos: set[str] = set()
+        for valor in nombres:
+            nombre = str(valor).strip()
+            clave = ids_por_nombre.get(nombre.casefold(), nombre.casefold())
+            if not nombre or clave in vistos:
+                continue
+            vistos.add(clave)
+            resultado.append(nombre)
+        return resultado[:6]
+
+    def _parse_overview(
+        self, data: Any, role: str, champion: str = ""
+    ) -> dict[str, Any]:
+        """Normaliza bloques U.GG por alcance y conserva los conteos de cada secci\u00f3n."""
+        blocks = self._position_blocks(data, role)
+        if not isinstance(blocks, list):
             return {}
-
         result: dict[str, Any] = {}
-
-        # --- 1. CLASIFICACIÓN DE BLOQUES POR CONTENIDO ---
-        # Cada bloque de pd es [partidas, victorias, ids...]. Las posiciones
-        # varían entre versiones de U.GG, así que se identifican por sus ids.
-        spells_ids: list[int] = []
-        starter_ids: list[str] = []
-        core_ids: list[str] = []
-        skill_order: dict[str, Any] | None = None
-        shard_ids: list[int] = []
-        for block in pd[1:]:
-            if not (
-                isinstance(block, list)
-                and len(block) > 2
-                and isinstance(block[2], list)
-                and block[2]
-            ):
-                continue
-            try:
-                ints = [int(value) for value in block[2]]
-            except (TypeError, ValueError):
-                # Orden de habilidades: ["Q", "E", "W", ...] + prioridad "QEW".
-                if skill_order is None and all(
-                    str(value) in {"Q", "W", "E", "R"} for value in block[2]
-                ):
-                    skill_order = {
-                        "order": [str(value) for value in block[2]],
-                        "priority": str(block[3])
-                        if len(block) > 3 and isinstance(block[3], str)
-                        else "",
-                    }
-                continue
-            if not ints:
-                continue
-            if not spells_ids and all(value in self._SUMMONER_SPELLS for value in ints):
-                spells_ids = ints
-            elif not shard_ids and all(5000 <= value <= 5015 for value in ints):
-                shard_ids = ints
-            elif (
-                not starter_ids
-                and all(str(value) in self.item_names for value in ints)
-                and not any(self._is_finished_item(str(value)) for value in ints)
-            ):
-                starter_ids = [str(value) for value in ints]
-            elif (
-                not core_ids
-                and all(str(value) in self.item_names for value in ints)
-                and sum(1 for value in ints if self._is_finished_item(str(value))) >= 2
-            ):
-                core_ids = [str(value) for value in ints]
-
-        # --- 2. HECHIZOS DE INVOCADOR ---
-        if skill_order:
-            result["skill_order"] = skill_order
-        if shard_ids:
-            result["shard_ids"] = shard_ids
-        if spells_ids:
-            spell_names = [self._SUMMONER_SPELLS[value] for value in spells_ids]
-            if spell_names:
-                result["summoner_spells"] = spell_names
-
-        # --- 3. ÍTEMS INICIALES ---
-        if starter_ids:
-            starter_names = [
-                self.item_names[i] for i in starter_ids if i in self.item_names
-            ]
-            if starter_names:
-                result["starter_items"] = starter_names
-
-        # --- 4. CORE ITEMS ---
-        core_names = [self.item_names[i] for i in core_ids if i in self.item_names]
-        if len(core_names) >= 2:
-            result["items"] = core_names[:3]
-
-        # Full build combinando core + opciones situacionales de pd[5]
-        full_ids = list(core_ids)
-        if len(pd) > 5 and isinstance(pd[5], list):
-            for slot in pd[5]:
-                if isinstance(slot, list):
-                    for choice in slot:
-                        if isinstance(choice, list) and choice:
-                            raw_id = (
-                                choice[0][0]
-                                if isinstance(choice[0], list)
-                                else choice[0]
-                            )
-                            item_id = str(raw_id)
-                            if item_id not in full_ids and self._is_finished_item(
-                                item_id
-                            ):
-                                full_ids.append(item_id)
-
-        full_build_names = [
-            self.item_names[i] for i in full_ids if i in self.item_names
-        ]
-        if len(full_build_names) >= 3:
-            result["full_build"] = full_build_names[:6]
-            result["most_played_build"] = full_build_names[:6]
-
-        # --- 4. RUNAS U.GG (Extrae Recomendada y Mayor Winrate) ---
-        pages = []
-        seen_pages: set[tuple[Any, ...]] = set()
-
-        candidates = []
-        for item in pd:
-            candidates.extend(self._perk_candidates(item))
-
-        for candidate in candidates:
-            if not isinstance(candidate, list) or len(candidate) < 5:
-                continue
-
-            primary, secondary = candidate[2], candidate[3]
-            perk_ids = self._flat_perks(candidate[4])
+        if len(blocks) > 6 and isinstance(blocks[6], list) and len(blocks[6]) >= 2:
+            wins, games = blocks[6][:2]
             if (
-                not isinstance(primary, int)
-                or not isinstance(secondary, int)
-                or len(perk_ids) < 6
+                isinstance(games, (int, float))
+                and games > 0
+                and isinstance(wins, (int, float))
             ):
-                continue
-
-            page = self._rune_page(primary, secondary, perk_ids)
-            games, wins = candidate[0], candidate[1]
-
-            if page:
-                signature = (
-                    page.get("keystone"),
-                    tuple(page.get("slots", [])),
-                    page.get("secondary_tree"),
-                    tuple(page.get("secondary_slots", [])),
+                result["overall_matches"] = int(games)
+                result["overall_win_rate"] = round(float(wins) / float(games), 4)
+        if len(blocks) > 0:
+            page_data = blocks[0]
+            candidates = self._perk_candidates(page_data)
+            pages: list[dict[str, Any]] = []
+            for candidate in candidates:
+                if len(candidate) < 5 or not isinstance(candidate[4], list):
+                    continue
+                page = self._rune_page(
+                    candidate[2], candidate[3], self._flat_perks(candidate[4])
                 )
-                if (
-                    self._valid_rune_page(page)
-                    and signature not in seen_pages
-                    and isinstance(games, (int, float))
-                    and games
-                ):
-                    page["name"] = (
-                        "Recomendada · U.GG" if not pages else "Mayor Winrate · U.GG"
+                games, wins = candidate[0], candidate[1]
+                if not page or not isinstance(games, (int, float)) or games <= 0:
+                    continue
+                page.update(
+                    {
+                        "name": "Recomendada \u00b7 U.GG",
+                        "source": "U.GG",
+                        "games": int(games),
+                        "win_rate": round(float(wins) / float(games), 4),
+                        "sample_status": clasificar_muestra(
+                            games, True, self._ARCHETYPE_MIN_GAMES
+                        ).value,
+                        "sample_threshold": self._ARCHETYPE_MIN_GAMES,
+                    }
+                )
+                page["shard_ids"] = [
+                    int(value)
+                    for value in (
+                        blocks[8][2]
+                        if len(blocks) > 8
+                        and isinstance(blocks[8], list)
+                        and len(blocks[8]) > 2
+                        and isinstance(blocks[8][2], list)
+                        else []
                     )
-                    page["source"] = "U.GG"
-                    if shard_ids and len(page.get("shards") or []) < 3:
-                        page["shards"] = [
-                            self._PERK_NAMES.get(value, str(value))
-                            for value in shard_ids[:3]
-                        ]
-                    page["win_rate"] = (
+                    if str(value).isdigit()
+                ][:3]
+                page["shards"] = [
+                    self._PERK_NAMES.get(value, str(value))
+                    for value in page["shard_ids"]
+                ]
+                page["games"] = int(games)
+                pages.append(page)
+            if pages:
+                result["runes"] = pages[:2]
+                result["rune_page_matches"] = pages[0]["games"]
+        if len(blocks) > 1 and isinstance(blocks[1], list) and len(blocks[1]) >= 3:
+            games, wins, ids = blocks[1][:3]
+            if isinstance(ids, list):
+                spells = [
+                    self._SUMMONER_SPELLS[int(value)]
+                    for value in ids
+                    if str(value).isdigit() and int(value) in self._SUMMONER_SPELLS
+                ]
+                if spells:
+                    result["summoner_spells"] = spells
+                    result["summoner_spell_ids"] = [
+                        int(value)
+                        for value in ids
+                        if str(value).isdigit() and int(value) in self._SUMMONER_SPELLS
+                    ]
+                    result["summoner_spell_matches"] = (
+                        int(games) if isinstance(games, (int, float)) else None
+                    )
+                    result["summoner_spell_win_rate"] = (
                         round(float(wins) / float(games), 4)
-                        if isinstance(wins, (int, float))
-                        else 0.0
+                        if isinstance(games, (int, float))
+                        and games > 0
+                        and isinstance(wins, (int, float))
+                        else None
                     )
-                    page["games"] = int(games)
-                    pages.append(page)
-                    seen_pages.add(signature)
-
-            if len(pages) == 2:
-                break
-
-        if pages:
-            result["runes"] = pages
-
+        if len(blocks) > 2 and isinstance(blocks[2], list) and len(blocks[2]) >= 3:
+            games, wins, ids = blocks[2][:3]
+            if isinstance(ids, list):
+                starter_ids = [
+                    int(value)
+                    for value in ids
+                    if str(value).isdigit() and str(value) in self.item_names
+                ]
+                names = self._ids_to_names(starter_ids)
+                if names:
+                    result["starter_items"] = names
+                    result["starter_item_ids"] = starter_ids
+                    result["starter_item_entries"] = self._starter_item_entries(
+                        starter_ids
+                    )
+                    result["starting_items_provenance"] = {
+                        "source": "U.GG",
+                        "rank": self.rank,
+                        "lane": role,
+                        "patch": self._versiones_fuente.get("U.GG overview"),
+                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    result["starting_item_matches"] = (
+                        int(games) if isinstance(games, (int, float)) else None
+                    )
+                    result["starting_item_win_rate"] = (
+                        round(float(wins) / float(games), 4)
+                        if isinstance(games, (int, float))
+                        and games > 0
+                        and isinstance(wins, (int, float))
+                        else None
+                    )
+                result["starting_items_source_status"] = (
+                    "AVAILABLE" if names else "EMPTY" if not ids else "PARTIAL_DATA"
+                )
+            else:
+                result["starting_items_source_status"] = "PARTIAL_DATA"
+        else:
+            result["starting_items_source_status"] = "NOT_PROVIDED"
+        if len(blocks) > 3 and isinstance(blocks[3], list) and len(blocks[3]) >= 3:
+            games, wins, ids = blocks[3][:3]
+            normalized_ids = (
+                list(
+                    dict.fromkeys(
+                        str(value)
+                        for value in ids
+                        if str(value) in self.item_names
+                        and self._is_finished_item(str(value))
+                    )
+                )
+                if isinstance(ids, list)
+                else []
+            )
+            names = [self.item_names[value] for value in normalized_ids]
+            if names:
+                result["core_build"] = [
+                    {
+                        "item_id": int(value),
+                        "name": self.item_names[str(value)],
+                        "slot": index + 1,
+                    }
+                    for index, value in enumerate(normalized_ids)
+                    if str(value) in self.item_names
+                ]
+                botas = [
+                    item
+                    for item in result["core_build"]
+                    if "Boots"
+                    in self.items_data.get(str(item["item_id"]), {}).get("tags", [])
+                ]
+                if botas:
+                    result["boots"] = [
+                        {
+                            **item,
+                            "source": "U.GG",
+                            "origin": "U.GG",
+                            "rank": self.rank,
+                            "lane": role,
+                            "context": "core_build",
+                        }
+                        for item in botas
+                    ]
+                result["items"] = names[:3]
+                result["most_played_build"] = self._normalizar_build_completa(names[:3])
+                result["core_build_matches"] = (
+                    int(games) if isinstance(games, (int, float)) else None
+                )
+                result["core_build_win_rate"] = (
+                    round(float(wins) / float(games), 4)
+                    if isinstance(games, (int, float))
+                    and games > 0
+                    and isinstance(wins, (int, float))
+                    else None
+                )
+        if len(blocks) > 4 and isinstance(blocks[4], list) and len(blocks[4]) >= 3:
+            games, wins, order = blocks[4][:3]
+            if isinstance(order, list):
+                abilities = [
+                    str(value).upper()
+                    for value in order
+                    if str(value).upper() in {"Q", "W", "E", "R"}
+                ]
+                priority = (
+                    str(blocks[4][3]).upper()
+                    if len(blocks[4]) > 3 and isinstance(blocks[4][3], str)
+                    else ""
+                )
+                if abilities:
+                    result["skill_order"] = {"order": abilities, "priority": priority}
+                    result["skill_priority_matches"] = (
+                        int(games) if isinstance(games, (int, float)) else None
+                    )
+                    result["skill_priority_win_rate"] = (
+                        round(float(wins) / float(games), 4)
+                        if isinstance(games, (int, float))
+                        and games > 0
+                        and isinstance(wins, (int, float))
+                        else None
+                    )
+        options: dict[str, list[dict[str, Any]]] = {}
+        raw_options = (
+            blocks[5] if len(blocks) > 5 and isinstance(blocks[5], list) else None
+        )
+        raw_count = (
+            sum(
+                len(choices) for choices in raw_options[:3] if isinstance(choices, list)
+            )
+            if raw_options is not None
+            else 0
+        )
+        parsed_count = 0
+        situational_items = {
+            "corta_curas": [],
+            "tanque": [],
+            "asesino": [],
+            "utilidad_y_defensa": [],
+        }
+        if raw_options is not None:
+            for offset, choices in enumerate(raw_options[:3], start=4):
+                if not isinstance(choices, list):
+                    continue
+                slot_options = []
+                for choice in choices:
+                    if not isinstance(choice, list) or len(choice) < 3:
+                        continue
+                    item_id, wins, games = choice[:3]
+                    if (
+                        str(item_id) not in self.item_names
+                        or not isinstance(games, (int, float))
+                        or games <= 0
+                    ):
+                        continue
+                    categoria = self._categorize_situational_item(str(item_id))
+                    slot_options.append(
+                        {
+                            "item_id": int(item_id),
+                            "name": self.item_names[str(item_id)],
+                            "slot": offset,
+                            "wins": int(wins),
+                            "games": int(games),
+                            "win_rate": round(float(wins) / float(games), 4)
+                            if isinstance(wins, (int, float))
+                            else None,
+                            "source": "U.GG",
+                            "source_patch": self._versiones_fuente.get("U.GG overview"),
+                            "champion": champion,
+                            "lane": role,
+                            "rank": self.rank,
+                            "situational_category": categoria,
+                            "sample_status": clasificar_muestra(
+                                games, True, self._ARCHETYPE_MIN_GAMES
+                            ).value,
+                        }
+                    )
+                    parsed_count += 1
+                    nombre = self.item_names[str(item_id)]
+                    if nombre not in situational_items[categoria]:
+                        situational_items[categoria].append(nombre)
+                if slot_options:
+                    options[str(offset)] = slot_options
+        if raw_options is not None:
+            result["item_options"] = options
+            result["situational_items"] = situational_items
+            result["situational_item_pipeline"] = {
+                "source": "U.GG",
+                "source_options": raw_count,
+                "parsed": parsed_count,
+                "normalized": parsed_count,
+                "classified": sum(len(items) for items in situational_items.values()),
+                "rank": self.rank,
+                "lane": role,
+                "patch": self._versiones_fuente.get("U.GG overview"),
+            }
+        if (
+            len(blocks) > 8
+            and isinstance(blocks[8], list)
+            and len(blocks[8]) > 2
+            and isinstance(blocks[8][2], list)
+        ):
+            result["shard_ids"] = [
+                int(value) for value in blocks[8][2] if str(value).isdigit()
+            ][:3]
+        result["section_sample_sizes"] = {
+            key: result.get(value)
+            for key, value in {
+                "overall": "overall_matches",
+                "runes": "rune_page_matches",
+                "summoner_spells": "summoner_spell_matches",
+                "skill_priority": "skill_priority_matches",
+                "starting_items": "starting_item_matches",
+                "core_build": "core_build_matches",
+            }.items()
+            if result.get(value) is not None
+        }
+        if result.get("item_options"):
+            result["section_sample_sizes"]["item_options"] = {
+                slot: [item["games"] for item in entries]
+                for slot, entries in result["item_options"].items()
+            }
+        result["section_status"] = {
+            "overall": "AVAILABLE" if result.get("overall_matches") else "NOT_PROVIDED",
+            "runes": "AVAILABLE" if result.get("runes") else "NOT_PROVIDED",
+            "summoner_spells": "AVAILABLE"
+            if result.get("summoner_spells")
+            else "NOT_PROVIDED",
+            "skill_order": "AVAILABLE" if result.get("skill_order") else "NOT_PROVIDED",
+            "starting_items": "AVAILABLE"
+            if result.get("starter_items")
+            else result.get("starting_items_source_status", "NOT_PROVIDED"),
+            "core_build": "AVAILABLE" if result.get("core_build") else "NOT_PROVIDED",
+            "item_options": "AVAILABLE"
+            if result.get("item_options")
+            else (
+                "EMPTY"
+                if len(blocks) > 5 and isinstance(blocks[5], list)
+                else "NOT_PROVIDED"
+            ),
+        }
         return result
 
     def _item_ids_in_order(self, value: Any) -> list[int]:
@@ -1284,13 +1709,19 @@ class ChampionScraperService:
             return None
         return {
             "keystone": self._PERK_NAMES.get(keystone_id, str(keystone_id)),
+            "keystone_id": keystone_id,
             "primary_tree": trees[primary_id],
+            "primary_tree_id": primary_id,
             "slots": [self._PERK_NAMES.get(value, str(value)) for value in slots],
+            "slot_ids": slots,
             "secondary_tree": trees[secondary_id],
+            "secondary_tree_id": secondary_id,
             "secondary_slots": [
                 self._PERK_NAMES.get(value, str(value)) for value in secondary_slots
             ],
+            "secondary_slot_ids": secondary_slots,
             "shards": [self._PERK_NAMES.get(value, str(value)) for value in shards],
+            "shard_ids": shards,
         }
 
     def _lolalytics(self, endpoint: str, slug: str, role: str) -> Any | None:
@@ -1893,18 +2324,28 @@ class ChampionScraperService:
         return data
 
     def _parse_matchups(
-        self, soup: BeautifulSoup, role: str
+        self, soup: BeautifulSoup, role: str, champion: str = ""
     ) -> dict[str, list[dict[str, Any]]]:
+        """Extrae los enfrentamientos visibles en U.GG con su tasa y muestra."""
         result: dict[str, list[dict[str, Any]]] = {}
         for field, headings in {
             "counters": ("toughest matchups", "worst matchups"),
             "good_against": ("best matchups", "easiest matchups"),
         }.items():
+            section_name = (
+                "toughest-matchups" if field == "counters" else "best-matchups"
+            )
+            section = soup.select_one(f".content-section.{section_name}")
             title = self._heading(soup, *headings)
-            if not title:
+            if section is None and title is None:
                 continue
             rows: list[dict[str, Any]] = []
-            for link in title.find_all_next("a", href=True, limit=35):
+            links = (
+                section.select("a[href]")
+                if section is not None
+                else title.find_all_next("a", href=True, limit=35)
+            )
+            for link in links:
                 found = re.search(
                     r"/lol/champions/([^/]+)/(?:build|counter)", str(link["href"])
                 )
@@ -1922,31 +2363,41 @@ class ChampionScraperService:
                 if not name:
                     continue
                 values = re.findall(
-                    r"(\d{1,2}(?:\.\d+)?)%",
+                    r"(\d{1,2}(?:\.\d+)?)\s*%",
                     link.get_text(" ", strip=True)
                     or link.parent.get_text(" ", strip=True),
                 )
                 if not values or any(x["champion"] == name for x in rows):
                     continue
                 rate = float(values[0]) / 100
+                text_link = link.get_text(" ", strip=True)
+                match_count = re.search(r"([\d.,]+)\s+Matches?\b", text_link)
+                games = (
+                    int(match_count.group(1).replace(",", "").replace(".", ""))
+                    if match_count
+                    else 0
+                )
                 rows.append(
                     {
                         "champion": name,
                         "win_rate": rate,
                         "overall_win_rate": rate,
-                        "lane_games": 0,
-                        "overall_games": 0,
+                        "lane_games": games,
+                        "overall_games": games,
                         "primary_role": role.title(),
-                        "tip": "Datos de matchup actualizados desde U.GG.",
+                        "tip": f"{champion} gana el {rate:.1%} de {games} partidas frente a {name}."
+                        if games
+                        else "Datos de matchup actualizados desde U.GG.",
                     }
                 )
-                if len(rows) == 5:
+                if len(rows) == 10:
                     break
             if rows:
                 result[field] = rows
         return result
 
     def _clean_matchups(self, matchups: Any, role: str) -> dict[str, Any]:
+        """Normaliza nombres y métricas de enfrentamientos sin alterar tasas de cero."""
         if not isinstance(matchups, dict):
             return {}
         canonical = {self._slug(name): name for name in self.champion_names.values()}
@@ -1971,7 +2422,8 @@ class ChampionScraperService:
                     continue
                 seen.add(champion)
                 try:
-                    win_rate = float(entry.get("win_rate", 0.5) or 0.5)
+                    valor_tasa = entry.get("win_rate", 0.5)
+                    win_rate = float(0.5 if valor_tasa is None else valor_tasa)
                 except (TypeError, ValueError):
                     win_rate = 0.5
                 win_rate = (
@@ -1994,6 +2446,23 @@ class ChampionScraperService:
             output["summary"] = matchups["summary"]
         return output
 
+    def _merge_matchups(self, role: str, *fuentes: tuple[str, Any]) -> dict[str, Any]:
+        """Combina counters y ventajas por separado, priorizando la primera fuente válida."""
+        resultado: dict[str, Any] = {"counters": [], "good_against": []}
+        vistos: dict[str, set[str]] = {"counters": set(), "good_against": set()}
+        for nombre_fuente, datos in fuentes:
+            normalizados = self._clean_matchups(datos, role)
+            for grupo, vistos_grupo in vistos.items():
+                for entrada in normalizados.get(grupo, []):
+                    campeon = str(entrada.get("champion", ""))
+                    if not campeon or campeon.casefold() in vistos_grupo:
+                        continue
+                    vistos_grupo.add(campeon.casefold())
+                    resultado[grupo].append({**entrada, "source": nombre_fuente})
+        if not resultado["counters"] and not resultado["good_against"]:
+            return {}
+        return resultado
+
     def _without_boots(self, names: Any) -> list[str]:
         if not isinstance(names, list):
             return []
@@ -2004,13 +2473,26 @@ class ChampionScraperService:
         ][:3]
 
     def update_champion(self, profile: dict[str, Any]) -> bool:
+        """Actualiza secciones disponibles y acepta estadísticas de baja muestra."""
         name, role = str(profile.get("character", "")).strip(), self._role(profile)
+        role_key = role
         if not name:
             return False
         slug = self._slug(name)
         champion_id = self.champion_ids.get(name.casefold())
         overview = self._overview(champion_id) if champion_id else None
-        parsed = self._parse_overview(overview, role) if champion_id else {}
+        parsed = self._parse_overview(overview, role, name) if champion_id else {}
+        if parsed and self._versiones_fuente.get("U.GG overview"):
+            parsed["source_patch"] = self._versiones_fuente["U.GG overview"]
+            version_actual = self._patches()[0] if self._patches() else ""
+            version_fuente = parsed["source_patch"]
+            parsed["patch_label"] = (
+                version_actual
+                if version_actual.startswith("26.")
+                and version_actual.rsplit(".", 1)[-1]
+                == version_fuente.rsplit(".", 1)[-1]
+                else version_fuente
+            )
 
         opgg_data = self._parse_opgg(slug, role)
 
@@ -2026,39 +2508,42 @@ class ChampionScraperService:
         html_data = (
             self._parse_lolalytics_html(html_build, name, role) if html_build else {}
         )
+        html_counter_matchups: dict[str, Any] = {}
         if html_counter:
-            html_data.update(
-                {
-                    "matchups": self._parse_lolalytics_html(
-                        html_counter, name, role
-                    ).get("matchups", {})
-                }
-            )
+            html_counter_matchups = self._parse_lolalytics_html(
+                html_counter, name, role
+            ).get("matchups", {})
 
         for source in (opgg_data, supplemental, html_data):
             for key, value in source.items():
                 if value and key not in parsed:
                     parsed[key] = value
-                elif (
-                    key == "full_build"
-                    and value
-                    and len(parsed.get("full_build", [])) < len(value)
-                ):
-                    parsed["full_build"] = value
-                elif (
-                    key == "items"
-                    and value
-                    and len(parsed.get("items", [])) < len(value)
-                ):
-                    parsed["items"] = value
 
-        counter_page = self._get(f"https://u.gg/lol/champions/{slug}/counter/{role}")
-        matchups = self._clean_matchups(
-            supplemental.get("matchups")
-            or html_data.get("matchups")
-            or (self._parse_matchups(counter_page, role) if counter_page else {}),
-            role,
+        patch_label = str(parsed.get("patch_label") or "")
+        if not patch_label and self._versiones_fuente.get("U.GG overview"):
+            patch_label = self._versiones_fuente["U.GG overview"]
+        url_matchups = (
+            f"https://u.gg/lol/champions/{slug}/build/{role}"
+            f"?rank={self.rank}&patch={patch_label.replace('.', '_')}"
         )
+        pagina_matchups = self._get(url_matchups) if patch_label else None
+        matchups_ugg = (
+            self._parse_matchups(pagina_matchups, role, name) if pagina_matchups else {}
+        )
+        matchups = self._merge_matchups(
+            role,
+            ("U.GG", matchups_ugg),
+            ("Lolalytics", supplemental.get("matchups", {})),
+            ("Lolalytics", html_data.get("matchups", {})),
+            ("Lolalytics", html_counter_matchups),
+        )
+        if matchups and matchups_ugg:
+            matchups["source_scope"] = {
+                "source": "U.GG",
+                "rank": self.rank,
+                "patch": self._versiones_fuente.get("U.GG overview"),
+                "role": role,
+            }
 
         items = parsed.get("items") if isinstance(parsed.get("items"), list) else []
         full_build = (
@@ -2070,6 +2555,50 @@ class ChampionScraperService:
         changed = False
         imported_build_data = False
 
+        for field in (
+            "overall_matches",
+            "overall_win_rate",
+            "rune_page_matches",
+            "summoner_spells",
+            "summoner_spell_ids",
+            "summoner_spell_matches",
+            "summoner_spell_win_rate",
+            "starter_items",
+            "starter_item_entries",
+            "starter_item_ids",
+            "starting_item_matches",
+            "starting_item_win_rate",
+            "starting_items_source_status",
+            "starting_items_provenance",
+            "core_build",
+            "core_build_matches",
+            "core_build_win_rate",
+            "item_options",
+            "boots",
+            "skill_priority_matches",
+            "skill_priority_win_rate",
+            "section_sample_sizes",
+            "section_status",
+            "source_patch",
+            "patch_label",
+            "situational_item_pipeline",
+        ):
+            if field in parsed:
+                profile[field] = parsed[field]
+                changed = True
+        if parsed.get("starting_items_source_status") == "EMPTY":
+            profile["starter_items"] = []
+            profile["starter_item_ids"] = []
+            profile["starter_item_entries"] = []
+            profile["starting_item_matches"] = parsed.get("starting_item_matches")
+            profile["starting_item_win_rate"] = parsed.get("starting_item_win_rate")
+            changed = True
+        if parsed.get("overall_matches"):
+            profile["sample_size"] = parsed["overall_matches"]
+            profile["sample_status"] = "NORMAL_SAMPLE"
+        if parsed.get("overall_win_rate") is not None:
+            profile["champion_win_rate"] = parsed["overall_win_rate"]
+
         # 1. Guardar Power Spike Core (3 ítems)
         if items:
             profile.setdefault("power_curve_and_scaling", {})["power_spike_items"] = (
@@ -2080,7 +2609,13 @@ class ChampionScraperService:
 
         # 2. Guardar Build Completa de compra (hasta 6 ítems)
         if full_build:
-            profile["most_played_build"] = full_build[:6]
+            profile["most_played_build"] = self._normalizar_build_completa(full_build)
+            changed = True
+            imported_build_data = True
+        elif parsed.get("most_played_build"):
+            profile["most_played_build"] = self._normalizar_build_completa(
+                parsed["most_played_build"]
+            )
             changed = True
             imported_build_data = True
 
@@ -2193,28 +2728,67 @@ class ChampionScraperService:
             profile["starter_items"] = parsed["starter_items"]
             changed = True
 
+        if "item_options" in parsed:
+            profile["item_options"] = parsed["item_options"]
+            changed = True
+
         # 5. Guardar Hechizos de Invocador (Summoner Spells)
         if parsed.get("summoner_spells"):
             profile["summoner_spells"] = parsed["summoner_spells"]
             changed = True
 
-        # 6. Guardar Objetos Situacionales (Corta curas, Tanque, Asesino, Utilidad)
-        # Un objeto que ya está en la build final no es "situacional": se descarta
-        # aquí, cuando ya se conoce la build definitiva (U.GG + OP.GG + Lolalytics).
-        if parsed.get("situational_items"):
-            profile["situational_items"] = self._without_build_items(
-                parsed["situational_items"],
-                profile.get("most_played_build"),
-                profile.get("starter_items"),
-                profile.get("power_curve_and_scaling", {}).get("power_spike_items"),
+        # 6. Guardar aparte la clasificación estadística de opciones tardías.
+        if "situational_items" in parsed:
+            situation_source = parsed["situational_items"]
+            if isinstance(situation_source, list):
+                grupos = {
+                    "corta_curas": [],
+                    "tanque": [],
+                    "asesino": [],
+                    "utilidad_y_defensa": [],
+                }
+                nombres_a_ids = {
+                    nombre.casefold(): item_id
+                    for item_id, nombre in self.item_names.items()
+                }
+                for nombre in situation_source:
+                    item_id = nombres_a_ids.get(str(nombre).casefold())
+                    categoria = (
+                        self._categorize_situational_item(item_id)
+                        if item_id
+                        else "utilidad_y_defensa"
+                    )
+                    if nombre not in grupos[categoria]:
+                        grupos[categoria].append(str(nombre))
+                situation_source = grupos
+            situational_persisted = (
+                situation_source if isinstance(situation_source, dict) else {}
+            )
+            profile["source_situational_items"] = situational_persisted
+            pipeline = parsed.get("situational_item_pipeline")
+            pipeline = dict(pipeline) if isinstance(pipeline, dict) else {}
+            pipeline["classified"] = (
+                sum(len(names) for names in situation_source.values())
+                if isinstance(situation_source, dict)
+                else 0
+            )
+            pipeline["persisted"] = sum(
+                len(names) for names in situational_persisted.values()
+            )
+            profile["situational_item_pipeline"] = pipeline
+            logging.getLogger(__name__).info(
+                "Flujo de objetos situacionales: fuente=%s analizados=%s normalizados=%s "
+                "clasificados=%s guardados=%s",
+                pipeline.get("source_options", 0),
+                pipeline.get("parsed", 0),
+                pipeline.get("normalized", 0),
+                pipeline.get("classified", 0),
+                pipeline.get("persisted", 0),
             )
             changed = True
 
         # 7. Guardar Matchups
-        if (
-            len(matchups.get("counters", [])) >= 3
-            and len(matchups.get("good_against", [])) >= 3
-        ):
+        if matchups.get("counters") or matchups.get("good_against"):
             profile["matchups"] = matchups
             changed = True
 
@@ -2240,7 +2814,13 @@ class ChampionScraperService:
             profile["lane_stats"] = {"rank": self.rank, "lanes": lane_stats}
             changed = True
 
-        if not changed or not imported_build_data:
+        muestra_linea = lane_stats.get(role_key, {}) if lane_stats else {}
+        muestra_linea_valida = (
+            isinstance(muestra_linea, dict)
+            and isinstance(muestra_linea.get("games"), (int, float))
+            and muestra_linea["games"] > 0
+        )
+        if not changed or not (imported_build_data or muestra_linea_valida):
             return False
 
         profile["ugg_last_updated"] = datetime.now(timezone.utc).isoformat()
@@ -2762,12 +3342,19 @@ class ChampionScraperService:
                     raise SinMuestraFuente("La fuente no dispone de muestra suficiente")
                 documento = preparador.preparar(profile, matrix)
                 documento["source_versions"] = dict(self._versiones_fuente)
+                if self._errores_parciales:
+                    documento["update_status"] = "PARTIAL_SUCCESS"
+                    documento["update_errors"] = list(self._errores_parciales)
                 notificar(88, f"{nombre} · Descargando recursos")
                 preparador.descargar_recursos(documento, stop_check or (lambda: False))
                 notificar(96, f"{nombre} · Guardando datos")
                 self.repositorio.guardar(nombre, documento)
                 updated += 1
-                mensaje = f"{nombre} completado"
+                mensaje = (
+                    f"{nombre} actualizado parcialmente · algunas secciones no están disponibles"
+                    if self._errores_parciales
+                    else f"{nombre} completado"
+                )
             except InterruptedError:
                 break
             except Exception as error:

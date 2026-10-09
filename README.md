@@ -83,6 +83,50 @@ The Analysis screen has views for champion affinity and charts, champion data ed
 
 Champion refresh actions are explicit. A single-champion or full-catalog refresh collects source data, prepares the rank/lane variants, updates required local assets when requested, validates the result, and writes data atomically. Selection and browsing use the local repository and do not trigger a scrape. The optional AI re-analysis changes the champion's descriptive analysis data; it is separate from the public statistics refresh.
 
+## Mejoras funcionales recientes
+
+Esta sección resume los contratos de datos y comportamientos añadidos al análisis local, los informes de partida y el panel Inicio. Las consultas externas dependen del cliente, la red y los datos que publique cada fuente; SOLRALOL no completa estadísticas ausentes con valores inventados.
+
+### Informe de partida con IA
+
+El informe de Gemini presenta resumen, fases, rendimiento, build, rivales y mejoras en secciones diferenciadas. Los informes nuevos usan un esquema estructurado y se validan antes de guardarse; los esquemas históricos compatibles y los informes Markdown anteriores siguen teniendo una ruta de lectura.
+
+Los hitos de las fases y los momentos decisivos se resuelven contra los eventos y participantes guardados en la telemetría. Se muestran horas y descripciones respaldadas por esos datos; las referencias antiguas basadas en hora se enriquecen cuando hay una coincidencia única. Si el evento falta o es ambiguo, el informe lo indica sin atribuir una baja, objetivo o causa no confirmados. El renderizado del texto de IA usa formato controlado, no HTML arbitrario.
+
+Las notas de coaching A–F son una clasificación de presentación derivada de `performance_scoring` cuando el resultado final y la cobertura de categorías son suficientes. No crean puntos ni cambian la puntuación, los premios MVP/SVP o el análisis de rivales existente.
+
+### Estadísticas locales de campeones y muestras reducidas
+
+Las variantes de campeón conservan por separado campeón, línea, rango y parche. El estado de muestra distingue datos normales, muestra reducida, datos parciales, ausencia de datos y error de descarga. Una sección válida con pocas partidas puede guardarse y mostrarse con su aviso de muestra; la falta de una sección opcional no elimina las demás.
+
+Las muestras se mantienen asociadas a su ámbito estadístico. El total del campeón no sustituye las partidas de una página de runas, hechizos, prioridad de habilidades, objetos iniciales, build principal o alternativas de puestos posteriores. Cantidades, tasas y procedencia que no entrega la fuente permanecen sin dato. La actualización conserva información compatible del caché ante respuestas incompletas o fallos y la interfaz carga perfiles locales sin iniciar una descarga por cada selección.
+
+### Builds y recomendaciones de objetos
+
+El análisis distingue observaciones estadísticas de U.GG de recomendaciones contextuales de SOLRALOL. Las opciones de cuarto, quinto y sexto objeto retienen su puesto y su muestra; los candidatos locales no reciben porcentajes de victoria ficticios. El núcleo, las alternativas, los objetos situacionales, la afinidad y las sinergias son conjuntos relacionados, pero no intercambiables.
+
+Antes de puntuar una recomendación, el validador comprueba el ID canónico, el parche, el modo de juego, el mapa, la disponibilidad en tienda, la posibilidad de compra y las restricciones del campeón según los metadatos disponibles. Las recomendaciones locales se preparan para Grieta del Invocador en Solo/Dúo clasificatoria. La compatibilidad considera además patrón de daño, mecánicas y efectos del objeto, defensa, build y uso situacional. Las categorías mantienen corta curas, resistencias, daño explosivo y utilidad/defensa. La lista visible puede desplazarse sin reducir el conjunto de candidatos empleado por afinidad y sinergia.
+
+El build completo se valida como secuencia: las alternativas de distintos puestos no se concatenan como compras confirmadas, no se repiten objetos no acumulables para llenar huecos y las botas se mantienen como elección de build cuando hay datos o una recomendación local compatible. Los objetos iniciales usan reglas de compra propias para consumibles y equipo inicial, distintas de las reglas de objetos completos.
+
+### Sincronización LCU y BattleScore en Inicio
+
+Inicio conserva su historial local por cuenta y vincula las entradas analizables con el ID exacto de la partida guardada. Para el resumen de BattleScore reutiliza el servicio de puntuación de SOLRALOL y selecciona al jugador local mediante identidad de cuenta confirmada; no abre diálogos ocultos ni genera una puntuación paralela. La conciliación histórica se ejecuta en segundo plano y una falta de BattleScore no bloquea la carga del historial.
+
+Al terminar una partida se puede conservar una tarea de sincronización LCU pendiente y reintentar cuando el historial del cliente todavía no contiene el registro. La política usa esperas acotadas y mayores para la recuperación posterior; al reconectar o iniciar SOLRALOL se pueden reanudar tareas pendientes. Las operaciones son idempotentes por identidad de partida y una respuesta vacía o un fallo no ordenan borrar el historial local. Inicio sigue usando LCU para el historial; no requiere la API pública de Riot para esa función.
+
+El repositorio local usa escrituras atómicas para el JSON del historial y conserva registros no utilizables para su recuperación en vez de convertirlos en un historial vacío. Los campos nuevos de BattleScore, asociación analizable y sincronización son opcionales al cargar registros antiguos. La identidad de compañeros se agrupa por PUUID u otro identificador estable disponible, nunca por etiquetas genéricas como `Jugador`; participantes ocultos sin identidad verificable no se cuentan como compañeros recurrentes.
+
+Los enfrentamientos respetan la confianza del rival directo y los mínimos de muestra existentes. La cuadrícula invalida su distribución cuando se reconstruye y activa su geometría al mostrarse, de modo que el resultado no dependa de redimensionar la ventana. La colección separa campeones en propiedad del total disponible y no presenta una consulta fallida como cero propiedad.
+
+### Dependencia FFmpeg
+
+La disponibilidad para grabación se resuelve buscando una ruta configurada, instalaciones compatibles y el binario incluido que proporciona `imageio-ffmpeg`. La búsqueda y las operaciones de vídeo se ejecutan fuera del hilo gráfico. El inicio normal no debe descargar un instalador externo de cientos de megabytes: FFmpeg solo es necesario para las funciones de captura, codificación o exportación que lo requieran. El reproductor multimedia de Qt y el ejecutable de FFmpeg son componentes distintos.
+
+### Compatibilidad y alcance de las verificaciones
+
+Las pruebas sin servicios externos y los fixtures se encuentran en `app/scratch/`. Cubren normalización y persistencia de campeones, estados de muestra, elegibilidad y compatibilidad de objetos, resolución de eventos, puntuaciones, reintentos LCU, historial de Inicio e interfaces PySide6. Los fixtures no equivalen a validación en vivo de U.GG, LCU, Riot o Gemini. El historial personal y la sincronización real dependen de los datos y clientes instalados en el equipo del usuario.
+
 ### Draft Tool details
 
 Draft Tool supports both a manually planned draft and the active LCU champion-select session. It keeps ally and enemy picks and bans in role-aware slots and calculates composition-level comparisons from local data, including estimated team damage profile, overall matchup estimates, power progression and spike timing. It can suggest bans and show recommended build, rune pages, situational items, and summoner spells for the selected champion and role. It imports the chosen preparation into the League client through LCU. This is analytical support: displayed rates and curves depend on the cached samples and are not match-outcome guarantees.
@@ -357,9 +401,12 @@ Automated tests and offline fixtures are kept in `app/scratch/`. They use pytest
 ```powershell
 .\.venv\Scripts\python.exe -m pip install pytest
 .\.venv\Scripts\python.exe -m pytest app/scratch/
+.\.venv\Scripts\python.exe -m ruff check app/
+.\.venv\Scripts\python.exe -m ruff format --check app/
+.\.venv\Scripts\python.exe main.py
 ```
 
-Some repository-wide visual checks depend on the current local asset set and UI state. No CI workflow or published coverage report is included in the repository.
+Install Ruff separately if it is not present in the virtual environment. GUI regression fixtures use PySide6's offscreen platform for geometry and rendering checks at desktop sizes; live LCU, Riot, Gemini, and third-party source behavior requires the relevant local client or service. Some visual checks also depend on the current local asset set and UI state. No CI workflow or published coverage report is included in the repository.
 
 ## Current Limitations
 

@@ -602,7 +602,7 @@ class HeatmapWidget(QWidget):
         self.setMinimumHeight(90)
 
     def paintEvent(self, event: Any) -> None:
-        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
+        """Pinta hechizos y compras iniciales conservando cantidades y estadísticas.`r`n`r`n        Parámetros:`r`n            profile: Perfil y variante de campeón seleccionados.`r`n`r`n        Retorna:`r`n            None; reemplaza el contenido de las filas correspondientes.`r`n"""
         painter = QPainter(self)
         width = max(1, self.width() // max(1, len(self.values)))
         for index, (label, value) in enumerate(self.values):
@@ -745,8 +745,12 @@ class LocalAnalysisDialog(QDialog):
         self._imagenes_recursos: dict[str, bytes] = {}
         self._pixmaps_recursos: dict[str, QPixmap] = {}
         self._datos_preparados: dict[str, Any] = {}
+        self._mostrar_todos_candidatos = False
         self._catalogo_analisis = CatalogoAnalisisLocal(
-            self._catalog_items().get("items", {}), self.items, self.ITEM_NAME_ALIASES
+            self._catalog_items().get("items", {}),
+            self.items,
+            self.ITEM_NAME_ALIASES,
+            self.version,
         )
         self._servicio_analisis = AnalisisLocalService(
             self._catalogo_analisis, self.champions_path, self.version
@@ -1004,6 +1008,7 @@ class LocalAnalysisDialog(QDialog):
         co_layout.setContentsMargins(10, 8, 10, 8)
         co_layout.setSpacing(4)
         co_title = QLabel("NÚCLEO DE LA BUILD")
+        self.core_title = co_title
         co_title.setObjectName("localSectionTitle")
         co_layout.addWidget(co_title)
         self.core_overview_row = QHBoxLayout()
@@ -1048,6 +1053,10 @@ class LocalAnalysisDialog(QDialog):
         sit_title = QLabel("SITUACIONALES")
         sit_title.setObjectName("localSectionTitle")
         sit_layout.addWidget(sit_title)
+        self.situational_source_note = QLabel("")
+        self.situational_source_note.setObjectName("localMuted")
+        self.situational_source_note.setWordWrap(True)
+        sit_layout.addWidget(self.situational_source_note)
         self.situational_items_row = QGridLayout()
         self.situational_items_row.setSpacing(16)
         sit_layout.addLayout(self.situational_items_row)
@@ -1128,6 +1137,13 @@ class LocalAnalysisDialog(QDialog):
         self.recommendations_panel = TarjetaContenido(
             "localRecommendationsPanel", "SINERGIAS Y RECOMENDACIONES DE OBJETOS"
         )
+        self.recommendation_toggle = QPushButton("Ver todas las opciones")
+        self.recommendation_toggle.setObjectName("localSecondaryButton")
+        self.recommendation_toggle.setVisible(False)
+        recommendation_actions = QHBoxLayout()
+        recommendation_actions.addStretch(1)
+        recommendation_actions.addWidget(self.recommendation_toggle)
+        self.recommendations_panel.disposicion.addLayout(recommendation_actions)
         self.item_table = TablaRecomendaciones()
         self.item_table.setObjectName("recommendationTable")
         self.item_table.setHorizontalHeaderLabels(
@@ -1146,6 +1162,7 @@ class LocalAnalysisDialog(QDialog):
         self.item_table.setWordWrap(True)
         self.item_table.setSortingEnabled(True)
         self.recommendations_panel.disposicion.addWidget(self.item_table)
+        self.recommendation_toggle.clicked.connect(self._alternar_candidatos_afinidad)
         analysis_layout.addWidget(self.recommendations_panel)
         analysis_layout.addStretch(1)
         controles = set(controles_visibles) | {panel_filtros, self.champion_banner}
@@ -1285,6 +1302,13 @@ class LocalAnalysisDialog(QDialog):
         self.champion_badge = QLabel()
         self.champion_badge.setObjectName("localChampionBadge")
         identidad.addWidget(self.champion_badge)
+        self.champion_sample_badge = QLabel()
+        self.champion_sample_badge.setObjectName("localChampionSampleBadge")
+        self.champion_sample_badge.setVisible(False)
+        self.champion_sample_badge.setToolTip(
+            "Estadísticas basadas en una muestra limitada de partidas."
+        )
+        identidad.addWidget(self.champion_sample_badge)
         self.champion_meta = QLabel()
         self.champion_meta.setObjectName("localChampionMeta")
         self.champion_meta.setWordWrap(True)
@@ -1412,9 +1436,15 @@ class LocalAnalysisDialog(QDialog):
         if not priority and order:
             # Sin prioridad explícita se deduce por el número de mejoras de cada una.
             priority = "".join(sorted(_SKILL_KEYS, key=lambda key: -order.count(key)))
-        self.skill_order_priority.setText(
-            f"Prioridad: {' > '.join(priority)}" if priority else ""
-        )
+        prioridad_texto = f"Prioridad: {' > '.join(priority)}" if priority else ""
+        if isinstance(skill_order, dict):
+            skill_games = skill_order.get("games")
+            skill_rate = skill_order.get("win_rate")
+            if isinstance(skill_games, (int, float)):
+                prioridad_texto += f" · {int(skill_games)} partidas"
+            if isinstance(skill_rate, (int, float)):
+                prioridad_texto += f" · {float(skill_rate):.1%} WR"
+        self.skill_order_priority.setText(prioridad_texto)
         # La fila de niveles va en la cabecera: evita una fila extra en la cuadrícula.
         self.skill_order_levels.setText(
             "Nivel: " + " ".join(str(level + 1) for level in range(18))
@@ -1465,7 +1495,10 @@ class LocalAnalysisDialog(QDialog):
         )
         win_rate = stats.get("win_rate") if isinstance(stats, dict) else None
         if isinstance(win_rate, (int, float)):
-            return f"{label} · {float(win_rate):.1%} WR"
+            label = f"{label} · {float(win_rate):.1%} WR"
+        games = stats.get("games") if isinstance(stats, dict) else None
+        if isinstance(games, (int, float)) and games > 0:
+            label = f"{label} · {int(games):,} partidas".replace(",", ".")
         return label
 
     def _render_rune_pages(self, profile: dict[str, Any]) -> None:
@@ -1538,6 +1571,13 @@ class LocalAnalysisDialog(QDialog):
 
     def _active_build(self, profile: dict[str, Any]) -> list[str]:
         """Build de la página de runas activa; si no tiene, la del perfil."""
+        recomendada = profile.get("recommended_build")
+        if isinstance(recomendada, list) and recomendada:
+            return [
+                str(item.get("name", "")) if isinstance(item, dict) else str(item)
+                for item in recomendada
+                if (item.get("name") if isinstance(item, dict) else item)
+            ]
         page = self._active_rune_page()
         build = page.get("build") if isinstance(page, dict) else None
         if isinstance(build, list) and build:
@@ -1556,7 +1596,12 @@ class LocalAnalysisDialog(QDialog):
         """Orden de habilidades de la página activa; si no tiene, el del perfil."""
         page = self._active_rune_page()
         order = page.get("skill_order") if isinstance(page, dict) else None
-        return order if order else profile.get("skill_order")
+        selected = order if order else profile.get("skill_order")
+        if isinstance(selected, dict):
+            selected = dict(selected)
+            selected.setdefault("games", profile.get("skill_priority_matches"))
+            selected.setdefault("win_rate", profile.get("skill_priority_win_rate"))
+        return selected
 
     def _on_rune_page_clicked(self, index: int) -> None:
         """Selector de arquetipo: cambia runas, build y orden de habilidades."""
@@ -1638,6 +1683,13 @@ class LocalAnalysisDialog(QDialog):
         if games:
             partidas = QLabel(f"{games:,} partidas".replace(",", "."))
             partidas.setObjectName("localRuneGamesBadge")
+            if page.get("sample_status") == "LOW_SAMPLE":
+                partidas.setToolTip(
+                    "Muestra reducida para esta configuración de runas."
+                )
+                partidas.setText(
+                    f"Muestra reducida · {games:,}".replace(",", ".") + " partidas"
+                )
             muestra.addWidget(partidas)
         muestra.addStretch(1)
         header.addLayout(muestra)
@@ -2109,6 +2161,8 @@ class LocalAnalysisDialog(QDialog):
             self.status.setText(
                 "La actualización falló; se muestran los últimos datos válidos."
                 if datos.get("actualizacion") == EstadoDatos.ACTUALIZACION_FALLIDA.value
+                else "Datos actualizados parcialmente; algunas estadísticas no están disponibles."
+                if datos.get("actualizacion") == "PARTIAL_SUCCESS"
                 else "Análisis actualizado"
             )
             QTimer.singleShot(2500, lambda: self._limpiar_estado_analisis(generacion))
@@ -2135,11 +2189,38 @@ class LocalAnalysisDialog(QDialog):
             self.champion_subtitle.setText("Esperando datos locales")
             self.champion_meta.clear()
             self.champion_badge.clear()
+            self.champion_sample_badge.clear()
+            self.champion_sample_badge.hide()
             self.rune_summary.clear()
             self.champion_winrate.setText("—")
             self.champion_lane.setText("—")
-            self.champion_portrait.clear()
+            self._mostrar_retrato_local(self.champion_combo.currentText())
             self.champion_banner.establecer_imagen(QPixmap())
+
+    def _mostrar_retrato_local(self, campeon: str) -> None:
+        """Carga el retrato local aunque falten estadísticas de la variante."""
+        self.champion_portrait.clear()
+        if not campeon:
+            return
+        try:
+            ruta, contenido = self._servicio_analisis.recurso(
+                "champion", campeon, lambda: False
+            )
+        except (OSError, KeyError, ValueError):
+            return
+        if ruta is None or not contenido:
+            return
+        pixmap = QPixmap()
+        pixmap.loadFromData(contenido)
+        if not pixmap.isNull():
+            self.champion_portrait.setPixmap(
+                pixmap.scaled(
+                    88,
+                    88,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
 
     def _mostrar_ausencia(self, estado: str) -> None:
         """Presenta estado local recibido, oculta datos de otra selección y termina carga."""
@@ -2244,7 +2325,10 @@ class LocalAnalysisDialog(QDialog):
         if profile is not None:
             self.champions[self.champion_combo.currentIndex()] = profile
         self._catalogo_analisis = CatalogoAnalisisLocal(
-            self._catalog_items().get("items", {}), self.items, self.ITEM_NAME_ALIASES
+            self._catalog_items().get("items", {}),
+            self.items,
+            self.ITEM_NAME_ALIASES,
+            self.version,
         )
         self._servicio_analisis = AnalisisLocalService(
             self._catalogo_analisis, self.champions_path, self.version
@@ -2425,36 +2509,54 @@ class LocalAnalysisDialog(QDialog):
         splash = self._recurso_analisis("splash", champion)
         pixmap_splash = self._pixmap_analisis(splash) if splash else QPixmap()
         self.champion_banner.establecer_imagen(pixmap_splash)
+        variante = self._active_variant or {}
+        sample_size = variante.get("sample_size")
+        sample_status = str(variante.get("sample_status", ""))
+        if sample_status == "LOW_SAMPLE" and isinstance(sample_size, (int, float)):
+            partidas = f"{int(sample_size):,}".replace(",", ".")
+            self.champion_sample_badge.setText(
+                f"Muestra reducida · {partidas} partidas"
+            )
+            self.champion_sample_badge.show()
+        else:
+            self.champion_sample_badge.clear()
+            self.champion_sample_badge.hide()
         if not pixmap_splash.isNull():
             logging.getLogger(__name__).debug("[ui] hero splash loaded: %s", champion)
 
-        # Calcular Win Rate general: media de win_rate_vs_game_length si existe
-        wr_curve_raw = profile.get("win_rate_vs_game_length", [])
-        if wr_curve_raw and isinstance(wr_curve_raw, list):
-            wr_values = [
-                float(e.get("winrate", 0))
-                for e in wr_curve_raw
-                if isinstance(e, dict) and e.get("winrate")
-            ]
+        wr_general = profile.get("overall_win_rate", profile.get("champion_win_rate"))
+        if isinstance(wr_general, (int, float)):
             overall_wr = (
-                round(sum(wr_values) / len(wr_values), 1) if wr_values else None
+                round(float(wr_general) * 100, 1)
+                if float(wr_general) <= 1
+                else round(float(wr_general), 1)
             )
         else:
-            # Fallback: usar win_rate de la primera página de runas (U.GG)
-            runes_list = profile.get("common_runes", [])
-            ugg_wr_raw = (
-                runes_list[0].get("win_rate")
-                if runes_list and isinstance(runes_list[0], dict)
-                else None
-            )
-            if isinstance(ugg_wr_raw, (int, float)) and float(ugg_wr_raw) > 0:
+            wr_curve_raw = profile.get("win_rate_vs_game_length", [])
+            if wr_curve_raw and isinstance(wr_curve_raw, list):
+                wr_values = [
+                    float(e.get("winrate", 0))
+                    for e in wr_curve_raw
+                    if isinstance(e, dict) and e.get("winrate")
+                ]
                 overall_wr = (
-                    round(float(ugg_wr_raw) * 100, 1)
-                    if float(ugg_wr_raw) <= 1.0
-                    else round(float(ugg_wr_raw), 1)
+                    round(sum(wr_values) / len(wr_values), 1) if wr_values else None
                 )
             else:
-                overall_wr = None
+                runes_list = profile.get("common_runes", [])
+                ugg_wr_raw = (
+                    runes_list[0].get("win_rate")
+                    if runes_list and isinstance(runes_list[0], dict)
+                    else None
+                )
+                overall_wr = (
+                    round(float(ugg_wr_raw) * 100, 1)
+                    if isinstance(ugg_wr_raw, (int, float))
+                    and 0 < float(ugg_wr_raw) <= 1
+                    else round(float(ugg_wr_raw), 1)
+                    if isinstance(ugg_wr_raw, (int, float)) and float(ugg_wr_raw) > 1
+                    else None
+                )
 
         # Línea mostrada: la elegida en el selector (con su winrate si se conoce).
         primary_lane = self._lane_display_label()
@@ -2465,6 +2567,7 @@ class LocalAnalysisDialog(QDialog):
         )
         self.champion_lane.setText(primary_lane)
         self.champion_meta.setText(
+            f"Parche {profile.get('patch_label', profile.get('source_patch', 'N/D'))}   ·   "
             f"{basic.get('damage_type', 'Híbrido')}   ·   "
             f"Dificultad {basic.get('difficulty_floor', '?')}–{basic.get('difficulty_ceiling', '?')}/10"
         )
@@ -2545,9 +2648,26 @@ class LocalAnalysisDialog(QDialog):
             [(result.name, result.score, result.item_id) for result in ranked[:8]]
         )
         self._render_matchups_panel(profile)
-        self.item_table.setRowCount(len(ranked))
+        candidatos = self._datos_preparados.get("candidatos_afinidad", ranked)
+        self.recommendation_toggle.setVisible(len(candidatos) > len(ranked))
+        self._renderizar_tabla_recomendaciones(
+            candidatos if self._mostrar_todos_candidatos else ranked
+        )
+
+    def _alternar_candidatos_afinidad(self) -> None:
+        """Alterna entre la selección compacta y todos los candidatos puntuados."""
+        self._mostrar_todos_candidatos = not self._mostrar_todos_candidatos
+        candidatos = self._datos_preparados.get("candidatos_afinidad", [])
+        recomendaciones = self._datos_preparados.get("recomendaciones", [])
+        self._renderizar_tabla_recomendaciones(
+            candidatos if self._mostrar_todos_candidatos else recomendaciones
+        )
+
+    def _renderizar_tabla_recomendaciones(self, resultados: list[Any]) -> None:
+        """Pinta la selección de recomendaciones sin modificar el pool persistido."""
+        self.item_table.setRowCount(len(resultados))
         self.item_table.setSortingEnabled(False)
-        for row, result in enumerate(ranked):
+        for row, result in enumerate(resultados):
             self.item_table.setCellWidget(
                 row, 0, self._item_cell(result.name, result.item_id)
             )
@@ -2555,6 +2675,13 @@ class LocalAnalysisDialog(QDialog):
             self.item_table.setItem(row, 2, QTableWidgetItem("; ".join(result.reasons)))
         self.item_table.setSortingEnabled(True)
         self.item_table.ajustar_contenido()
+        todos = len(self._datos_preparados.get("candidatos_afinidad", []))
+        texto = (
+            "Mostrar las 30 principales"
+            if self._mostrar_todos_candidatos
+            else f"Ver todas las opciones ({todos})"
+        )
+        self.recommendation_toggle.setText(texto)
 
     def _update_damage_bar(self, profile: dict[str, Any]) -> None:
         breakdown = profile.get("damage_breakdown", {})
@@ -2718,6 +2845,7 @@ class LocalAnalysisDialog(QDialog):
         lbl = QLabel(name)
         lbl.setObjectName("localItemName")
         lbl.setToolTip(name)
+        lbl.setWordWrap(True)
         layout.addWidget(lbl)
         layout.addStretch(1)
         return widget
@@ -2786,9 +2914,18 @@ class LocalAnalysisDialog(QDialog):
         return widget
 
     def _clean_item_card_large(
-        self, name: str, catalog: dict[str, Any], version: str
+        self, name: str, catalog: dict[str, Any], version: str, cantidad: int = 1
     ) -> QWidget:
-        """Actualiza el componente con los parámetros recibidos y devuelve su resultado Qt."""
+        """Crea una fila de objeto con icono y cantidad opcional.
+
+        Parametros:
+            name: Nombre visible del objeto.
+            catalog: Catalogo vigente usado para resolver el icono.
+            version: Parche de recursos graficos.
+            cantidad: Unidades observadas en la compra inicial.
+
+        Retorna:
+            Fila Qt lista para insertarse en una seccion."""
         widget = QWidget()
         widget.setObjectName("localItemRow")
         layout = QHBoxLayout(widget)
@@ -2819,6 +2956,11 @@ class LocalAnalysisDialog(QDialog):
         lbl.setObjectName("localItemName")
         lbl.setToolTip(name)
         layout.addWidget(lbl, 1)
+        if cantidad > 1:
+            etiqueta_cantidad = QLabel(f"×{cantidad}")
+            etiqueta_cantidad.setObjectName("localItemQuantity")
+            etiqueta_cantidad.setToolTip(f"Cantidad: {cantidad}")
+            layout.addWidget(etiqueta_cantidad)
         return widget
 
     def _clear_grid_row(self, grid: QGridLayout, row: int) -> None:
@@ -2839,21 +2981,35 @@ class LocalAnalysisDialog(QDialog):
                 widget.deleteLater()
 
     def _render_core_items(self, profile: dict[str, Any], style_key: str) -> None:
-        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
+        """Pinta hechizos y compras iniciales conservando cantidades y estadísticas.`r`n`r`n        Parámetros:`r`n            profile: Perfil y variante de campeón seleccionados.`r`n`r`n        Retorna:`r`n            None; reemplaza el contenido de las filas correspondientes.`r`n"""
         self._clear_layout(self.core_overview_row)
         self._clear_grid_row(self.build_grid, 0)
 
         catalog = self._catalog_items().get("items", {})
         version = self._catalog_items().get("version", "16.17.1")
+        core_matches = profile.get("core_build_matches")
+        self.core_title.setText("NÚCLEO DE LA BUILD")
+        if isinstance(core_matches, (int, float)):
+            self.core_title.setToolTip(
+                f"Muestra de la combinación: {int(core_matches)} partidas"
+            )
+        else:
+            self.core_title.setToolTip("")
 
         # `_build_slots` reparte la build sin repetir objetos (ver _render_full_build).
-        core_items, late_items = self._build_slots(profile)
+        core_items, _ = self._build_slots(profile)
 
         for col, wanted_name in enumerate(core_items[:3]):
             # Top card overview con icono 32x32 y texto 12px distribuido uniformemente
-            self.core_overview_row.addWidget(
-                self._clean_item_card_large(str(wanted_name), catalog, version), 1
-            )
+            card_core = self._clean_item_card_large(str(wanted_name), catalog, version)
+            core_rate = profile.get("core_build_win_rate")
+            if isinstance(core_matches, (int, float)) and isinstance(
+                core_rate, (int, float)
+            ):
+                card_core.setToolTip(
+                    f"Build principal de tres objetos · {float(core_rate):.1%} WR · {int(core_matches)} partidas"
+                )
+            self.core_overview_row.addWidget(card_core, 1)
             # Fila 0 en el grid de BUILD (Alineado verticalmente con Fila 1)
             self.build_grid.addWidget(
                 self._clean_item_card_large(str(wanted_name), catalog, version), 0, col
@@ -2874,18 +3030,21 @@ class LocalAnalysisDialog(QDialog):
         seen: set[str] = set()
         unique: list[str] = []
         for name in self._active_build(profile):
-            normalised = self._normalise_item_name(name)
+            normalised = self._item_id_for_name(name) or self._normalise_item_name(name)
             if not normalised or normalised in seen:
                 continue
             seen.add(normalised)
             unique.append(str(name))
 
-        def is_boots(value: str) -> bool:
-            return "botas" in str(value).casefold() or "boots" in str(value).casefold()
-
-        core_items = [name for name in unique if not is_boots(name)]
-        late_items = unique[len(core_items) :]
-        return core_items[:3], late_items[:3]
+        catalog = self._catalog_items().get("items", {})
+        boot_names = {
+            str(entry.get("name", "")).casefold()
+            for entry in catalog.values()
+            if isinstance(entry, dict) and "Boots" in entry.get("tags", [])
+        }
+        boots = [name for name in unique if name.casefold() in boot_names]
+        other_items = [name for name in unique if name.casefold() not in boot_names]
+        return other_items[:3], (boots[:1] + other_items[3:5])[:3]
 
     def _render_full_build(self, profile: dict[str, Any], style_key: str) -> None:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -2896,21 +3055,95 @@ class LocalAnalysisDialog(QDialog):
 
         # Objetos 4, 5, 6 para la Fila 1 del grid de BUILD
         _, late_items = self._build_slots(profile)
+        item_options = profile.get("item_options", {})
 
-        if not late_items:
+        botas = [
+            item
+            for item in late_items
+            if any(
+                str(entry.get("name", "")).casefold() == item.casefold()
+                and "Boots" in entry.get("tags", [])
+                for entry in catalog.values()
+                if isinstance(entry, dict)
+            )
+        ]
+        later_items = [item for item in late_items if item not in botas]
+        columna = 0
+        if botas:
+            panel_botas = QWidget()
+            layout_botas = QVBoxLayout(panel_botas)
+            layout_botas.setContentsMargins(4, 4, 4, 4)
+            layout_botas.setSpacing(4)
+            titulo_botas = QLabel("BOTAS RECOMENDADAS")
+            titulo_botas.setObjectName("localSectionTitle")
+            layout_botas.addWidget(titulo_botas)
+            for nombre in botas:
+                fila_botas = self._clean_item_row(nombre, catalog, version)
+                detalle = next(
+                    (
+                        item
+                        for item in profile.get("recommended_build_details", [])
+                        if isinstance(item, dict)
+                        and str(item.get("name", "")).casefold() == nombre.casefold()
+                    ),
+                    {},
+                )
+                origen = str(detalle.get("origin") or "SOLRALOL")
+                fila_botas.setToolTip(f"Recomendación de botas · Origen: {origen}")
+                layout_botas.addWidget(fila_botas)
+            self.build_grid.addWidget(panel_botas, 1, columna)
+            columna += 1
+
+        if isinstance(item_options, dict) and item_options:
+            for slot in ("4", "5", "6"):
+                choices = item_options.get(slot, [])
+                if not isinstance(choices, list) or not choices:
+                    continue
+                stage = QWidget()
+                stage.setObjectName("localItemStageOptions")
+                stage_layout = QVBoxLayout(stage)
+                stage_layout.setContentsMargins(4, 4, 4, 4)
+                stage_layout.setSpacing(2)
+                stage_title = QLabel(f"{slot}.º OBJETO")
+                stage_title.setObjectName("localSectionTitle")
+                stage_layout.addWidget(stage_title)
+                for choice in choices:
+                    if not isinstance(choice, dict) or not choice.get("name"):
+                        continue
+                    row = self._clean_item_row(str(choice["name"]), catalog, version)
+                    games = choice.get("games")
+                    rate = choice.get("win_rate")
+                    if isinstance(rate, (int, float)) and isinstance(
+                        games, (int, float)
+                    ):
+                        row.setToolTip(f"{float(rate):.1%} WR · {int(games)} partidas")
+                        details = QLabel(f"{float(rate):.1%} · {int(games)} partidas")
+                        details.setObjectName("localMuted")
+                        row.layout().addWidget(details)
+                    stage_layout.addWidget(row)
+                self.build_grid.addWidget(stage, 1, columna)
+                columna += 1
+        elif not later_items and not botas:
             no_data = QLabel("Sin objetos secundarios")
             aplicar_apariencia(no_data, "tarjeta")
             self.build_grid.addWidget(no_data, 1, 0)
         else:
-            for col, wanted_name in enumerate(late_items[:3]):
+            for wanted_name in later_items[: max(0, 3 - columna)]:
                 self.build_grid.addWidget(
                     self._clean_item_card_large(str(wanted_name), catalog, version),
                     1,
-                    col,
+                    columna,
                 )
+                columna += 1
 
     def _render_starter_and_spells(self, profile: dict[str, Any]) -> None:
-        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
+        """Pinta hechizos y compras iniciales conservando cantidades y estadisticas.
+
+        Parametros:
+            profile: Perfil y variante de campeon seleccionados.
+
+        Retorna:
+            None; reemplaza el contenido de las filas correspondientes."""
         while self.summoners_row.count():
             item = self.summoners_row.takeAt(0)
             if item.widget():
@@ -2922,62 +3155,164 @@ class LocalAnalysisDialog(QDialog):
                 item.widget().deleteLater()
 
         starters = profile.get("starter_items", [])
+        starter_entries = profile.get("starter_item_entries")
         spells = profile.get("summoner_spells", [])
         catalog = self._catalog_items().get("items", {})
         version = self._catalog_items().get("version", "16.17.1")
 
         if spells:
             for spell_name in spells:
-                self.summoners_row.addWidget(
-                    self._clean_spell_card_large(str(spell_name), version), 1
-                )
+                card_spell = self._clean_spell_card_large(str(spell_name), version)
+                games = profile.get("summoner_spell_matches")
+                rate = profile.get("summoner_spell_win_rate")
+                if isinstance(games, (int, float)) and isinstance(rate, (int, float)):
+                    card_spell.setToolTip(
+                        f"{float(rate):.1%} WR · {int(games)} partidas"
+                    )
+                self.summoners_row.addWidget(card_spell, 1)
         else:
             no_sp = QLabel("Sin hechizos")
             aplicar_apariencia(no_sp, "tarjeta")
             self.summoners_row.addWidget(no_sp, 1)
 
+        if isinstance(starter_entries, list) and starter_entries:
+            starters = [
+                (str(entry.get("name", "")), int(entry.get("quantity", 1) or 1))
+                for entry in starter_entries
+                if isinstance(entry, dict) and entry.get("name")
+            ]
+        elif isinstance(starters, list) and starters:
+            cantidades: dict[str, int] = {}
+            for starter in starters:
+                nombre = str(starter)
+                cantidades[nombre] = cantidades.get(nombre, 0) + 1
+            starters = list(cantidades.items())
+        else:
+            starters = []
+
         if starters:
-            for s_name in starters:
-                self.starters_row.addWidget(
-                    self._clean_item_card_large(str(s_name), catalog, version), 1
+            for s_name, cantidad in starters:
+                card_starter = self._clean_item_card_large(
+                    str(s_name), catalog, version, int(cantidad)
                 )
+                games = profile.get("starting_item_matches")
+                rate = profile.get("starting_item_win_rate")
+                if isinstance(games, (int, float)) and isinstance(rate, (int, float)):
+                    card_starter.setToolTip(
+                        f"{float(rate):.1%} WR · {int(games)} partidas"
+                    )
+                self.starters_row.addWidget(card_starter, 1)
         else:
             no_s = QLabel("Sin objetos iniciales")
             aplicar_apariencia(no_s, "tarjeta")
             self.starters_row.addWidget(no_s, 1)
 
     def _render_situational_items(self, profile: dict[str, Any]) -> None:
-        """Agrupa los objetos situacionales del perfil sin repetir la build; retorna None."""
+        """Muestra categorias situacionales y dimensiona sus listas segun las filas.
+
+        Parametros:
+            profile: Variante con alternativas situacionales normalizadas.
+
+        Retorna:
+            None; actualiza la cuadricula de recomendaciones."""
         self._clear_layout(self.situational_items_row)
 
         situational = profile.get("situational_items", {})
+        item_options = profile.get("item_options", {})
+        pipeline = profile.get("situational_item_pipeline", {})
+        nota_fuente = ""
+        if isinstance(pipeline, dict) and pipeline.get("source") == "U.GG":
+            parche_fuente = str(pipeline.get("patch") or "")
+            parche_actual = str(profile.get("source_patch") or "")
+            if parche_fuente and parche_actual and parche_fuente != parche_actual:
+                nota_fuente = (
+                    f"Opciones U.GG agrupadas localmente · datos guardados del "
+                    f"parche {parche_fuente}."
+                )
+            else:
+                nota_fuente = "Recomendaciones locales; las opciones estadísticas conservan su muestra U.GG."
+        elif isinstance(profile.get("situational_item_candidates"), list):
+            nota_fuente = "Alternativas locales ordenadas por afinidad; las opciones U.GG mantienen sus estadísticas por separado."
+        self.situational_source_note.setText(nota_fuente)
         catalog = self._catalog_items().get("items", {})
         version = self._catalog_items().get("version", "16.17.1")
+        compatibilidad_por_id = {
+            clave: item
+            for item in profile.get("situational_item_candidates", [])
+            if isinstance(item, dict)
+            for clave in (
+                str(item.get("item_id", "")),
+                self._normalise_item_name(item.get("name", "")),
+            )
+            if clave
+        }
+        opciones_por_nombre: dict[str, dict[str, Any]] = {}
+        if isinstance(item_options, dict):
+            for entries in item_options.values():
+                if not isinstance(entries, list):
+                    continue
+                for option in entries:
+                    if isinstance(option, dict) and option.get("name"):
+                        opciones_por_nombre.setdefault(
+                            str(option["name"]).casefold(), option
+                        )
+        cargados = (
+            sum(
+                len(entries)
+                for entries in situational.values()
+                if isinstance(entries, list)
+            )
+            if isinstance(situational, dict)
+            else 0
+        )
+        renderizados = 0
 
         # Un objeto que ya forma parte de la build no puede ser "situacional":
         # se filtran por nombre normalizado para que no se repitan en ambas tarjetas.
         build_names = {
-            self._normalise_item_name(name) for name in self._active_build(profile)
+            self._item_id_for_name(name) or self._normalise_item_name(name)
+            for name in self._active_build(profile)
         }
 
         categories = [
-            ("corta_curas", "Corta curas", PALETA["desventaja"]),
-            ("tanque", "Tanque / Resistencias", PALETA["teal"]),
-            ("asesino", "Asesino / Daño explosivo", PALETA["oro_suave"]),
-            ("utilidad_y_defensa", "Utilidad y Defensa", PALETA["magenta"]),
+            (
+                "corta_curas",
+                "\u271a",
+                "CORTA CURAS",
+                "Reduce la recuperaci\u00f3n de vida de enemigos con mucha sanaci\u00f3n.",
+                PALETA["desventaja"],
+            ),
+            (
+                "tanque",
+                "\u26e8",
+                "TANQUE / RESISTENCIAS",
+                "Resiste da\u00f1o f\u00edsico, m\u00e1gico y amenazas de alto impacto.",
+                PALETA["teal"],
+            ),
+            (
+                "asesino",
+                "\u2726",
+                "ASESINO / DA\u00d1O EXPLOSIVO",
+                "Potencia las ventanas de da\u00f1o y la capacidad de remate.",
+                PALETA["magenta"],
+            ),
+            (
+                "utilidad_y_defensa",
+                "\u25c8",
+                "UTILIDAD Y DEFENSA",
+                "Aporta herramientas defensivas y respuestas situacionales.",
+                PALETA["teal"],
+            ),
         ]
 
-        for posicion, (cat_key, cat_label, color) in enumerate(categories):
+        for posicion, (cat_key, icono, cat_label, descripcion, color) in enumerate(
+            categories
+        ):
             col_widget = QWidget()
             aplicar_apariencia(col_widget, "transparente")
             c_layout = QVBoxLayout(col_widget)
             c_layout.setContentsMargins(4, 2, 4, 2)
             c_layout.setSpacing(4)
-
-            header = QLabel(cat_label)
-            aplicar_color(header, color)
-            header.setWordWrap(True)
-            c_layout.addWidget(header)
 
             items_list = (
                 situational.get(cat_key, []) if isinstance(situational, dict) else []
@@ -2987,12 +3322,105 @@ class LocalAnalysisDialog(QDialog):
                 items_list = [
                     name
                     for name in items_list
-                    if self._normalise_item_name(name) not in build_names
+                    if (
+                        self._item_id_for_name(str(name))
+                        or self._normalise_item_name(name)
+                    )
+                    not in build_names
                 ]
+            header = QLabel(f"{icono}  {cat_label}  \u00b7  {len(items_list)}")
+            header.setObjectName("situationalCategoryTitle")
+            header.setStyleSheet(f"color: {color}; font-weight: 700;")
+            header.setWordWrap(True)
+            c_layout.addWidget(header)
+            description_label = QLabel(descripcion)
+            description_label.setObjectName("situationalCategoryDescription")
+            description_label.setWordWrap(True)
+            description_label.setStyleSheet("color: #afa99c; font-size: 11px;")
+            c_layout.addWidget(description_label)
             if items_list:
-                for item_name in items_list[:4]:
+                lista_widget = QWidget()
+                lista_layout = QVBoxLayout(lista_widget)
+                lista_layout.setContentsMargins(0, 0, 0, 0)
+                lista_layout.setSpacing(4)
+                alturas_fila: list[int] = []
+                for item_name in items_list:
                     chip = self._clean_item_row(str(item_name), catalog, version)
-                    c_layout.addWidget(chip)
+                    chip.ensurePolished()
+                    altura = max(56, chip.sizeHint().height())
+                    chip.setMinimumHeight(altura)
+                    alturas_fila.append(altura)
+                    item_id = self._item_id_for_name(str(item_name))
+                    candidato = compatibilidad_por_id.get(
+                        str(item_id),
+                        compatibilidad_por_id.get(
+                            self._normalise_item_name(item_name), {}
+                        ),
+                    )
+                    explicacion = "\n".join(
+                        str(valor)
+                        for valor in candidato.get("compatibility_reasons", [])[:2]
+                    )
+                    if candidato:
+                        chip.setToolTip(
+                            f"{candidato.get('compatibility_label', 'Situacional')}"
+                            + (
+                                f"\n{candidato.get('situational_reason')}"
+                                if candidato.get("situational_reason")
+                                else ""
+                            )
+                            + (f"\n{explicacion}" if explicacion else "")
+                        )
+                    option = opciones_por_nombre.get(str(item_name).casefold())
+                    if option:
+                        muestra = option.get("games")
+                        tasa = option.get("win_rate")
+                        estadistica = (
+                            f" · {float(tasa):.1%} WR · {int(muestra)} partidas"
+                            if isinstance(tasa, (int, float))
+                            and isinstance(muestra, (int, float))
+                            else ""
+                        )
+                        calidad = (
+                            " · muestra reducida"
+                            if option.get("sample_status") == "LOW_SAMPLE"
+                            else ""
+                        )
+                        chip.setToolTip(
+                            f"Opción {option.get('source', 'local')} · "
+                            f"Puesto {option.get('slot', '?')}"
+                            f"{estadistica}{calidad}"
+                        )
+                        if candidato:
+                            chip.setToolTip(
+                                f"{candidato.get('compatibility_label', 'Situacional')}\n"
+                                f"{candidato.get('situational_reason', '')}\n"
+                                f"{explicacion}\n{chip.toolTip()}"
+                            )
+                    lista_layout.addWidget(chip)
+                    renderizados += 1
+                lista_widget.setMinimumHeight(
+                    sum(alturas_fila)
+                    + max(0, len(items_list) - 1) * lista_layout.spacing()
+                )
+                scroll = QScrollArea()
+                scroll.setObjectName(f"situationalList_{cat_key}")
+                scroll.setWidgetResizable(True)
+                scroll.setHorizontalScrollBarPolicy(
+                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+                )
+                scroll.setFrameShape(QFrame.Shape.NoFrame)
+                scroll.setWidget(lista_widget)
+                cantidad_visible = min(4, len(items_list))
+                altura_visible = (
+                    sum(alturas_fila[:cantidad_visible])
+                    + max(0, cantidad_visible - 1) * lista_layout.spacing()
+                    + scroll.frameWidth() * 2
+                    + 2
+                )
+                scroll.setMinimumHeight(altura_visible)
+                scroll.setMaximumHeight(altura_visible)
+                c_layout.addWidget(scroll)
             else:
                 none_lbl = QLabel("-")
                 aplicar_apariencia(none_lbl, "metadatos")
@@ -3002,6 +3430,11 @@ class LocalAnalysisDialog(QDialog):
             self.situational_items_row.addWidget(
                 col_widget, posicion // 2, posicion % 2
             )
+        logging.getLogger(__name__).debug(
+            "Flujo de objetos situacionales: cargados=%s renderizados=%s",
+            cargados,
+            renderizados,
+        )
 
     @staticmethod
     def _missing_core_item_card(name: str, position: int) -> QFrame:
@@ -3386,6 +3819,7 @@ class LocalAnalysisDialog(QDialog):
         self._last_rank_label = rank_label
         self._modo_actualizacion = "uno" if target_champion_name else "todos"
         self._actualizacion_activa = True
+        self._last_update_partial = False
         self._temporizador_progreso.stop()
 
         self._marcar_botones_actualizacion(True)
@@ -3469,6 +3903,8 @@ class LocalAnalysisDialog(QDialog):
         texto = f"{valor}% {name}" if total == 100 else f"{valor}/{total} {name}"
         self.winrate_progress_label.setText(texto[:64])
         self.winrate_progress_label.setToolTip(name)
+        if "actualizado parcialmente" in name.casefold():
+            self._last_update_partial = True
         logging.getLogger(__name__).debug("[update] progreso: %s", texto)
 
     def _on_winrate_finished(self, total_champs: int, total_matchups: int) -> None:
@@ -3479,7 +3915,9 @@ class LocalAnalysisDialog(QDialog):
         self.winrate_progress_bar.setValue(self.winrate_progress_bar.maximum())
         self.winrate_progress_bar.setVisible(True)
         self.winrate_progress_label.setText(
-            f"Datos actualizados correctamente · {total_matchups}/{total_champs} campeones"
+            f"Datos actualizados parcialmente · {total_matchups}/{total_champs} campeones; algunas secciones no están disponibles"
+            if getattr(self, "_last_update_partial", False)
+            else f"Datos actualizados correctamente · {total_matchups}/{total_champs} campeones"
             if total_matchups == total_champs
             else f"Actualización completada con errores · {total_matchups} correctos · {total_champs - total_matchups} con error"
         )
@@ -3495,7 +3933,9 @@ class LocalAnalysisDialog(QDialog):
         self._lane_wr_cache.clear()
         if total_matchups:
             self.status.setText(
-                f"Datos de U.GG/OP.GG/Lolalytics{rank_suffix} actualizados: {total_matchups}/{total_champs} campeón/es sincronizados."
+                f"Datos de U.GG/OP.GG/Lolalytics{rank_suffix} actualizados parcialmente: {total_matchups}/{total_champs}; algunas secciones no están disponibles."
+                if getattr(self, "_last_update_partial", False)
+                else f"Datos de U.GG/OP.GG/Lolalytics{rank_suffix} actualizados: {total_matchups}/{total_champs} campeón/es sincronizados."
             )
         else:
             self.status.setText(

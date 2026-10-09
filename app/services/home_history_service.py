@@ -5,6 +5,10 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
+import threading
+import unicodedata
 from collections import Counter
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -18,6 +22,7 @@ from app.services.lcu_service import LCUService
 from app.services.live_player_metrics_service import ROLE_ALIASES
 
 logger = logging.getLogger(__name__)
+_HOME_HISTORY_LOCK = threading.RLock()
 
 
 def _log_home_history_summary(matches: list[dict[str, Any]]) -> None:
@@ -91,6 +96,103 @@ class HomeHistoryRepository:
         self.root = root or (Path.home() / ".solralol" / "profiles")
 
     @staticmethod
+    def _lock_for(path: Path) -> threading.RLock:
+        """Obtiene el cerrojo compartido que serializa accesos a una ruta.
+
+        Args:
+            path: archivo de historial que se va a leer o guardar.
+
+        Returns:
+            Cerrojo reentrante compartido para esa ruta.
+        """
+        return _HOME_HISTORY_LOCK
+
+    @staticmethod
+    def _backup_path(path: Path) -> Path:
+        """Genera una ruta nueva para preservar un JSON antes de repararlo.
+
+        Args:
+            path: archivo original que se conservará.
+
+        Returns:
+            Ruta de respaldo con marca temporal UTC.
+        """
+        marca = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        return path.with_name(f"{path.name}.recovery-{marca}.bak")
+
+    @staticmethod
+    def _write_atomic(path: Path, payload: dict[str, Any]) -> None:
+        """Guarda JSON con temporal único y reemplazo atómico.
+
+        Args:
+            path: destino del documento.
+            payload: contenido serializable que se guardará.
+
+        Returns:
+            None.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, nombre_temporal = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporal = Path(nombre_temporal)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
+                json.dump(payload, file, ensure_ascii=False, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporal, path)
+        except Exception:
+            temporal.unlink(missing_ok=True)
+            raise
+
+    @classmethod
+    def _read_document(cls, path: Path) -> tuple[dict[str, Any], bool]:
+        """Lee un JSON y reconoce cierres sobrantes tras un objeto completo.
+
+        Args:
+            path: archivo que se leerá sin modificar.
+
+        Returns:
+            Documento decodificado y estado de recuperación sintáctica.
+        """
+        raw = path.read_text(encoding="utf-8-sig")
+        try:
+            data = json.loads(raw)
+            recuperado = False
+        except json.JSONDecodeError:
+            data, fin = json.JSONDecoder().raw_decode(raw.lstrip())
+            prefijo = len(raw) - len(raw.lstrip())
+            sobrante = raw[prefijo + fin :]
+            if not sobrante or any(
+                caracter not in "}] \t\r\n" for caracter in sobrante
+            ):
+                raise
+            recuperado = True
+        if not isinstance(data, dict):
+            raise TypeError("El historial local tiene un formato incompatible.")
+        return data, recuperado
+
+    @classmethod
+    def _backup_before_repair(cls, path: Path) -> Path:
+        """Copia y verifica byte por byte el origen antes de repararlo.
+
+        Args:
+            path: archivo original que requiere reparación.
+
+        Returns:
+            Ruta de la copia verificada.
+        """
+        respaldo = cls._backup_path(path)
+        shutil.copy2(path, respaldo)
+        original_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        respaldo_hash = hashlib.sha256(respaldo.read_bytes()).hexdigest()
+        if original_hash != respaldo_hash:
+            respaldo.unlink(missing_ok=True)
+            raise OSError("No se pudo verificar el respaldo del historial.")
+        return respaldo
+
+    @staticmethod
     def account_key(profile: dict[str, Any]) -> str:
         """Devuelve una clave estable derivada del identificador local de cuenta."""
         stable_id = str(profile.get("puuid") or profile.get("summonerId") or "").strip()
@@ -102,34 +204,59 @@ class HomeHistoryRepository:
         """Lee el historial de una cuenta o devuelve un documento vacío."""
         key = self.account_key(profile)
         path = self.root / key / "match_history.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return {
+        with self._lock_for(path):
+            try:
+                data, recuperado = self._read_document(path)
+            except FileNotFoundError:
+                return {
+                    "schema_version": self.SCHEMA_VERSION,
+                    "profile_id": key,
+                    "last_sync": None,
+                    "matches": [],
+                }
+            if data.get("schema_version") != self.SCHEMA_VERSION:
+                raise ValueError(
+                    "La versión del historial local no es compatible; se conserva intacto."
+                )
+            partidas = data.get("matches", [])
+            if not isinstance(partidas, list):
+                raise TypeError(
+                    "La lista de partidas local está dañada; se conserva intacta."
+                )
+            validas = [partida for partida in partidas if isinstance(partida, dict)]
+            inutilizables = [
+                partida for partida in partidas if not isinstance(partida, dict)
+            ]
+            resultado = {
+                **data,
                 "schema_version": self.SCHEMA_VERSION,
                 "profile_id": key,
-                "last_sync": None,
-                "matches": [],
+                "last_sync": data.get("last_sync"),
+                "matches": validas,
+                "_unusable_match_records": inutilizables,
             }
-        if not isinstance(data, dict):
-            raise TypeError("El historial local tiene un formato incompatible.")
-        if data.get("schema_version") != self.SCHEMA_VERSION:
-            raise ValueError(
-                "La versión del historial local no es compatible; se conserva intacto."
-            )
-        matches = data.get("matches", [])
-        if not isinstance(matches, list) or any(
-            not isinstance(match, dict) for match in matches
-        ):
-            raise TypeError(
-                "La lista de partidas local está dañada; se conserva intacta."
-            )
-        return {
-            "schema_version": self.SCHEMA_VERSION,
-            "profile_id": key,
-            "last_sync": data.get("last_sync"),
-            "matches": matches,
-        }
+            if recuperado:
+                respaldo = self._backup_before_repair(path)
+                escritura = {
+                    campo: valor
+                    for campo, valor in resultado.items()
+                    if not campo.startswith("_")
+                }
+                escritura["matches"] = partidas
+                self._write_atomic(path, escritura)
+                logger.warning(
+                    "[home] historial reparado: cierres JSON redundantes; backup=%s registros=%s",
+                    respaldo.name,
+                    len(validas),
+                )
+            if inutilizables:
+                logger.error(
+                    "[home] historial con registros no utilizables: total=%s validos=%s preservados=%s",
+                    len(partidas),
+                    len(validas),
+                    len(inutilizables),
+                )
+            return resultado
 
     def load_last_profile(self) -> dict[str, Any] | None:
         """Devuelve el perfil de la última cuenta sincronizada localmente."""
@@ -153,21 +280,27 @@ class HomeHistoryRepository:
         self, profile: dict[str, Any], matches: list[dict[str, Any]]
     ) -> dict[str, Any]:
         """Fusiona partidas por ID o huella y guarda el resultado atómicamente."""
-        data = self.load(profile)
-        index = {
-            m.get("stable_match_id"): m
-            for m in data["matches"]
-            if m.get("stable_match_id")
-        }
-        for match in matches:
-            match_id = str(match.get("stable_match_id") or "").strip()
-            if not match_id:
-                continue
-            previous = index.get(match_id)
-            if previous is None:
-                data["matches"].append(match)
-                index[match_id] = match
-            else:
+        key = self.account_key(profile)
+        path = self.root / key / "match_history.json"
+        with self._lock_for(path):
+            data = self.load(profile)
+            registros_inutilizables = data.pop("_unusable_match_records", [])
+            index = {
+                m.get("stable_match_id"): m
+                for m in data["matches"]
+                if m.get("stable_match_id")
+            }
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                match_id = str(match.get("stable_match_id") or "").strip()
+                if not match_id:
+                    continue
+                previous = index.get(match_id)
+                if previous is None:
+                    data["matches"].append(match)
+                    index[match_id] = match
+                    continue
                 incoming_enrichment = match.get("enrichment") or {}
                 previous_enrichment = previous.get("enrichment") or {}
                 incoming_participants = match.get("participants") or []
@@ -181,10 +314,7 @@ class HomeHistoryRepository:
                     int(incoming_enrichment.get("opponent_resolver_version") or 0) >= 3
                     and incoming_participants
                 )
-                campos_detalle = {
-                    "participants",
-                    "teammates",
-                }
+                campos_detalle = {"participants", "teammates"}
                 campos_rival = {
                     "opponent",
                     "enemy_team",
@@ -193,15 +323,15 @@ class HomeHistoryRepository:
                     "opponent_champion_id",
                     "opponent_champion_name",
                 }
-                for key, value in match.items():
-                    if key == "performance_summary":
-                        if isinstance(value, dict):
-                            previous[key] = value
+                for campo, valor in match.items():
+                    if campo == "performance_summary":
+                        if isinstance(valor, dict):
+                            previous[campo] = valor
                         continue
-                    if value in (None, "", [], {}):
+                    if valor in (None, "", [], {}):
                         continue
                     if (
-                        key in campos_detalle
+                        campo in campos_detalle
                         and (
                             len(previous_participants) > len(incoming_participants)
                             or previous_enrichment.get("participants_complete")
@@ -211,52 +341,52 @@ class HomeHistoryRepository:
                     ):
                         continue
                     if (
-                        key in campos_rival
+                        campo in campos_rival
                         and not detalle_autoritativo
                         and not resolucion_actualizada
                     ):
                         continue
-                    if key == "enrichment":
+                    if campo == "enrichment":
                         if (
                             detalle_autoritativo
                             or resolucion_actualizada
                             or not previous_enrichment
                         ):
-                            previous[key] = {
+                            previous[campo] = {
                                 **previous_enrichment,
                                 **incoming_enrichment,
                             }
                         continue
-                    previous[key] = value
-        data["matches"].sort(
-            key=lambda match: str(match.get("started_at") or ""), reverse=True
-        )
-        data["last_sync"] = datetime.now(UTC).isoformat()
-        path = self.root / data["profile_id"] / "match_history.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        profile_path = path.parent / "profile.json"
-        profile_temporal = profile_path.with_name(
-            f".{profile_path.name}.{os.getpid()}.tmp"
-        )
-        profile_temporal.write_text(
-            json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(profile_temporal, profile_path)
-        temporal = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-        with temporal.open("w", encoding="utf-8", newline="\n") as file:
-            json.dump(data, file, ensure_ascii=False, indent=2)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporal, path)
+                    previous[campo] = valor
+            ordenadas = sorted(
+                data["matches"],
+                key=lambda partida: str(partida.get("started_at") or ""),
+                reverse=True,
+            )
+            data["matches"] = ordenadas
+            data["last_sync"] = datetime.now(UTC).isoformat()
+            documentos = dict(data)
+            documentos["matches"] = [*ordenadas, *registros_inutilizables]
+            profile_path = path.parent / "profile.json"
+            self._write_atomic(profile_path, profile)
+            self._write_atomic(path, documentos)
         return data
 
     def clear(self, profile: dict[str, Any]) -> None:
-        """Elimina exclusivamente el historial recordado de la cuenta indicada."""
+        """Elimina el historial de la cuenta indicada bajo el cerrojo de archivo.
+
+        Args:
+            profile: identidad estable de la cuenta propietaria del historial.
+
+        Returns:
+            None.
+        """
         path = self.root / self.account_key(profile) / "match_history.json"
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            pass
+        with self._lock_for(path):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 class LCUHomeProvider:
@@ -628,10 +758,8 @@ class LCUHomeProvider:
                 )
             except (RuntimeError, ConnectionError):
                 pass
-        if isinstance(output.get("champions"), dict):
-            output["champions"]["total_count"] = total or output["champions"].get(
-                "total_count"
-            )
+        if isinstance(output.get("champions"), dict) and total is not None:
+            output["champions"]["total_count"] = total
         return output
 
     @staticmethod
@@ -677,6 +805,8 @@ class LCUHomeProvider:
                 return None
             owned = []
             has_ownership = False
+            vistos: set[str] = set()
+            total = 0
             for item in entries:
                 if not isinstance(item, dict):
                     continue
@@ -704,17 +834,34 @@ class LCUHomeProvider:
                         "isChroma",
                     )
                 )
-                if is_owned and not excluded:
+                if category == "champions" and not excluded:
+                    champion_id = next(
+                        (
+                            str(item.get(key)).strip()
+                            for key in ("id", "championId", "key")
+                            if item.get(key) is not None and str(item.get(key)).strip()
+                        ),
+                        "",
+                    )
+                    if champion_id and champion_id not in vistos:
+                        vistos.add(champion_id)
+                        total += 1
+                        if is_owned:
+                            owned.append(champion_id)
+                elif category == "skins" and is_owned and not excluded:
                     owned.append(item)
             if entries and not has_ownership:
                 return None
             return {
                 "owned_count": len(owned),
-                "total_count": len(entries) if category == "champions" else None,
+                "total_count": total if category == "champions" else None,
             }
         if category == "champion_total":
             if isinstance(payload, dict):
-                payload = payload.get("count") or payload.get("playableChampionCount")
+                payload = payload.get(
+                    "count",
+                    payload.get("playableChampionCount"),
+                )
             return LCUHomeProvider._ranked_integer(payload)
         if category == "challenges" and isinstance(payload, (int, float)):
             return {"count": None, "points": int(payload)}
@@ -975,6 +1122,7 @@ class LCUHomeProvider:
         local_team = local_record.get("team_id")
         teammates = []
         teammate_ids: set[str] = set()
+        unresolved_teammate_count = 0
         for participant in normalized_participants:
             stable_player_id = (
                 participant.get("puuid")
@@ -991,11 +1139,16 @@ class LCUHomeProvider:
                 )
             )
             stable_player_id = str(stable_player_id or "")
-            if (
+            is_teammate = (
                 participant.get("team_id") == local_team
                 and not is_self
-                and stable_player_id
                 and not participant.get("is_bot")
+            )
+            if is_teammate and not stable_player_id:
+                unresolved_teammate_count += 1
+            if (
+                is_teammate
+                and stable_player_id
                 and stable_player_id not in teammate_ids
             ):
                 teammate_ids.add(stable_player_id)
@@ -1085,6 +1238,7 @@ class LCUHomeProvider:
                 if cls._integer(stats.get(f"perk{indice}"))
             ],
             "teammates": teammates,
+            "unresolved_teammate_count": unresolved_teammate_count,
             "enrichment": {
                 "participants_complete": len(normalized_participants) == 10,
                 "teammates_resolved": local_team is not None and len(teammates) == 4,
@@ -1536,6 +1690,7 @@ class LCUHomeProvider:
             "damage_self_mitigated": cls._integer_opcional(
                 stats, "damageSelfMitigated"
             ),
+            "final_stats": cls._participant_final_stats(stats),
             "cs": cls._integer(stats.get("minionsKilled"))
             + cls._integer(stats.get("neutralMinionsKilled")),
             "items": [cls._integer(stats.get(f"item{i}")) for i in range(7)],
@@ -1547,6 +1702,58 @@ class LCUHomeProvider:
                 participant.get("isBot") or player.get("isBot") or player.get("bot")
             ),
         }
+
+    @classmethod
+    def _participant_final_stats(cls, stats: dict[str, Any]) -> dict[str, int | None]:
+        """Normaliza las métricas finales LCU que consume BattleScore.
+
+        Args:
+            stats: estadísticas nativas del participante en el detalle LCU.
+
+        Returns:
+            Métricas reconocidas con ``None`` cuando el cliente las omite.
+        """
+        campos = {
+            "kills": ("kills",),
+            "deaths": ("deaths",),
+            "assists": ("assists",),
+            "cs": ("minionsKilled", "neutralMinionsKilled"),
+            "gold_earned": ("goldEarned",),
+            "vision_score": ("visionScore",),
+            "total_damage_dealt_to_champions": ("totalDamageDealtToChampions",),
+            "damage_dealt_to_turrets": ("damageDealtToTurrets",),
+            "turret_kills": ("turretKills",),
+            "inhibitor_kills": ("inhibitorKills",),
+            "objectives_stolen": ("objectivesStolen",),
+            "objectives_stolen_assists": ("objectivesStolenAssists",),
+            "damage_dealt_to_objectives": ("damageDealtToObjectives",),
+            "damage_taken": ("totalDamageTaken",),
+            "damage_self_mitigated": ("damageSelfMitigated",),
+            "total_time_crowd_control_dealt": (
+                "totalTimeCrowdControlDealt",
+                "timeCCingOthers",
+            ),
+            "wards_placed": ("wardsPlaced",),
+            "wards_killed": ("wardsKilled",),
+            "total_heal": ("totalHeal",),
+            "total_heals_on_teammates": ("totalHealsOnTeammates",),
+            "total_damage_shielded_on_teammates": ("totalDamageShieldedOnTeammates",),
+        }
+        salida: dict[str, int | None] = {}
+        for nombre, alias in campos.items():
+            valores = [
+                cls._integer_opcional(stats, campo)
+                for campo in alias
+                if stats.get(campo) is not None
+            ]
+            salida[nombre] = (
+                sum(valor for valor in valores if valor is not None)
+                if nombre == "cs" and valores
+                else valores[0]
+                if valores
+                else None
+            )
+        return salida
 
     @staticmethod
     def _integer_opcional(datos: dict[str, Any], clave: str) -> int | None:
@@ -1615,6 +1822,18 @@ def analyze_home_history(matches: list[dict[str, Any]]) -> dict[str, Any]:
         except (TypeError, ValueError):
             pass
     teammates = _teammate_summary(played)
+    unresolved_teammates = sum(
+        max(
+            int(match.get("unresolved_teammate_count") or 0),
+            sum(
+                1
+                for teammate in match.get("teammates", [])
+                if isinstance(teammate, dict)
+                and _teammate_identity_key(teammate) is None
+            ),
+        )
+        for match in played
+    )
     matchups, hardest_matchups = _matchup_summary(played)
     opponent_states: Counter[str] = Counter()
     for match in matches:
@@ -1648,6 +1867,7 @@ def analyze_home_history(matches: list[dict[str, Any]]) -> dict[str, Any]:
         "best_hour": _sampled_hour(played, best=True),
         "worst_hour": _sampled_hour(played, best=False),
         "teammates": teammates,
+        "unresolved_teammate_count": unresolved_teammates,
         "modes": Counter(_friendly_mode(match) for match in matches).most_common(),
         "matchups": matchups,
         "hardest_matchups": hardest_matchups,
@@ -1753,7 +1973,7 @@ def cross_reference_saved_matches(
             ),
             None,
         )
-        matched_session = next(
+        matched_session = sesion_enlazada or next(
             (
                 session
                 for session, _ in indexed_sessions
@@ -1761,7 +1981,7 @@ def cross_reference_saved_matches(
                 and _session_match_id(session).rsplit("_", 1)[-1]
                 == game_id.rsplit("_", 1)[-1]
             ),
-            sesion_enlazada,
+            None,
         )
         confidence = (
             100
@@ -1773,7 +1993,16 @@ def cross_reference_saved_matches(
             if sesion_enlazada is not None
             else 0
         )
-        if not confidence:
+        enlace_confirmado = bool(
+            sesion_enlazada is not None and matched_session is sesion_enlazada
+        )
+        id_confirmado = bool(
+            matched_session is not None
+            and game_id
+            and _session_match_id(matched_session).rsplit("_", 1)[-1]
+            == game_id.rsplit("_", 1)[-1]
+        )
+        if not confidence and sesion_enlazada is None:
             for session, scoreboard in indexed_sessions:
                 candidate = _saved_match_confidence(match, session, scoreboard)
                 if candidate > confidence:
@@ -1785,20 +2014,19 @@ def cross_reference_saved_matches(
             "matched": bool(session_id and confidence >= 85),
             "saved_match_id": session_id if confidence >= 85 else "",
             "confidence": round(confidence / 100, 2),
+            "association": "exact"
+            if enlace_confirmado or id_confirmado
+            else "similarity",
         }
         resumen = None
-        enlace_confirmado = bool(
-            sesion_enlazada is not None and matched_session is sesion_enlazada
-        )
-        id_confirmado = bool(
-            matched_session is not None
-            and game_id
-            and _session_match_id(matched_session).rsplit("_", 1)[-1]
-            == game_id.rsplit("_", 1)[-1]
-        )
         identidad_local_valida = bool(
             matched_session is not None
-            and _coincide_cuenta_local(match, matched_session, account_puuid)
+            and _coincide_cuenta_local(
+                match,
+                matched_session,
+                account_puuid,
+                asociacion_confirmada=enlace_confirmado or id_confirmado,
+            )
         )
         if (
             matched_session is not None
@@ -1831,6 +2059,7 @@ def _coincide_cuenta_local(
     match: dict[str, Any],
     session: dict[str, Any],
     account_puuid: str | None = None,
+    asociacion_confirmada: bool = False,
 ) -> bool:
     """Confirma que la cuenta local de ambos registros es la misma.
 
@@ -1838,6 +2067,7 @@ def _coincide_cuenta_local(
         match: partida del historial LCU, que puede omitir participantes.
         session: partida guardada que contiene la identidad participante local.
         account_puuid: PUUID de la cuenta activa que posee el historial.
+        asociacion_confirmada: confirma el ID exacto de sesión o de Riot Match.
 
     Returns:
         ``True`` cuando coincide el PUUID o, como respaldo, el Riot ID completo.
@@ -1871,8 +2101,8 @@ def _coincide_cuenta_local(
     participantes = match.get("participants")
     participantes = participantes if isinstance(participantes, list) else []
     if cuenta_activa:
-        if puuid_directo:
-            return puuid_directo == cuenta_activa
+        if puuid_directo == cuenta_activa:
+            return True
         participante_cuenta = next(
             (
                 participante
@@ -1884,7 +2114,13 @@ def _coincide_cuenta_local(
         )
         riot_id_guardado = _riot_id_participante_local(jugador_local, session)
         if participante_cuenta is not None and riot_id_guardado:
-            return _riot_id_participante(participante_cuenta) == riot_id_guardado
+            coincidencia_riot_id = (
+                _riot_id_participante(participante_cuenta) == riot_id_guardado
+            )
+            if coincidencia_riot_id and (not puuid_directo or asociacion_confirmada):
+                return True
+        if puuid_directo:
+            return False
         return bool(puuid_oficial and puuid_oficial == cuenta_activa)
     if puuid_directo or puuid_oficial:
         puuid_guardado = puuid_directo or puuid_oficial
@@ -2029,11 +2265,63 @@ def _sampled_hour(
     )
 
 
+def _teammate_identity_key(teammate: dict[str, Any]) -> str | None:
+    """Devuelve una clave de cuenta verificada y descarta nombres genéricos."""
+    nombre = str(teammate.get("game_name") or teammate.get("name") or "")
+    nombre_normalizado = _normalized_identity_label(nombre)
+    identificadores = (
+        ("puuid", teammate.get("puuid")),
+        ("account", teammate.get("account_id")),
+        ("summoner", teammate.get("summoner_id")),
+    )
+    for tipo, valor in identificadores:
+        identificador = str(valor or "").strip()
+        if identificador:
+            return f"{tipo}:{identificador.casefold()}"
+    identificador = str(teammate.get("stable_player_id") or "").strip()
+    if not identificador:
+        return None
+    normalizado = _normalized_identity_label(identificador)
+    if not normalizado or _is_generic_identity_label(normalizado):
+        return None
+    if nombre_normalizado and normalizado == nombre_normalizado:
+        return None
+    if "#" in identificador:
+        return None
+    return f"legacy:{identificador.casefold()}"
+
+
+def _normalized_identity_label(value: str) -> str:
+    """Normaliza texto de identidad para detectar etiquetas anonimizadas."""
+    base = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(caracter for caracter in base if not unicodedata.combining(caracter))
+
+
+def _is_generic_identity_label(value: str) -> bool:
+    """Indica si una etiqueta describe anonimato y no una cuenta concreta."""
+    compacto = re.sub(r"[^a-z0-9]+", " ", value.split("#", 1)[0]).strip()
+    compacto = re.sub(r"\s+\d+$", "", compacto)
+    etiquetas = {
+        "jugador",
+        "player",
+        "unknown",
+        "desconocido",
+        "anonimo",
+        "anonymous",
+        "streamer",
+        "hidden",
+        "oculto",
+        "jugador oculto",
+        "anonymous player",
+    }
+    return compacto in etiquetas
+
+
 def _teammate_summary(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Resume compañeros identificados con al menos dos partidas compartidas."""
     matches = _unique_match_records(matches)
     stats: dict[str, Counter[str]] = {}
-    display: dict[str, tuple[str, str]] = {}
+    display: dict[str, tuple[str, str, str]] = {}
     matches_by_player: dict[str, set[str]] = {}
     champions_by_player: dict[str, Counter[tuple[str, str]]] = {}
     last_played_by_player: dict[str, str] = {}
@@ -2045,33 +2333,40 @@ def _teammate_summary(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for teammate in match.get("teammates", []):
             if match.get("result") not in {"victory", "defeat"}:
                 continue
-            stable_id = str(
-                teammate.get("stable_player_id")
-                or f"{teammate.get('game_name', '')}#{teammate.get('tag_line', '')}"
-            ).strip()
-            if not stable_id or stable_id in seen_in_match:
+            identity_key = _teammate_identity_key(teammate)
+            if not identity_key or identity_key in seen_in_match:
                 continue
-            seen_in_match.add(stable_id)
-            stats.setdefault(stable_id, Counter())[
+            seen_in_match.add(identity_key)
+            stats.setdefault(identity_key, Counter())[
                 str(teammate.get("result") or "unknown")
             ] += 1
-            display[stable_id] = (
-                str(teammate.get("game_name") or teammate.get("name") or "Jugador"),
+            visible_name = str(teammate.get("game_name") or teammate.get("name") or "")
+            if _is_generic_identity_label(_normalized_identity_label(visible_name)):
+                visible_name = "Jugador verificado"
+            display[identity_key] = (
+                visible_name or "Jugador verificado",
                 str(teammate.get("tag_line") or ""),
+                str(
+                    teammate.get("puuid")
+                    or teammate.get("account_id")
+                    or teammate.get("summoner_id")
+                    or teammate.get("stable_player_id")
+                    or identity_key
+                ),
             )
-            matches_by_player.setdefault(stable_id, set()).add(match_id)
+            matches_by_player.setdefault(identity_key, set()).add(match_id)
             champion_id = str(teammate.get("champion_id") or "")
             champion_name = str(teammate.get("champion_name") or "")
             if champion_id:
-                champions_by_player.setdefault(stable_id, Counter())[
+                champions_by_player.setdefault(identity_key, Counter())[
                     (champion_id, champion_name)
                 ] += 1
-            last_played_by_player[stable_id] = max(
-                last_played_by_player.get(stable_id, ""),
+            last_played_by_player[identity_key] = max(
+                last_played_by_player.get(identity_key, ""),
                 str(match.get("started_at") or ""),
             )
     summaries = []
-    for stable_id, outcomes in stats.items():
+    for identity_key, outcomes in stats.items():
         games = sum(outcomes.values())
         if games < 2:
             continue
@@ -2080,7 +2375,7 @@ def _teammate_summary(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
             match
             for match in matches
             if str(match.get("game_id") or match.get("stable_match_id") or id(match))
-            not in matches_by_player[stable_id]
+            not in matches_by_player[identity_key]
         ]
         without_valid = [
             match for match in without if match.get("result") in {"victory", "defeat"}
@@ -2096,9 +2391,9 @@ def _teammate_summary(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
         )
         summaries.append(
             {
-                "stable_player_id": stable_id,
-                "name": display[stable_id][0],
-                "tag_line": display[stable_id][1],
+                "stable_player_id": display[identity_key][2],
+                "name": display[identity_key][0],
+                "tag_line": display[identity_key][1],
                 "games": games,
                 "matches_together": games,
                 "wins": wins,
@@ -2109,22 +2404,24 @@ def _teammate_summary(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "winrate_delta": round(wins * 100 / games - without_wr)
                 if without_wr is not None
                 else None,
-                "last_played_at": last_played_by_player.get(stable_id, ""),
+                "last_played_at": last_played_by_player.get(identity_key, ""),
                 "profile_icon_id": next(
                     (
                         teammate.get("profile_icon_id")
                         for match in matches
                         for teammate in match.get("teammates", [])
-                        if str(teammate.get("stable_player_id") or "") == stable_id
+                        if _teammate_identity_key(teammate) == identity_key
                         and teammate.get("profile_icon_id") is not None
                     ),
                     None,
                 ),
-                "champion_id": champions_by_player[stable_id].most_common(1)[0][0][0]
-                if champions_by_player.get(stable_id)
+                "champion_id": champions_by_player[identity_key].most_common(1)[0][0][0]
+                if champions_by_player.get(identity_key)
                 else None,
-                "champion_name": champions_by_player[stable_id].most_common(1)[0][0][1]
-                if champions_by_player.get(stable_id)
+                "champion_name": champions_by_player[identity_key].most_common(1)[0][0][
+                    1
+                ]
+                if champions_by_player.get(identity_key)
                 else "",
             }
         )

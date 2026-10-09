@@ -105,7 +105,8 @@ class FakeRecordingService:
 
 
 class RecordingsIntegrationTests(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
+        """Aísla cada prueba del cliente de League y los ajustes personales."""
         self.app = QApplication.instance() or QApplication([])
 
         # Ajustes en memoria: no se toca el settings.json del usuario.
@@ -132,6 +133,11 @@ class RecordingsIntegrationTests(unittest.TestCase):
             new=fake_settings_factory(),
         )
         self.settings_patcher.start()
+        self.game_patcher = patch(
+            "app.services.game_service.GameService.get_game_snapshot",
+            return_value=None,
+        )
+        self.game_patcher.start()
 
         from app.ui.main_window import MainWindow
 
@@ -144,9 +150,11 @@ class RecordingsIntegrationTests(unittest.TestCase):
             Path(tempfile.mkdtemp()) / "live_match_sessions.json"
         )
 
-    def tearDown(self):
+    def tearDown(self) -> None:
+        """Cierra la ventana de prueba y restaura las integraciones simuladas."""
         self.window.close()
         self.app.processEvents()
+        self.game_patcher.stop()
         self.settings_patcher.stop()
 
     def use_fake_service(self) -> FakeRecordingService:

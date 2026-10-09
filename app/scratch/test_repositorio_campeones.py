@@ -483,9 +483,26 @@ def test_preparacion_invalida_revision(
     monkeypatch.setattr(
         "requests.sessions.Session.request", Mock(side_effect=AssertionError("Red"))
     )
-    servicio = AnalisisLocalService(
-        CatalogoAnalisisLocal({}, [], {}), tmp_path, "16.17.1"
+    catalogo = CatalogoAnalisisLocal(
+        {
+            "1": {
+                "id": "1",
+                "name": "Espada",
+                "gold": {"total": 3000, "purchasable": True},
+                "maps": {"11": True},
+            },
+            "2": {
+                "id": "2",
+                "name": "Nuevo",
+                "gold": {"total": 3000, "purchasable": True},
+                "maps": {"11": True},
+            },
+        },
+        [],
+        {},
+        "16.17.1",
     )
+    servicio = AnalisisLocalService(catalogo, tmp_path, "16.17.1")
     primero = servicio.cargar(
         documento["profile"], "mid", "emerald_plus", {}, lambda: False
     )

@@ -13,11 +13,13 @@ puras que se pueden probar sin interfaz ni partidas reales.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -25,6 +27,8 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
+
+_LOGGER = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------
@@ -59,6 +63,10 @@ BITRATE_PRESETS: dict[int, str] = {
 }
 
 DEFAULT_BITRATE = 8000
+
+#: Límites de concurrencia para que la grabación no monopolice los núcleos.
+RECORDING_ENCODER_THREADS = 8
+RECORDING_FILTER_THREADS = 4
 
 #: El audio (partida + micrófono) siempre se codifica igual: es lo que menos
 #: pesa y AAC a 160 kbps es más que suficiente para el juego.
@@ -504,15 +512,30 @@ def find_ffmpeg(
     """
     key = str(configured_path or "")
     now = time.monotonic()
+    started = now
 
     if not force:
         cached = _FFMPEG_CACHE.get(key)
 
         if cached is not None and now - cached[0] < FFMPEG_LOOKUP_CACHE_SECONDS:
+            _LOGGER.debug(
+                "Búsqueda FFmpeg en caché: disponible=%s, hilo=%s (%s)",
+                bool(cached[1]),
+                threading.current_thread().name,
+                threading.get_ident(),
+            )
             return cached[1]
 
     found = _search_ffmpeg(key)
     _FFMPEG_CACHE[key] = (now, found)
+    _LOGGER.debug(
+        "Búsqueda FFmpeg finalizada: disponible=%s, duración_ms=%.1f, "
+        "hilo=%s (%s)",
+        bool(found),
+        (time.monotonic() - started) * 1000,
+        threading.current_thread().name,
+        threading.get_ident(),
+    )
 
     return found
 
@@ -630,6 +653,20 @@ def list_audio_devices(
     _AUDIO_DEVICE_CACHE[ffmpeg_path] = (now, tuple(devices))
 
     return devices
+
+
+def obtener_dispositivos_audio_cacheados(ffmpeg_path: str) -> list[str]:
+    """Devuelve el último sondeo de audio sin lanzar procesos externos.
+
+    Parámetros:
+        ffmpeg_path: Ruta del ejecutable asociado a la caché.
+
+    Retorno:
+        Lista de dispositivos del último sondeo, o una lista vacía.
+    """
+    cached = _AUDIO_DEVICE_CACHE.get(ffmpeg_path)
+
+    return list(cached[1]) if cached is not None else []
 
 
 def matches_any(name: str, hints: tuple[str, ...]) -> bool:
@@ -1049,6 +1086,8 @@ def build_ffmpeg_command(
         "error",
         "-nostats",
         "-y",
+        "-filter_complex_threads",
+        str(RECORDING_FILTER_THREADS),
         *input_args,
     ]
 
@@ -1111,6 +1150,8 @@ def build_ffmpeg_command(
         [
             "-c:v",
             "libx264",
+            "-threads:v",
+            str(RECORDING_ENCODER_THREADS),
             "-preset",
             "veryfast",
             "-profile:v",
@@ -1814,18 +1855,33 @@ class RecordingService(QObject):
         game_mode: str = "",
         session: dict[str, Any] | None = None,
     ) -> bool:
-        """Arranca una grabación. False si no se puede (ya grabando, sin
-        ffmpeg, sin carpeta escribible...)."""
-        if self.is_recording:
+        """Inicia una captura usando el FFmpeg ya resuelto en segundo plano.
+
+        Parámetros:
+            config: Preferencias de salida, calidad y audio.
+            game_time: Segundos de partida al comenzar la captura.
+            champion: Campeón local asociado a la grabación.
+            game_mode: Modo de juego asociado a la grabación.
+            session: Telemetría inicial opcional.
+
+        Retorno:
+            True si se solicitó el arranque; False si se rechazó.
+        """
+        if self.is_starting_or_recording:
             return False
 
         if not config.enabled:
             return False
 
-        self.refresh_ffmpeg(config.ffmpeg_path)
-
-        if not self.ffmpeg_available:
+        if not self.ffmpeg_available or not self.ffmpeg_path:
             self.last_error = self.ffmpeg_hint
+
+            if not self.last_error:
+                self.last_error = (
+                    "FFmpeg todavía no está listo. Espera a que termine "
+                    "la comprobación en segundo plano."
+                )
+
             self.failed.emit(self.last_error)
 
             return False
@@ -1869,7 +1925,7 @@ class RecordingService(QObject):
         system_device = ""
 
         if mode != "none":
-            available = list_audio_devices(self.ffmpeg_path)
+            available = obtener_dispositivos_audio_cacheados(self.ffmpeg_path)
             available_set = {name for name in available if name}
 
             def _resolve(saved: str, picker) -> str:
@@ -1950,24 +2006,10 @@ class RecordingService(QObject):
             "PATH", f"{workdir}{os.pathsep}{environment.value('PATH', '')}"
         )
         process.setProcessEnvironment(environment)
+        process.started.connect(self._on_process_started)
         process.errorOccurred.connect(self._on_process_error)
         process.finished.connect(self._on_process_finished)
         self.pending_process = process
-        process.start()
-
-        if not process.waitForStarted(8000):
-            self.last_error = (
-                "ffmpeg no arrancó. Revisa el dispositivo de audio "
-                "elegido en Ajustes → Grabaciones."
-            )
-            process.deleteLater()
-            self.failed.emit(self.last_error)
-            self.pending_process = None
-
-            return False
-
-        self.process = process
-        self.pending_process = None
         self.output_path = output
         self.config = config
         self.game_time_offset = max(0.0, float(game_time or 0.0))
@@ -1977,10 +2019,8 @@ class RecordingService(QObject):
         self.stop_reason = ""
         self.stop_requested = False
         self.last_error = ""
-        self.started_monotonic = time.monotonic()
         self.started_at = datetime.now(UTC)
-        self.state_changed.emit("recording")
-        self.started.emit(str(output))
+        process.start()
 
         return True
 
@@ -1993,12 +2033,16 @@ class RecordingService(QObject):
         reason: str = "game_end",
         session: dict[str, Any] | None = None,
     ) -> bool:
-        """Pide a ffmpeg que cierre la grabación de forma limpia.
+        """Solicita el cierre de ffmpeg y conserva la grabación si puede.
 
-        La señal ``finished`` llegará sola con la ruta del vídeo cuando el
-        MP4 esté escrito, con los marcadores y el límite de peso aplicados.
+        Parámetros:
+            reason: Motivo de cierre guardado en los metadatos.
+            session: Telemetría final opcional para los marcadores.
+
+        Retorno:
+            True si el cierre quedó solicitado; False si no hay proceso.
         """
-        process = self.process
+        process = self.process or self.pending_process
 
         if process is None:
             return False
@@ -2009,6 +2053,9 @@ class RecordingService(QObject):
         self.stop_reason = str(reason or "game_end")
         self.stop_requested = True
 
+        if self.process is None:
+            return True
+
         try:
             process.write(b"q")
         except RuntimeError:
@@ -2017,8 +2064,15 @@ class RecordingService(QObject):
         return True
 
     def abort(self) -> None:
-        """Para ffmpeg en seco (solo al cerrar la app si no sale solo)."""
-        process = self.process
+        """Termina ffmpeg sin finalizar el vídeo durante un cierre forzado.
+
+        Parámetros:
+            None.
+
+        Retorno:
+            None.
+        """
+        process = self.process or self.pending_process
 
         if process is None:
             return
@@ -2032,20 +2086,63 @@ class RecordingService(QObject):
             self._reset()
 
     def wait_for_stop(self, timeout_ms: int | None = None) -> bool:
-        process = self.process
+        process = self.process or self.pending_process
 
         if process is None:
             return True
 
         return bool(process.waitForFinished(timeout_ms or 3000))
 
-    def _on_process_error(self, _error: Any) -> None:
-        process = self.process
+    def _on_process_started(self) -> None:
+        """Confirma el arranque asíncrono del proceso y publica su estado.
+
+        Parámetros:
+            None.
+
+        Retorno:
+            None.
+        """
+        process = self.pending_process
 
         if process is None:
             return
 
-        if self.stop_requested or process.state() != QProcess.NotRunning:
+        self.pending_process = None
+        self.process = process
+        self.started_monotonic = time.monotonic()
+        self.state_changed.emit("recording")
+
+        if self.output_path is not None:
+            self.started.emit(str(self.output_path))
+
+        _LOGGER.debug(
+            "Grabación FFmpeg activa: pid=%s, hilo_inicio=%s (%s), "
+            "hilos_codificador=%s, hilos_filtros=%s",
+            process.processId(),
+            threading.current_thread().name,
+            threading.get_ident(),
+            RECORDING_ENCODER_THREADS,
+            RECORDING_FILTER_THREADS,
+        )
+
+        if self.stop_requested:
+            self.stop(reason=self.stop_reason, session=self.session)
+
+    def _on_process_error(self, _error: Any) -> None:
+        """Limpia una captura cuyo proceso terminó antes de forma inesperada.
+
+        Parámetros:
+            _error: Código de error emitido por QProcess.
+
+        Retorno:
+            None.
+        """
+        process = self.process or self.pending_process
+
+        if process is None:
+            return
+
+        if process.state() != QProcess.NotRunning:
             return
 
         try:
@@ -2073,7 +2170,16 @@ class RecordingService(QObject):
     def _on_process_finished(
         self, exit_code: int, _exit_status: Any
     ) -> None:
-        process = self.process
+        """Persiste metadatos al terminar el proceso de captura.
+
+        Parámetros:
+            exit_code: Código de salida de FFmpeg.
+            _exit_status: Estado de salida definido por Qt.
+
+        Retorno:
+            None.
+        """
+        process = self.process or self.pending_process
 
         if process is None:
             return
@@ -2086,6 +2192,13 @@ class RecordingService(QObject):
             and output is not None
             and output.is_file()
             and output.stat().st_size > 0
+        )
+        _LOGGER.debug(
+            "Grabación FFmpeg terminada: código=%s, cierre_limpio=%s, "
+            "duración_s=%.1f",
+            exit_code,
+            stopped_cleanly,
+            duration,
         )
         self._reset()
 
@@ -2152,7 +2265,17 @@ class RecordingService(QObject):
         self.finished.emit(str(output))
 
     def _reset(self) -> None:
-        process, self.process = self.process, None
+        """Libera el proceso activo y devuelve el servicio al estado inactivo.
+
+        Parámetros:
+            None.
+
+        Retorno:
+            None.
+        """
+        process = self.process or self.pending_process
+        self.process = None
+        self.pending_process = None
         self.output_path = None
         self.stop_requested = False
 

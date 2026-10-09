@@ -354,7 +354,9 @@ class LiveRecommendationService:
     ) -> list[dict[str, Any]]:
         """Clasifica enemigos, hora y muestras; devuelve señales con puntaje provisional."""
         rows = []
-        bajas_totales = sum(number(jugador.get("kills")) for jugador in enemies.values())
+        bajas_totales = sum(
+            number(jugador.get("kills")) for jugador in enemies.values()
+        )
         entradas_puntuacion = []
         for key, player in enemies.items():
             champ = str(player.get("champion_name", "?"))
@@ -433,8 +435,11 @@ class LiveRecommendationService:
             }
             entradas_puntuacion.append(
                 EntradaRendimientoJugador(
-                    str(key), champ, str(player.get("team") or "enemy"),
-                    str(player.get("role") or "UNKNOWN"), datos_puntuacion
+                    str(key),
+                    champ,
+                    str(player.get("team") or "enemy"),
+                    str(player.get("role") or "UNKNOWN"),
+                    datos_puntuacion,
                 )
             )
             rows.append(
@@ -453,23 +458,38 @@ class LiveRecommendationService:
                     "stale": stale,
                 }
             )
-        puntuaciones = clasificar_jugadores(entradas_puntuacion, int(max(0, now)), modo="live")["by_id"]
+        puntuaciones = clasificar_jugadores(
+            entradas_puntuacion, int(max(0, now)), modo="live"
+        )["by_id"]
         for fila in rows:
             resultado = puntuaciones.get(str(fila["key"]))
             fila["performance_score"] = resultado
-            fila["strength"] = resultado["total"] if resultado and resultado["completeness"] > 0 else None
+            fila["strength"] = (
+                resultado["total"]
+                if resultado and resultado["completeness"] > 0
+                else None
+            )
             fila["strength_label"] = ""
         medibles = [fila for fila in rows if fila["strength"] is not None]
-        if medibles:
-            mayor = max(fila["strength"] for fila in medibles)
-            menor = min(fila["strength"] for fila in medibles)
-            for fila in medibles:
-                if mayor == menor:
-                    fila["strength_label"] = "FUERZA SIMILAR · PROVISIONAL"
-                elif fila["strength"] == mayor:
-                    fila["strength_label"] = "MÁS FUERTE · PROVISIONAL"
-                elif fila["strength"] == menor:
-                    fila["strength_label"] = "MÁS DÉBIL · PROVISIONAL"
+        orden_rendimiento = sorted(
+            medibles,
+            key=lambda fila: (
+                -fila["strength"],
+                canonical(fila["champion"]),
+                str(fila["key"]),
+            ),
+        )
+        for indice, fila in enumerate(orden_rendimiento, 1):
+            fila["performance_rank"] = indice
+            fila["performance_score_100"] = round(
+                max(0, min(100, fila["strength"] / 10)), 1
+            )
+            fila["strength_label"] = f"RENDIMIENTO PROVISIONAL · #{indice}"
+        if len(medibles) < 2:
+            for fila in rows:
+                fila["performance_rank"] = None
+                fila["performance_score_100"] = None
+                fila["strength_label"] = "RANKING NO DISPONIBLE · DATOS INSUFICIENTES"
         return sorted(
             rows,
             key=lambda r: (
@@ -695,6 +715,7 @@ class LiveRecommendationService:
                     owned,
                     threats,
                     physical_share,
+                    map_id,
                 )
                 if scored:
                     row["score"] = scored["score"]
@@ -803,20 +824,31 @@ class LiveRecommendationService:
         rows = []
         for ident, item in pool.items():
             row = self._score_candidate(
-                ident, item, profile, champ, owned, threats, physical_share
+                ident, item, profile, champ, owned, threats, physical_share, map_id
             )
             if row:
                 rows.append(row)
         return sorted(rows, key=lambda r: (-r["score"], -r["invested"], r["id"]))[:8]
 
     def _score_candidate(
-        self, ident, item, profile, champ, owned, threats, physical_share
-    ):
-        """Afinidad de un único candidato, en la misma escala que las recomendaciones ordenadas."""
+        self,
+        ident: str,
+        item: dict[str, Any],
+        profile: dict[str, Any],
+        champ: str,
+        owned: list[str],
+        threats: list[dict[str, Any]],
+        physical_share: float,
+        map_id: str,
+    ) -> dict[str, Any] | None:
+        """Puntúa un candidato legal para mapa y perfil y devuelve su fila o None."""
         basic = profile.get("basic_info", {})
         damage = basic.get("damage_type", "")
         style = basic.get("play_style", "")
-        base = self.synergy.rank_items(profile, style, {ident: item}, [], limit=1)
+        mode = "ARAM" if str(map_id) == "12" else "SR_RANKED_SOLO_DUO"
+        base = self.synergy.rank_items(
+            profile, style, {ident: item}, [], limit=1, game_mode=mode
+        )
         if not base:
             return None
         rec = base[0]

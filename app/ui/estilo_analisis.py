@@ -18,6 +18,7 @@ QLabel#localChampionSubtitle {color:$marfil; font-size:15px;}
 QLabel#localChampionStat {color:$marfil; font-size:18px; font-weight:700;}
 QLabel#localStatCaption {color:$secundario; font-size:11px;}
 QLabel#localChampionBadge, QLabel#localStyleValue {color:$oro_suave; background:$calida; border:1px solid $oro_oscuro; border-radius:6px; padding:6px 10px; font-weight:600;}
+QLabel#localChampionSampleBadge {color:$marfil; background:#28251d; border:1px solid $oro_oscuro; border-radius:6px; padding:6px 10px; font-weight:600;}
 QLabel#localChampionPortrait {background:$base; border:1px solid $oro; border-radius:14px;}
 QLabel#localRuneSummary {color:$secundario; font-size:12px;}
 QLabel#winrateProgressLabel {color:$secundario; font-size:12px;}

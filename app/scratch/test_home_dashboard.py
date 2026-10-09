@@ -299,6 +299,142 @@ def test_collection_panel_keeps_progression_metrics_structured() -> None:
     dashboard.close()
 
 
+def test_matchups_render_on_first_show_at_all_desktop_sizes() -> None:
+    """Comprueba que los grupos y filas aparecen sin depender de un resize."""
+    app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    dashboard.resize(0, 0)
+    analytics = {
+        "total": 12,
+        "opponent_exact": 12,
+        "opponent_probable": 0,
+        "opponent_ambiguous": 0,
+        "opponent_unavailable": 0,
+        "hardest_matchups": [
+            {"champion": "Darius", "games": 4, "winrate": 25},
+            {"champion": "Jax", "games": 3, "winrate": 33},
+        ],
+        "matchups": [
+            {"champion": "Zac", "games": 4, "winrate": 75},
+            {"champion": "Vladimir", "games": 3, "winrate": 67},
+        ],
+        "teammates": [],
+    }
+    matches = [
+        {"stable_match_id": str(index), "result": "victory"} for index in range(12)
+    ]
+    dashboard.set_dashboard_data(None, {"matches": matches}, analytics, "Local")
+    viewport = QScrollArea()
+    viewport.setWidgetResizable(True)
+    viewport.setWidget(dashboard)
+
+    for width, height in ((1366, 768), (1600, 900), (1920, 1080), (2560, 1440)):
+        viewport.resize(width, height)
+        viewport.show()
+        app.processEvents()
+        rows = dashboard.insights_card.findChildren(QFrame, "homeMatchupRow")
+        assert len(rows) == 4
+        assert all(
+            row.isVisible() and row.width() > 0 and row.height() >= 52 for row in rows
+        )
+        assert all(
+            dashboard.matchups_grid_host.rect().contains(group.geometry())
+            for group in dashboard.matchups_groups
+        )
+        counts_before = tuple(
+            group.findChildren(QFrame, "homeMatchupRow").__len__()
+            for group in dashboard.matchups_groups
+        )
+        dashboard.resize(width - 80, height)
+        app.processEvents()
+        counts_after = tuple(
+            group.findChildren(QFrame, "homeMatchupRow").__len__()
+            for group in dashboard.matchups_groups
+        )
+        assert counts_after == counts_before == (2, 2)
+        viewport.hide()
+
+    dashboard.close()
+    viewport.close()
+
+
+def test_async_matchup_data_replaces_initial_empty_grid_without_resize() -> None:
+    """Verifica la transición de carga vacía a rankings al mismo ancho."""
+    app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    viewport = QScrollArea()
+    viewport.setWidgetResizable(True)
+    viewport.setWidget(dashboard)
+    viewport.resize(1600, 900)
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": []},
+        {"total": 0, "teammates": [], "matchups": [], "hardest_matchups": []},
+        "Cargando",
+    )
+    viewport.show()
+    app.processEvents()
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": [{"stable_match_id": "1", "result": "victory"}]},
+        {
+            "total": 1,
+            "teammates": [],
+            "matchups": [{"champion": "Zac", "games": 3, "winrate": 67}],
+            "hardest_matchups": [{"champion": "Darius", "games": 3, "winrate": 33}],
+        },
+        "Local",
+    )
+    app.processEvents()
+
+    rows = dashboard.insights_card.findChildren(QFrame, "homeMatchupRow")
+    assert len(rows) == 2
+    assert all(row.isVisible() and row.width() > 0 and row.height() > 0 for row in rows)
+    assert dashboard.matchups_grid.count() == 2
+
+    dashboard.close()
+    viewport.close()
+
+
+def test_collection_ownership_labels_and_unavailable_state() -> None:
+    """Explica propiedad, porcentaje, colección completa y falta de consulta."""
+    _app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": []},
+        {"total": 0, "teammates": [], "matchups": []},
+        "Local",
+        {"champions": {"owned_count": 250, "total_count": 251}},
+    )
+    textos = [label.text() for label in dashboard.collection_card.findChildren(QLabel)]
+    assert "CAMPEONES EN PROPIEDAD" in textos
+    assert "250 de 251 campeones" in textos
+    assert "99,6% de la colección" in textos
+    assert "Te falta 1 campeón para completar la colección." in textos
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": []},
+        {"total": 0, "teammates": [], "matchups": []},
+        "Local",
+        {"champions": {"owned_count": 251, "total_count": 251}},
+    )
+    assert "Colección completa" in [
+        label.text() for label in dashboard.collection_card.findChildren(QLabel)
+    ]
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": []},
+        {"total": 0, "teammates": [], "matchups": []},
+        "Local",
+        {"champions": None},
+    )
+    assert "No se pudo consultar la colección de campeones" in [
+        label.text() for label in dashboard.collection_card.findChildren(QLabel)
+    ]
+    dashboard.close()
+
+
 def test_home_dashboard_renders_history_in_bounded_batches() -> None:
     app = QApplication.instance() or QApplication([])
     dashboard = HomeDashboard()
@@ -380,6 +516,14 @@ def test_analyzable_badge_emits_saved_session_identifier() -> None:
                     "stable_match_id": "42",
                     "result": "victory",
                     "champion_name": "Briar",
+                    "performance_summary": {
+                        "points": 671,
+                        "global_rank": 6,
+                        "award": "",
+                        "version": 4,
+                        "calibration_version": "2026.10",
+                        "state": "POSTGAME_FINAL",
+                    },
                     "analyzable": True,
                     "saved_match_link": {
                         "matched": True,
@@ -396,9 +540,125 @@ def test_analyzable_badge_emits_saved_session_identifier() -> None:
     dashboard.saved_match_requested.connect(received.append)
     badge = dashboard.findChild(QPushButton, "homeAnalyzableBadge")
     assert badge is not None and badge.isEnabled()
+    score = dashboard.findChild(QLabel, "homePerformanceScore")
+    assert score is not None
+    assert score.text() == "671p · 6º"
 
     badge.click()
     app.processEvents()
 
     assert received == ["session-42"]
+    dashboard.close()
+
+
+def test_home_score_and_analyzable_badges_fit_all_supported_viewports() -> None:
+    """Mantiene puntuación y acceso visibles en resoluciones de escritorio."""
+    app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    dashboard.set_dashboard_data(
+        None,
+        {
+            "matches": [
+                {
+                    "stable_match_id": "briar-1",
+                    "game_id": "briar-1",
+                    "result": "defeat",
+                    "champion_name": "Briar",
+                    "opponent_champion_name": "Naafiri",
+                    "lane": "jungle",
+                    "duration_seconds": 1971,
+                    "kills": 12,
+                    "deaths": 7,
+                    "assists": 4,
+                    "cs": 225,
+                    "started_at": "2026-10-08T18:00:00+00:00",
+                    "performance_summary": {
+                        "points": 671,
+                        "global_rank": 6,
+                        "award": "",
+                        "version": 4,
+                        "calibration_version": "2026.10",
+                        "state": "POSTGAME_FINAL",
+                    },
+                    "analyzable": True,
+                    "saved_match_link": {
+                        "matched": True,
+                        "saved_match_id": "session-briar-1",
+                        "confidence": 1.0,
+                    },
+                }
+            ]
+        },
+        {"total": 1, "played": 1, "teammates": [], "matchups": []},
+        "Historial sincronizado",
+    )
+    dashboard.show()
+    app.processEvents()
+
+    for width, height in ((1366, 768), (1600, 900), (1920, 1080), (2560, 1440)):
+        dashboard.resize(width, height)
+        app.processEvents()
+        score = dashboard.findChild(QLabel, "homePerformanceScore")
+        badge = dashboard.findChild(QPushButton, "homeAnalyzableBadge")
+        assert score is not None and score.isVisible()
+        assert badge is not None and badge.isVisible() and badge.isEnabled()
+        assert not score.geometry().intersects(badge.geometry())
+        assert score.text() == "671p · 6º"
+
+    dashboard.close()
+
+
+def test_home_score_refresh_preserves_history_filter_and_scroll_position() -> None:
+    """Actualiza BattleScore sin devolver la lista al principio ni limpiar filtros."""
+    app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    matches = [
+        {
+            "stable_match_id": str(index),
+            "game_id": str(index),
+            "result": "defeat",
+            "champion_name": "Briar",
+            "mode": "CLASSIC",
+            "queue_id": 430,
+            "started_at": f"2026-10-{(index % 28) + 1:02d}T18:00:00+00:00",
+        }
+        for index in range(60)
+    ]
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": matches},
+        {"total": 60, "played": 60, "teammates": [], "matchups": []},
+        "Historial local",
+    )
+    dashboard.show()
+    app.processEvents()
+    dashboard.filter_combo.setCurrentIndex(dashboard.filter_combo.findData("normal"))
+    app.processEvents()
+    scrollbar = dashboard.history_scroll.verticalScrollBar()
+    scrollbar.setValue(scrollbar.maximum())
+    app.processEvents()
+    posicion = scrollbar.value()
+    assert posicion > 0
+
+    matches[0] = {
+        **matches[0],
+        "performance_summary": {
+            "points": 671,
+            "global_rank": 6,
+            "award": "",
+            "version": 4,
+            "calibration_version": "2026.10",
+            "state": "POSTGAME_FINAL",
+        },
+    }
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": matches, "last_sync": "2026-10-09T12:00:00+00:00"},
+        {"total": 60, "played": 60, "teammates": [], "matchups": []},
+        "Puntuaciones actualizadas",
+    )
+    app.processEvents()
+
+    assert dashboard.filter_combo.currentData() == "normal"
+    assert dashboard.history_scroll.verticalScrollBar().value() == posicion
     dashboard.close()

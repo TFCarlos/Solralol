@@ -14,7 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QCloseEvent, QPixmap
-from PySide6.QtWidgets import QApplication, QComboBox
+from PySide6.QtWidgets import QApplication, QComboBox, QTabWidget
 
 from app.services.analisis_local_service import AnalisisLocalService
 from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
@@ -52,7 +52,8 @@ def catalogo() -> CatalogoAnalisisLocal:
                 "name": "Espada",
                 "name_en": "Sword",
                 "colloq": "hoja",
-                "gold": {"total": 3000},
+                "gold": {"total": 3000, "purchasable": True},
+                "maps": {"11": True},
                 "stats": {},
             }
         },
@@ -98,6 +99,73 @@ def test_catalogo(catalogo: CatalogoAnalisisLocal) -> None:
     objetos = catalogo.objetos_recomendables()
     assert "1" in objetos
     assert catalogo.objetos_recomendables() is objetos
+
+
+def test_cache_historica_no_muestra_objetos_ilegales_en_situacionales(
+    servicio: AnalisisLocalService,
+) -> None:
+    """Filtra referencias ilegales de una matriz antigua al preparar la vista."""
+    import json
+
+    ruta_items = Path("data/items.json")
+    datos_items = json.loads(ruta_items.read_text(encoding="utf-8"))["items"]
+    servicio.catalogo = CatalogoAnalisisLocal(
+        datos_items,
+        [
+            {
+                "id": "6692",
+                "basic_info": {"id": "6692", "name": "Eclipse"},
+            }
+        ],
+        {},
+        "16.20.1",
+    )
+    variante_antigua = {
+        "situational_items": {
+            "utilidad_y_defensa": ["Eclipse", "Comecarne", "Bendición de Mikael"]
+        },
+        "situational_item_candidates": [
+            {"item_id": "6692", "name": "Eclipse"},
+            {"item_id": "667112", "name": "Comecarne"},
+            {"item_id": "3222", "name": "Bendición de Mikael"},
+        ],
+    }
+
+    resultado = servicio._filtrar_recomendaciones_ilegales(variante_antigua, "Aatrox")
+
+    assert resultado["situational_items"]["utilidad_y_defensa"] == ["Eclipse"]
+    assert [
+        candidato["item_id"] for candidato in resultado["situational_item_candidates"]
+    ] == ["6692"]
+    assert len(variante_antigua["situational_item_candidates"]) == 3
+
+
+def test_filtrado_de_build_conserva_objetos_iniciales_consumibles_y_cantidad(
+    servicio: AnalisisLocalService,
+) -> None:
+    """Valida compras iniciales en la tienda sin someterlas a reglas de objetos completos."""
+    import json
+
+    catalogo = json.loads(Path("data/items.json").read_text(encoding="utf-8"))["items"]
+    servicio.catalogo = CatalogoAnalisisLocal(catalogo, [], {}, "16.20.1")
+    variante = {
+        "starter_items": ["Espada de Doran", "Poción de vida", "Poción de vida"],
+        "starter_item_ids": [1055, 2003, 2003],
+        "starter_item_entries": [
+            {"item_id": 1055, "name": "Espada de Doran", "quantity": 1},
+            {"item_id": 2003, "name": "Poción de vida", "quantity": 2},
+        ],
+    }
+
+    resultado = servicio._filtrar_recomendaciones_ilegales(variante, "Aatrox")
+
+    assert resultado["starter_item_ids"] == [1055, 2003, 2003]
+    assert resultado["starter_items"] == [
+        "Espada de Doran",
+        "Poción de vida",
+        "Poción de vida",
+    ]
+    assert resultado["starter_item_entries"][1]["quantity"] == 2
 
 
 def test_carga_y_cache(
@@ -203,6 +271,83 @@ def test_estilos_compartidos(dialogo: LocalAnalysisDialog) -> None:
         assert selector.view().window().objectName() == "localSelectorPopup"
         assert selector.view().window().styleSheet() == dialogo.styleSheet()
     assert "QComboBox#analysisLaneCombo" not in dialogo.styleSheet()
+
+
+def test_retrato_local_visible_sin_estadisticas(
+    dialogo: LocalAnalysisDialog,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Conserva el retrato local cuando la combinación todavía no tiene datos."""
+    imagen = QPixmap(16, 16)
+    imagen.fill()
+    ruta = tmp_path / "aatrox.png"
+    assert imagen.save(str(ruta))
+    monkeypatch.setattr(
+        dialogo._servicio_analisis,
+        "recurso",
+        Mock(return_value=(ruta, ruta.read_bytes())),
+    )
+    dialogo._mostrar_retrato_local("Aatrox")
+    assert not dialogo.champion_portrait.pixmap().isNull()
+
+
+def test_badge_muestra_reducida_es_visible(dialogo: LocalAnalysisDialog) -> None:
+    """Verifica que la cabecera puede comunicar la muestra limitada en español."""
+    dialogo.champion_sample_badge.setText("Muestra reducida · 7 partidas")
+    dialogo.champion_sample_badge.show()
+    assert dialogo.champion_sample_badge.text() == "Muestra reducida · 7 partidas"
+    assert not dialogo.champion_sample_badge.isHidden()
+
+
+def test_etiqueta_linea_muestra_conteo_bajo(dialogo: LocalAnalysisDialog) -> None:
+    """Muestra partidas aunque la tasa se haya omitido en el registro antiguo."""
+    dialogo._active_variant = {
+        "lane_stats": {"rank": "emerald_plus", "lanes": {"mid": {"games": 7}}}
+    }
+    dialogo.analysis_lane_combo.setCurrentIndex(
+        dialogo.analysis_lane_combo.findData("mid")
+    )
+    assert dialogo._lane_display_label() == "Mid · 7 partidas"
+
+
+@pytest.mark.parametrize(
+    "tamano", [(1366, 768), (1600, 900), (1920, 1080), (2560, 1440)]
+)
+def test_muestra_reducida_en_resoluciones_de_escritorio(
+    dialogo: LocalAnalysisDialog,
+    aplicacion: QApplication,
+    perfil: dict,
+    tamano: tuple[int, int],
+) -> None:
+    """Comprueba el badge y las pestañas al redimensionar el análisis local."""
+    dialogo.resize(*tamano)
+    datos = {
+        "perfil": perfil,
+        "variante": {
+            "role": "support",
+            "sample_size": 7,
+            "sample_status": "LOW_SAMPLE",
+        },
+        "recomendaciones": [],
+        "objetos": {},
+        "metadatos": {},
+        "rutas": {},
+        "imagenes": {},
+    }
+    dialogo._recibir_analisis(
+        dialogo._generacion_analisis, dialogo._active_variant_key, datos
+    )
+    dialogo.show()
+    aplicacion.processEvents()
+    tabs = dialogo.findChild(QTabWidget, "localAnalysisTabs")
+
+    assert tabs is not None
+    assert tabs.count() == 3
+    assert dialogo.champion_sample_badge.isVisible()
+    assert dialogo.champion_sample_badge.text() == "Muestra reducida · 7 partidas"
+    assert dialogo.size().width() == tamano[0]
+    dialogo.hide()
 
 
 def test_selector_seis_rangos(dialogo: LocalAnalysisDialog) -> None:
@@ -324,7 +469,11 @@ def test_render_sin_red(
     monkeypatch.setattr(requests, "get", Mock(side_effect=AssertionError("Red en UI")))
     datos = {
         "perfil": perfil,
-        "variante": {"role": "support"},
+        "variante": {
+            "role": "support",
+            "sample_size": 7,
+            "sample_status": "LOW_SAMPLE",
+        },
         "recomendaciones": [],
         "objetos": {},
         "metadatos": {},
@@ -336,6 +485,8 @@ def test_render_sin_red(
         dialogo._generacion_analisis, dialogo._active_variant_key, datos
     )
     assert dialogo._current_profile["character"] == "Prueba"
+    assert dialogo.champion_sample_badge.text() == "Muestra reducida · 7 partidas"
+    assert not dialogo.champion_sample_badge.isHidden()
     assert dialogo.status.text() == "Análisis actualizado"
     assert dialogo._pixmap_analisis(Path("inexistente")).isNull()
     assert dialogo._recurso_analisis("ability", "Prueba", "Q") is None

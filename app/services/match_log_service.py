@@ -132,6 +132,7 @@ class MatchLogService:
                 "player_riot_id", local_player.get("riot_id", "Desconocido")
             ),
             "game_mode": game_mode,
+            "game_version": str(session.get("game_version") or ""),
             "started_at": started_at,
             "ended_at": ended_at,
             "duration_seconds": round(duration, 1),
@@ -146,7 +147,10 @@ class MatchLogService:
         user_stats_dict = self._extract_player_stats(local_key, local_player, session)
         user_stats = {
             "champion": champion_name,
+            "player_name": metadata["player_riot_id"],
             "role": local_player.get("role", "UNKNOWN"),
+            "runes": local_player.get("runes", {}),
+            "summoner_spells": local_player.get("summoner_spells", {}),
             "team": local_team,
             "win": user_win,
             **user_stats_dict,
@@ -169,6 +173,8 @@ class MatchLogService:
                     "team": p_team,
                     "is_ally": is_ally,
                     "role": p_meta.get("role", "UNKNOWN"),
+                    "runes": p_meta.get("runes", {}),
+                    "summoner_spells": p_meta.get("summoner_spells", {}),
                     "win": p_win,
                     "result": "VICTORIA" if p_win else "DERROTA",
                     "cs_per_min": round(p_stats["cs"] / max(1.0, duration / 60.0), 1),
@@ -214,6 +220,7 @@ class MatchLogService:
 
         return {
             "metadata": metadata,
+            "local_player_key": local_key,
             "user_stats": user_stats,
             "all_players": all_players_summary,
             "events_count": len(events_chronology),

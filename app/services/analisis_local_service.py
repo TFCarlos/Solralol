@@ -12,6 +12,7 @@ from typing import Any
 import data_dragon
 from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
 from app.services.champion_variant_service import ChampionVariantService
+from app.services.elegibilidad_objetos import MODO_SOLOQ
 from app.services.preparador_datos_campeon import combinar_perfil
 from app.services.rangos_campeones import normalizar_rango
 from app.services.repositorio_campeones import EstadoDatos
@@ -120,7 +121,7 @@ class AnalisisLocalService:
         rango = normalizar_rango(rango) or rango
         campeon = str(perfil.get("character", ""))
         consulta = self.variantes.repositorio.consultar(campeon, linea, rango)
-        variante = consulta.datos
+        variante = copy.deepcopy(consulta.datos)
         if consulta.estado != EstadoDatos.DISPONIBLE:
             return {
                 "estado": consulta.estado.value,
@@ -128,6 +129,7 @@ class AnalisisLocalService:
                 "perfil": {},
                 "variante": None,
                 "recomendaciones": [],
+                "candidatos_afinidad": [],
                 "objetos": {},
                 "metadatos": {},
                 "rutas": {},
@@ -136,6 +138,7 @@ class AnalisisLocalService:
             }
         if cancelado():
             raise InterruptedError("Análisis sustituido")
+        variante = self._filtrar_recomendaciones_ilegales(variante, campeon)
         clave_preparacion = (campeon, linea, rango, consulta.revision, self.version)
         anterior = self._preparados.get(clave_preparacion)
         if anterior is not None:
@@ -151,7 +154,9 @@ class AnalisisLocalService:
                     "total_ms": (perf_counter() - inicio) * 1000,
                 },
             )
-        combinado = combinar_perfil(consulta.perfil or perfil, variante)
+        combinado = self._filtrar_recomendaciones_ilegales(
+            combinar_perfil(consulta.perfil or perfil, variante), campeon
+        )
         estadisticas = variante.get("lane_stats")
         if not isinstance(estadisticas, dict):
             variante = dict(
@@ -163,16 +168,28 @@ class AnalisisLocalService:
             )
         fin_variante = perf_counter()
         objetos = self.catalogo.objetos_recomendables()
-        recomendaciones = [
+        candidatos_guardados = variante.get("item_candidates")
+        fuente_recomendaciones = (
+            candidatos_guardados
+            if isinstance(candidatos_guardados, list) and candidatos_guardados
+            else variante.get("recommendations", [])
+        )
+        candidatos_afinidad = [
             ItemRecommendation(
                 str(valor["item_id"]),
                 str(valor["name"]),
                 float(valor["score"]),
                 tuple(valor["reasons"]),
                 tuple(valor["counter_reasons"]),
+                str(valor.get("compatibility_label", "Situacional")),
+                tuple(valor.get("compatibility_reasons", [])),
+                float(valor.get("compatibility_score", 0.0)),
+                float(valor.get("matchup_score", 0.0)),
+                float(valor.get("build_synergy_score", 0.0)),
             )
-            for valor in variante.get("recommendations", [])
+            for valor in fuente_recomendaciones
         ]
+        recomendaciones = candidatos_afinidad[:30]
         fin_calculo = perf_counter()
         if campeon not in self.metadatos:
             self.metadatos[campeon] = data_dragon.get_champion_data(
@@ -219,6 +236,9 @@ class AnalisisLocalService:
             "most_played_build",
             "starter_items",
             "situational_items",
+            "situational_item_candidates",
+            "item_candidates",
+            "recommended_build",
             "power_curve_and_scaling",
         ):
             nombres_objetos.update(self.textos(combinado.get(campo)))
@@ -246,6 +266,7 @@ class AnalisisLocalService:
             "perfil": combinado,
             "variante": variante,
             "recomendaciones": recomendaciones,
+            "candidatos_afinidad": candidatos_afinidad,
             "objetos": objetos,
             "metadatos": self.metadatos[campeon],
             "rutas": rutas,
@@ -256,3 +277,113 @@ class AnalisisLocalService:
             self._preparados.pop(next(iter(self._preparados)))
         self._preparados[clave_preparacion] = preparado
         return preparado
+
+    def _filtrar_recomendaciones_ilegales(
+        self, variante: dict[str, Any], campeon: str
+    ) -> dict[str, Any]:
+        """Filtra recomendaciones históricas que no son legales en SoloQ.
+
+        Parámetros:
+            variante: Datos locales de una línea y un rango.
+            campeon: Identificador canónico del campeón seleccionado.
+
+        Retorna:
+            Una copia con referencias de objetos no elegibles retiradas.
+        """
+        objetos_legales = self.catalogo.objetos_recomendables()
+        ids_legales = {str(identificador) for identificador in objetos_legales}
+        campos_lista = {
+            "most_played_build",
+            "power_spike_items",
+            "core_items",
+            "boots",
+            "later_item_options",
+            "recommended_build",
+            "recommended_build_details",
+            "situational_item_candidates",
+            "item_candidates",
+            "recommendations",
+        }
+
+        def referencia_legal(valor: Any) -> bool:
+            """Comprueba la elegibilidad SoloQ de una referencia de objeto."""
+            if isinstance(valor, dict):
+                identificador = str(valor.get("item_id") or valor.get("id") or "")
+                nombre = str(
+                    valor.get("name")
+                    or valor.get("item")
+                    or (valor.get("basic_info") or {}).get("name", "")
+                )
+            else:
+                identificador = str(valor)
+                nombre = str(valor)
+            if identificador not in ids_legales:
+                identificador = self.catalogo.id_por_nombre(
+                    nombre, self.catalogo.catalogo
+                )
+            if not identificador:
+                return False
+            return (
+                identificador in ids_legales
+                and self.catalogo.validar_elegibilidad(
+                    identificador,
+                    objetos_legales[identificador],
+                    campeon,
+                    MODO_SOLOQ,
+                ).elegible
+            )
+
+        def filtrar(valor: Any) -> Any:
+            """Conserva solo referencias elegibles en listas o grupos."""
+            if isinstance(valor, list):
+                return [elemento for elemento in valor if referencia_legal(elemento)]
+            if isinstance(valor, dict):
+                return {
+                    clave: filtrar(elementos)
+                    for clave, elementos in valor.items()
+                    if isinstance(elementos, list)
+                }
+            return valor
+
+        resultado = copy.deepcopy(variante)
+        for campo in campos_lista:
+            if campo in resultado:
+                resultado[campo] = filtrar(resultado[campo])
+        entradas_iniciales = resultado.get("starter_item_entries")
+        if isinstance(entradas_iniciales, list) and entradas_iniciales:
+            resultado["starter_item_entries"] = [
+                entrada
+                for entrada in entradas_iniciales
+                if isinstance(entrada, dict)
+                and self.catalogo.validar_objeto_inicial(
+                    str(entrada.get("item_id", "")), campeon, MODO_SOLOQ
+                ).elegible
+            ]
+            ids_iniciales = [
+                str(entrada["item_id"])
+                for entrada in resultado["starter_item_entries"]
+                for _ in range(max(1, int(entrada.get("quantity", 1) or 1)))
+            ]
+            resultado["starter_item_ids"] = [int(item_id) for item_id in ids_iniciales]
+            resultado["starter_items"] = [
+                str(self.catalogo.catalogo[item_id].get("name", item_id))
+                for item_id in ids_iniciales
+                if isinstance(self.catalogo.catalogo.get(item_id), dict)
+            ]
+        elif isinstance(resultado.get("starter_item_ids"), list):
+            ids_iniciales = [
+                str(item_id)
+                for item_id in resultado["starter_item_ids"]
+                if self.catalogo.validar_objeto_inicial(
+                    str(item_id), campeon, MODO_SOLOQ
+                ).elegible
+            ]
+            resultado["starter_item_ids"] = [int(item_id) for item_id in ids_iniciales]
+            resultado["starter_items"] = [
+                str(self.catalogo.catalogo[item_id].get("name", item_id))
+                for item_id in ids_iniciales
+                if isinstance(self.catalogo.catalogo.get(item_id), dict)
+            ]
+        if isinstance(resultado.get("situational_items"), dict):
+            resultado["situational_items"] = filtrar(resultado["situational_items"])
+        return resultado

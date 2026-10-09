@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 from app.services.home_history_service import (
     HomeHistoryRepository,
     LCUHomeProvider,
+    _coincide_cuenta_local,
     _local_champion_metadata,
     _log_home_history_summary,
     _matchup_summary,
@@ -41,6 +44,11 @@ def test_lcu_participant_normalizes_defense_stats_and_preserves_absence() -> Non
             "stats": {
                 "totalDamageTaken": 100_000,
                 "damageSelfMitigated": 80_000,
+                "kills": 12,
+                "deaths": 7,
+                "assists": 4,
+                "goldEarned": 17_681,
+                "totalDamageDealtToChampions": 33_386,
             },
         },
         {},
@@ -58,10 +66,15 @@ def test_lcu_participant_normalizes_defense_stats_and_preserves_absence() -> Non
     )
     assert participant["damage_taken"] == 100_000
     assert participant["damage_self_mitigated"] == 80_000
+    assert participant["final_stats"]["damage_taken"] == 100_000
+    assert participant["final_stats"]["kills"] == 12
+    assert participant["final_stats"]["gold_earned"] == 17_681
+    assert participant["final_stats"]["total_damage_dealt_to_champions"] == 33_386
     assert zero["damage_taken"] == 0
     assert zero["damage_self_mitigated"] == 0
     assert unavailable["damage_taken"] is None
     assert unavailable["damage_self_mitigated"] is None
+    assert unavailable["final_stats"]["gold_earned"] is None
 
 
 def test_home_repository_does_not_downgrade_enriched_participants(tmp_path) -> None:
@@ -155,6 +168,198 @@ def test_home_repository_preserves_an_unrecognized_schema(tmp_path) -> None:
         raise AssertionError("Un esquema futuro no debe sobrescribirse")
 
     assert json.loads(path.read_text(encoding="utf-8")) == original
+
+
+def test_home_repository_recovers_redundant_json_closers_with_verified_backup(
+    tmp_path,
+) -> None:
+    """Recupera un documento completo con cierres duplicados tras respaldarlo."""
+    repository = HomeHistoryRepository(tmp_path)
+    profile = {"puuid": "recovery-account"}
+    path = tmp_path / repository.account_key(profile) / "match_history.json"
+    path.parent.mkdir(parents=True)
+    original = {
+        "schema_version": 1,
+        "profile_id": repository.account_key(profile),
+        "last_sync": "2026-10-01T00:00:00+00:00",
+        "unknown_metadata": {"kept": True},
+        "matches": [
+            {"stable_match_id": "old-1", "started_at": "2026-09-01T00:00:00Z"},
+            {"stable_match_id": "old-2", "started_at": "2026-09-02T00:00:00Z"},
+        ],
+    }
+    intact = json.dumps(original, ensure_ascii=False, indent=2).encode("utf-8")
+    corrupt = intact + b"    }\n  ]\n}"
+    path.write_bytes(corrupt)
+
+    loaded = repository.load(profile)
+
+    backups = list(path.parent.glob("match_history.json.recovery-*.bak"))
+    assert [match["stable_match_id"] for match in loaded["matches"]] == [
+        "old-1",
+        "old-2",
+    ]
+    assert loaded["unknown_metadata"] == {"kept": True}
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == corrupt
+    assert (
+        hashlib.sha256(backups[0].read_bytes()).hexdigest()
+        == hashlib.sha256(corrupt).hexdigest()
+    )
+    assert (
+        json.loads(path.read_text(encoding="utf-8"))["matches"] == original["matches"]
+    )
+
+
+def test_home_repository_keeps_valid_records_and_raw_malformed_records(
+    tmp_path,
+) -> None:
+    """Muestra registros válidos y conserva intactas filas no interpretables."""
+    repository = HomeHistoryRepository(tmp_path)
+    profile = {"puuid": "partial-account"}
+    path = tmp_path / repository.account_key(profile) / "match_history.json"
+    path.parent.mkdir(parents=True)
+    original = {
+        "schema_version": 1,
+        "profile_id": repository.account_key(profile),
+        "matches": [
+            {"stable_match_id": "valid", "future_field": {"value": 4}},
+            "raw malformed legacy row",
+        ],
+    }
+    path.write_text(json.dumps(original), encoding="utf-8")
+
+    loaded = repository.load(profile)
+    assert [match["stable_match_id"] for match in loaded["matches"]] == ["valid"]
+    assert loaded["matches"][0]["future_field"] == {"value": 4}
+    assert loaded["_unusable_match_records"] == ["raw malformed legacy row"]
+
+    merged = repository.merge(profile, [{"stable_match_id": "new"}])
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert {match["stable_match_id"] for match in merged["matches"]} == {
+        "valid",
+        "new",
+    }
+    assert persisted["matches"][-1] == "raw malformed legacy row"
+
+
+def test_home_repository_serializes_concurrent_merges_without_duplicates(
+    tmp_path,
+) -> None:
+    """Serializa sincronizaciones simultáneas y conserva cada partido una vez."""
+    repository = HomeHistoryRepository(tmp_path)
+    profile = {"puuid": "concurrent-account"}
+
+    def guardar(indice: int) -> None:
+        repository.merge(profile, [{"stable_match_id": f"game-{indice}"}])
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(guardar, range(32)))
+    loaded = repository.load(profile)
+
+    ids = [match["stable_match_id"] for match in loaded["matches"]]
+    assert len(ids) == 32
+    assert len(set(ids)) == 32
+
+
+def test_home_repository_empty_sync_preserves_old_history_and_optional_scores(
+    tmp_path,
+) -> None:
+    """Una respuesta vacía de LCU no borra partidas ni puntuaciones guardadas."""
+    repository = HomeHistoryRepository(tmp_path)
+    profile = {"puuid": "offline-account"}
+    original = {
+        "stable_match_id": "saved-1",
+        "champion_name": "Briar",
+        "saved_match_link": {"matched": True, "saved_match_id": "session-1"},
+        "performance_summary": {"points": 671, "rank": 6},
+    }
+    repository.merge(profile, [original])
+
+    repository.merge(profile, [])
+    loaded = repository.load(profile)
+
+    assert loaded["matches"] == [original]
+
+
+def test_legacy_history_v1_loads_for_home_analytics_without_battlescore(
+    tmp_path,
+) -> None:
+    """Carga el formato v1 previo y restaura los KPIs sin exigir BattleScore."""
+    repository = HomeHistoryRepository(tmp_path)
+    profile = {"puuid": "legacy-home-account", "gameName": "Jugador"}
+    records = [
+        {
+            "stable_match_id": f"legacy-{index}",
+            "game_id": f"legacy-{index}",
+            "started_at": f"2026-09-0{index + 1}T18:30:00+00:00",
+            "champion_id": 233 if index < 2 else 22,
+            "champion_name": "Briar" if index < 2 else "Ashe",
+            "champion_classes": ["Fighter"],
+            "lane": "jungle" if index < 2 else "bot",
+            "result": "victory" if index != 1 else "defeat",
+            "kills": 8,
+            "deaths": 3,
+            "assists": 6,
+            "cs": 180,
+            "items": [6699, 3111, 6333],
+            "participants": [{"puuid": "legacy-home-account"}],
+            "teammates": [
+                {
+                    "stable_player_id": "teammate-1",
+                    "game_name": "Aliado",
+                    "tag_line": "EUW",
+                    "champion_id": 22,
+                    "champion_name": "Ashe",
+                    "result": "victory" if index != 1 else "defeat",
+                }
+            ],
+            "opponent_resolution": {
+                "champion_id": 950,
+                "champion_name": "Naafiri",
+                "state": "exact",
+                "confidence": 1,
+            },
+            "saved_match_link": {
+                "matched": index != 2,
+                "saved_match_id": f"session-{index}" if index != 2 else "",
+            },
+            **(
+                {"performance_summary": {"points": 671, "rank": 6}}
+                if index == 0
+                else {}
+            ),
+        }
+        for index in range(3)
+    ]
+    directory = tmp_path / repository.account_key(profile)
+    directory.mkdir(parents=True)
+    (directory / "profile.json").write_text(json.dumps(profile), encoding="utf-8")
+    (directory / "match_history.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "profile_id": repository.account_key(profile),
+                "last_sync": "2026-09-04T00:00:00+00:00",
+                "matches": records,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = repository.load(profile)
+    analytics = analyze_home_history(loaded["matches"])
+
+    assert len(loaded["matches"]) == 3
+    assert analytics["total"] == 3
+    assert analytics["played"] == 3
+    assert analytics["winrate"] == 67
+    assert analytics["top_champion"] == "Briar"
+    assert analytics["lanes"] == [("jungle", 2), ("bot", 1)]
+    assert len(analytics["hours"]) == 1
+    assert analytics["teammates"][0]["games"] == 3
+    assert loaded["matches"][0]["saved_match_link"]["matched"] is True
+    assert loaded["matches"][1].get("performance_summary") is None
 
 
 def test_lcu_normalization_uses_player_and_known_lane() -> None:
@@ -689,6 +894,7 @@ def test_collection_normalization_keeps_optional_categories_independent() -> Non
         [
             {"id": 233, "ownership": {"owned": True}},
             {"id": 1, "ownership": {"owned": False}},
+            {"id": 233, "ownership": {"owned": True}},
         ],
     )
 
@@ -803,5 +1009,186 @@ def test_cross_reference_uses_exact_id_and_rejects_champion_only_match() -> None
         "matched": True,
         "saved_match_id": "session-1234",
         "confidence": 1.0,
+        "association": "exact",
     }
     assert result[1]["analyzable"] is False
+
+
+def test_cross_reference_prefers_existing_saved_link_for_local_battlescore() -> None:
+    """Respeta el vínculo ANALIZABLE incluso si otro registro comparte el ID de juego."""
+    from app.services.servicio_puntuacion_rendimiento import VERSION_PUNTUACION
+
+    resumen = {
+        "version": VERSION_PUNTUACION,
+        "calibration_version": "2026.10",
+        "state": "POSTGAME_FINAL",
+        "awards_finalized": True,
+        "players": [
+            {
+                "participant_id": "briar-local",
+                "total": 671,
+                "global_rank": 6,
+                "awards": [],
+                "completeness": 0.8,
+            }
+        ],
+    }
+    match = {
+        "game_id": "1234",
+        "stable_match_id": "1234",
+        "champion_name": "Briar",
+        "participants": [{"puuid": "cuenta-briar"}],
+        "saved_match_link": {
+            "matched": True,
+            "saved_match_id": "sesion-briar",
+            "confidence": 1.0,
+        },
+    }
+    session_linked = {
+        "session_id": "sesion-briar",
+        "local_player_key": "briar-local",
+        "local_puuid": "cuenta-briar",
+        "champion_name": "Briar",
+        "final_sync": {"status": "synced", "match_id": "EUW1_9999"},
+        "performance_scoring": resumen,
+    }
+    session_same_game = {
+        "session_id": "sesion-otra",
+        "local_player_key": "otro-local",
+        "local_puuid": "otra-cuenta",
+        "champion_name": "Briar",
+        "final_sync": {"status": "synced", "match_id": "EUW1_1234"},
+        "performance_scoring": {
+            **resumen,
+            "players": [
+                {
+                    "participant_id": "otro-local",
+                    "total": 999,
+                    "global_rank": 1,
+                    "awards": ["MVP"],
+                    "completeness": 1.0,
+                }
+            ],
+        },
+    }
+
+    result = cross_reference_saved_matches(
+        [match], [session_same_game, session_linked], "cuenta-briar"
+    )[0]
+
+    assert result["saved_match_link"]["saved_match_id"] == "sesion-briar"
+    assert result["performance_summary"]["points"] == 671
+    assert result["performance_summary"]["global_rank"] == 6
+    assert result["performance_summary"]["award"] == ""
+
+
+def test_local_identity_uses_exact_saved_link_and_unique_riot_id_fallback() -> None:
+    """Resuelve PUUID heredado solo si el vínculo exacto y el Riot ID coinciden."""
+    match = {
+        "saved_match_link": {
+            "matched": True,
+            "saved_match_id": "session-briar",
+            "association": "exact",
+        },
+        "participants": [
+            {
+                "puuid": "current-account",
+                "game_name": "Solrasar",
+                "tag_line": "000",
+            }
+        ],
+    }
+    session = {
+        "session_id": "session-briar",
+        "local_player_key": "briar-local",
+        "local_puuid": "older-puuid",
+        "players": {"briar-local": {"riot_id": "Solrasar#000"}},
+    }
+
+    assert not _coincide_cuenta_local(match, session, "current-account")
+    assert _coincide_cuenta_local(
+        match,
+        session,
+        "current-account",
+        asociacion_confirmada=True,
+    )
+
+
+def test_streamer_placeholders_require_verified_identity() -> None:
+    """No une etiquetas genéricas y conserva identidades estables ocultas."""
+    matches = []
+    for indice in range(6):
+        aliados = [
+            {
+                "stable_player_id": "Jugador",
+                "game_name": "Jugador",
+                "tag_line": "EUW",
+                "result": "victory" if indice < 3 else "defeat",
+            },
+            {
+                "puuid": "verified-hidden-a",
+                "game_name": "Jugador",
+                "result": "victory" if indice < 3 else "defeat",
+            },
+            {
+                "puuid": "verified-hidden-b",
+                "game_name": "Player",
+                "result": "victory" if indice < 2 else "defeat",
+            },
+            {"game_name": "Anónimo", "result": "victory" if indice < 2 else "defeat"},
+        ]
+        matches.append(
+            {
+                "stable_match_id": f"game-{indice}",
+                "result": "victory" if indice < 3 else "defeat",
+                "teammates": aliados,
+            }
+        )
+
+    resultado = analyze_home_history(matches)
+    aliados_resumidos = {
+        item["stable_player_id"]: item for item in resultado["teammates"]
+    }
+
+    assert "Jugador" not in aliados_resumidos
+    assert aliados_resumidos["verified-hidden-a"]["games"] == 6
+    assert aliados_resumidos["verified-hidden-a"]["name"] == "Jugador verificado"
+    assert aliados_resumidos["verified-hidden-a"]["winrate"] == 50
+    assert aliados_resumidos["verified-hidden-b"]["games"] == 6
+    assert aliados_resumidos["verified-hidden-b"]["winrate"] == 33
+    assert resultado["unresolved_teammate_count"] == 12
+
+
+def test_teammate_identity_uses_stable_id_not_display_name() -> None:
+    """Agrupa el mismo PUUID con alias cambiante y separa homónimos."""
+    matches = [
+        {
+            "stable_match_id": "one",
+            "result": "victory",
+            "teammates": [
+                {
+                    "puuid": "account-a",
+                    "game_name": "Nombre antiguo",
+                    "result": "victory",
+                },
+                {
+                    "puuid": "account-b",
+                    "game_name": "Mismo nombre",
+                    "result": "victory",
+                },
+            ],
+        },
+        {
+            "stable_match_id": "two",
+            "result": "defeat",
+            "teammates": [
+                {"puuid": "account-a", "game_name": "Nombre nuevo", "result": "defeat"},
+                {"puuid": "account-b", "game_name": "Mismo nombre", "result": "defeat"},
+            ],
+        },
+    ]
+
+    resumen = analyze_home_history(matches)["teammates"]
+
+    assert {item["stable_player_id"] for item in resumen} == {"account-a", "account-b"}
+    assert all(item["games"] == 2 and item["winrate"] == 50 for item in resumen)

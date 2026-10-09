@@ -18,6 +18,16 @@ QMainWindow, QDialog, QWidget[superficie="ventana"] {
 }
 QScrollArea, QStackedWidget {background:transparent; border:none;}
 QScrollArea > QWidget > QWidget {background:transparent;}
+QLabel#matchAnalysisIcon {background:$elevada; color:$oro_suave; border:1px solid $oro_oscuro; border-radius:7px; font-weight:700;}
+QLabel[role="section"] {color:$oro_suave; font-weight:700;}
+QLabel[role="accent"] {color:$oro; font-weight:700;}
+QLabel[role="grade"] {background:$elevada; border:1px solid $borde; border-radius:8px; padding:4px 9px; font-weight:800;}
+QLabel[role="grade"][banda="A"] {color:$teal; border-color:$oro_oscuro;}
+QLabel[role="grade"][banda="B"] {color:$informacion; border-color:$borde;}
+QLabel[role="grade"][banda="C"] {color:$marfil; border-color:$borde;}
+QLabel[role="grade"][banda="D"] {color:$advertencia; border-color:$oro_oscuro;}
+QLabel[role="grade"][banda="F"] {color:$desventaja; border-color:$desventaja;}
+QLabel[role="eyebrow"] {color:$secundario; font-weight:700;}
 QWidget[superficie="transparente"] {background:transparent; border:none;}
 QFrame[superficie="tarjeta"], QWidget[superficie="tarjeta"], QGroupBox {
  background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $elevada,stop:1 $superficie);
@@ -40,6 +50,29 @@ QFrame#recommendationPanel QLabel#enemyInventoryBadge,
 QFrame#recommendationPanel QLabel#enemyBuildGold {
  padding:2px 6px; border-radius:7px; border:1px solid $oro_oscuro; background:$calida;
 }
+QFrame#recommendationPanel QLabel#enemyPerformanceScore {
+ padding:2px 7px; border-radius:7px; border:1px solid $oro_oscuro;
+ background:$calida; color:$oro_suave; font-weight:700;
+}
+QFrame#recommendationPanel QLabel#enemyPerformanceScore[rank="1"] {
+ background:$superficie_derrota; color:$desventaja; border-color:#70413f;
+}
+QFrame#recommendationPanel QLabel#enemyPerformanceScore[rank="5"] {
+ background:$superficie_victoria; color:$ventaja; border-color:#3b6257;
+}
+QFrame#recommendationPanel QLabel#enemyPerformanceConfidence {font-size:${ayuda}px; color:$tenue;}
+QPushButton#matchupChampionButton {
+ text-align:left; white-space:normal; padding:7px 10px; border-radius:8px;
+ background:$elevada; border:1px solid $borde; color:$texto;
+}
+QPushButton#matchupChampionButton:hover, QPushButton#matchupChampionButton:checked {
+ border-color:$oro_oscuro; background:$calida;
+}
+QPushButton#matchupChampionButton[difficulty="easy"] {color:$ventaja;}
+QPushButton#matchupChampionButton[difficulty="hard"] {color:$desventaja;}
+QFrame[superficie="interactiva"][seleccionado="true"] {border:1px solid $oro;}
+QLabel#matchupDifficulty[difficulty="easy"] {color:$ventaja;}
+QLabel#matchupDifficulty[difficulty="hard"] {color:$desventaja;}
 QFrame#recommendationPanel QWidget#recommendationBody,
 QFrame#recommendationPanel QWidget#recommendationDashboard,
 QFrame#recommendationPanel QWidget#draftDamageCard,
@@ -97,6 +130,29 @@ QLabel#cardRuneKeystoneIcon {background:$calida; border:1px solid $oro; border-r
 QLabel#cardRuneIcon {background:$base; border:1px solid $borde_sutil; border-radius:${pequeno}px; color:$secundario; padding:0px;}
 QLabel#cardLoadoutEmpty {color:$tenue; font-size:${metadatos}px;}
 QLabel#itemSlot, QLabel#trinketSlot, QLabel#bootsQuestSlot, QLabel#pinkWardQuestSlot {background:$base; border:1px solid $borde_sutil; border-radius:${pequeno}px;}
+QWidget#structuredMatchAnalysis {background:$base; color:$texto;}
+QFrame#matchAnalysisCard {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $elevada,stop:1 $superficie); border:1px solid $borde; border-top:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
+QLabel#matchAnalysisIcon {background:$base; border:1px solid $oro_oscuro; border-radius:8px;}
+QLabel#phaseEventSymbol, QLabel#phaseCoachingSymbol {background:$elevada; border:1px solid $borde; border-radius:8px; font-weight:700;}
+QLabel#phaseEventSymbol[event_type="kill"] {color:$desventaja;}
+QLabel#phaseEventSymbol[event_type="objective"] {color:$ventaja;}
+QLabel#phaseEventSymbol[event_type="structure"] {color:$oro_suave;}
+QLabel#phaseEventSymbol[event_type="purchase"] {color:$informacion;}
+QLabel#phaseEventTitle {color:$texto; font-weight:600;}
+QLabel[role="phaseStrength"] {color:$ventaja; font-size:${metadatos}px; font-weight:700;}
+QLabel[role="phaseError"] {color:$desventaja; font-size:${metadatos}px; font-weight:700;}
+QLabel[role="phaseAction"] {color:$oro_suave; font-size:${metadatos}px; font-weight:700;}
+QFrame#phaseDivider {background:$borde; border:none; max-height:1px;}
+QLabel[role="section"] {color:$oro_suave; font-size:${seccion}px; font-weight:700;}
+QLabel[role="eyebrow"] {color:$oro_suave; font-size:${metadatos}px; font-weight:700;}
+QLabel[role="muted"] {color:$secundario;}
+QLabel[role="accent"] {color:$oro_suave; background:$calida; border:1px solid $oro_oscuro; border-radius:6px; padding:3px 7px;}
+QTabWidget#matchAnalysisSections::pane {border:1px solid $borde; background:$superficie;}
+QTabBar::tab {background:$superficie; color:$secundario; padding:9px 15px; border:1px solid $borde; border-bottom:2px solid transparent;}
+QTabBar::tab:selected {color:$marfil; background:$elevada; border-bottom-color:$oro;}
+QPushButton#matchupChampionButton {background:$superficie; color:$texto; border:1px solid $borde; border-radius:7px; padding:7px; text-align:left;}
+QPushButton#matchupChampionButton:checked {border-color:$oro; color:$marfil; background:$activo;}
+QScrollArea {background:$superficie; border:none;}
 QFrame#savedGameRow {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $elevada,stop:1 $superficie); border:1px solid $borde; border-top:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
 QFrame#savedGameRow[result="win"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_victoria,stop:1 $superficie_victoria_fin); border-color:#354840; border-top-color:$teal;}
 QFrame#savedGameRow[result="loss"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_derrota,stop:1 $superficie_derrota_fin); border-color:#4a3637; border-top-color:$desventaja;}

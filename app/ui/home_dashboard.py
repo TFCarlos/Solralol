@@ -404,6 +404,23 @@ class HomeDashboard(QWidget):
         """Ajusta la cuadrícula al tamaño final al mostrar la página."""
         super().showEvent(event)
         self._reflow(self.width())
+        QTimer.singleShot(0, self._activate_matchup_geometry)
+
+    def _activate_matchup_geometry(self) -> None:
+        """Activa la geometría de enfrentamientos tras completar el primer show."""
+        if not self.isVisible() or self.matchups_grid is None:
+            return
+        self._reflow(self.width())
+        self.matchups_grid.activate()
+        if self.matchups_grid_host is not None:
+            self.matchups_grid_host.updateGeometry()
+        for group in self.matchups_groups or ():
+            if group.layout() is not None:
+                group.layout().activate()
+            group.updateGeometry()
+        if self.insights_card.layout() is not None:
+            self.insights_card.layout().activate()
+        self.updateGeometry()
 
     def set_dashboard_data(
         self,
@@ -680,6 +697,13 @@ class HomeDashboard(QWidget):
                     f"Sin identidades de aliados suficientes · {analytics.get('team_data_matches', 0)} partidas con datos de equipo"
                 )
             )
+            if analytics.get("unresolved_teammate_count", 0):
+                nota = QLabel(
+                    "Algunos jugadores ocultos no se incluyen porque no se puede confirmar su identidad."
+                )
+                nota.setObjectName("homeCoverage")
+                nota.setWordWrap(True)
+                layout.addWidget(nota)
             return
         for index, entry in enumerate(teammates[:3]):
             name = str(entry.get("name") or "Jugador")
@@ -757,6 +781,13 @@ class HomeDashboard(QWidget):
         )
         coverage.setObjectName("homeCoverage")
         layout.addWidget(coverage)
+        if analytics.get("unresolved_teammate_count", 0):
+            nota = QLabel(
+                "Algunos jugadores ocultos no se incluyen porque no se puede confirmar su identidad."
+            )
+            nota.setObjectName("homeCoverage")
+            nota.setWordWrap(True)
+            layout.addWidget(nota)
 
     def _set_teammate_icon(self, label: QLabel, entry: dict[str, Any]) -> None:
         """Carga icono de perfil local o recurre al campeón más jugado juntos."""
@@ -796,6 +827,7 @@ class HomeDashboard(QWidget):
         self.matchups_grid.setContentsMargins(0, 0, 0, 0)
         self.matchups_grid.setHorizontalSpacing(12)
         self.matchups_grid.setVerticalSpacing(10)
+        self._matchups_two_columns = None
         groups: list[QWidget] = []
         for title, entries, kind in (
             ("MÁS TE CUESTAN", analytics.get("hardest_matchups") or [], "hard"),
@@ -959,19 +991,40 @@ class HomeDashboard(QWidget):
             owned = int(champions.get("owned_count", 0))
             total = int(champions.get("total_count") or 0)
             percent = 100 * owned / total if total else 0
-            layout.addWidget(self._subheading("CAMPEONES"))
-            metric = QLabel(f"{owned} / {total}  ·  {percent:.1f}%")
+            layout.addWidget(self._subheading("CAMPEONES EN PROPIEDAD"))
+            metric = QLabel(
+                f"{owned} de {total} campeones"
+                if total
+                else "Total disponible desconocido"
+            )
             metric.setObjectName("homeCollectionMetric")
             layout.addWidget(metric)
-            progress = QProgressBar()
-            progress.setObjectName("homeCollectionProgress")
-            progress.setTextVisible(False)
-            progress.setRange(0, max(1, total))
-            progress.setValue(min(owned, max(1, total)))
-            progress.setFixedHeight(9)
-            layout.addWidget(progress)
+            if total:
+                porcentaje_texto = f"{percent:.1f}".replace(".", ",")
+                percentage = QLabel(f"{porcentaje_texto}% de la colección")
+                percentage.setObjectName("homeCollectionLabel")
+                layout.addWidget(percentage)
+                progress = QProgressBar()
+                progress.setObjectName("homeCollectionProgress")
+                progress.setTextVisible(False)
+                progress.setRange(0, total)
+                progress.setValue(min(owned, total))
+                progress.setFixedHeight(9)
+                layout.addWidget(progress)
+                faltan = max(0, total - owned)
+                estado = QLabel(
+                    "Colección completa"
+                    if faltan == 0
+                    else (
+                        "Te falta 1 campeón para completar la colección."
+                        if faltan == 1
+                        else f"Te faltan {faltan} campeones para completar la colección."
+                    )
+                )
+                estado.setObjectName("homeCoverage")
+                layout.addWidget(estado)
         elif champions is None:
-            layout.addWidget(QLabel("Campeones: endpoint local no disponible"))
+            layout.addWidget(QLabel("No se pudo consultar la colección de campeones"))
         skins = collection.get("skins")
         if isinstance(skins, dict):
             layout.addWidget(self._collection_separator())

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from _paths import DATA_DIR
+from app.services.calidad_muestra import UMBRAL_MUESTRA_NORMAL, EstadoMuestra
 from app.services.rangos_campeones import CLAVES_RANGOS as RANGOS
 from app.services.rangos_campeones import normalizar_rango
 
@@ -178,7 +179,12 @@ class RepositorioCampeones:
                     raise ValueError("Variante inválida")
                 if not any(
                     campo in variante
-                    for campo in ("runes", "most_played_build", "matchups")
+                    for campo in (
+                        "runes",
+                        "most_played_build",
+                        "matchups",
+                        "lane_stats",
+                    )
                 ):
                     raise ValueError("Variante sin campos esenciales")
                 if (
@@ -193,6 +199,31 @@ class RepositorioCampeones:
                     ("matchups", dict),
                     ("skill_order", (list, dict)),
                     ("lane_stats", dict),
+                    ("sample_size", (int, float, type(None))),
+                    ("sample_status", str),
+                    ("data_status", str),
+                    ("section_sample_sizes", dict),
+                    ("section_status", dict),
+                    ("item_options", dict),
+                    ("situational_item_pipeline", dict),
+                    ("core_build", list),
+                    ("summoner_spell_ids", list),
+                    ("starter_item_ids", list),
+                    ("starter_item_entries", list),
+                    ("starting_items_source_status", str),
+                    ("starting_items_provenance", dict),
+                    ("overall_matches", (int, float, type(None))),
+                    ("overall_win_rate", (int, float, type(None))),
+                    ("core_build_matches", (int, float, type(None))),
+                    ("core_build_win_rate", (int, float, type(None))),
+                    ("summoner_spell_matches", (int, float, type(None))),
+                    ("summoner_spell_win_rate", (int, float, type(None))),
+                    ("starting_item_matches", (int, float, type(None))),
+                    ("starting_item_win_rate", (int, float, type(None))),
+                    ("skill_priority_matches", (int, float, type(None))),
+                    ("skill_priority_win_rate", (int, float, type(None))),
+                    ("source_patch", (str, type(None))),
+                    ("patch_label", (str, type(None))),
                 ):
                     if campo in variante and not isinstance(variante[campo], tipo):
                         raise ValueError(f"Campo inválido: {campo}")
@@ -277,6 +308,51 @@ class RepositorioCampeones:
         documento = consulta.datos or {}
         bloque = documento["ranks"].get(rango, {})
         variante = bloque.get(linea)
+        resumen_bloque = bloque.get("__lane_stats__", {})
+        resumen_perfil = resumen_bloque
+        rango_resumen = rango
+        if not isinstance(resumen_bloque, dict) or not isinstance(
+            resumen_bloque.get("lanes"), dict
+        ):
+            resumen_perfil = documento.get("profile", {}).get("lane_stats", {})
+            rango_resumen = (
+                normalizar_rango(str(resumen_perfil.get("rank", "")))
+                if isinstance(resumen_perfil, dict)
+                else None
+            )
+        linea_heredada = None
+        if not variante and isinstance(resumen_perfil, dict) and rango_resumen == rango:
+            lineas_heredadas = resumen_perfil.get("lanes", {})
+            candidato = (
+                lineas_heredadas.get(linea)
+                if isinstance(lineas_heredadas, dict)
+                else None
+            )
+            partidas = candidato.get("games") if isinstance(candidato, dict) else None
+            if (
+                isinstance(partidas, (int, float))
+                and not isinstance(partidas, bool)
+                and partidas > 0
+            ):
+                estado_muestra = (
+                    EstadoMuestra.LOW_SAMPLE
+                    if partidas < UMBRAL_MUESTRA_NORMAL
+                    else EstadoMuestra.NORMAL_SAMPLE
+                )
+                linea_heredada = {
+                    "role": linea,
+                    "rank": rango,
+                    "updated": True,
+                    "lane_stats": {
+                        "rank": rango,
+                        "lanes": copy.deepcopy(lineas_heredadas),
+                    },
+                    "sample_size": int(partidas),
+                    "sample_status": estado_muestra.value,
+                    "data_status": EstadoMuestra.PARTIAL_DATA.value,
+                    "sample_threshold": UMBRAL_MUESTRA_NORMAL,
+                }
+                variante = linea_heredada
         estado = (
             EstadoDatos.DISPONIBLE
             if variante

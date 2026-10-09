@@ -2,11 +2,273 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from hashlib import sha256
+from typing import Any, ClassVar
 
 import requests
 
+from app.services.match_analysis_evidence_service import MatchAnalysisEvidenceService
+from app.services.match_analysis_models import enriquecer_analisis_partida
 from app.services.match_log_service import MatchLogService
+
+ESQUEMA_ANALISIS_GEMINI = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"type": "integer"},
+        "analysis_type": {"type": "string"},
+        "summary": {
+            "type": "object",
+            "properties": {
+                "overall_grade": {"type": "string"},
+                "short_summary": {"type": "string"},
+                "strengths": {"type": "array", "items": {"type": "string"}},
+                "weaknesses": {"type": "array", "items": {"type": "string"}},
+                "key_takeaway": {"type": "string"},
+                "champion_name": {"type": "string"},
+                "player_name": {"type": "string"},
+                "main_error": {"type": "string"},
+                "core_priority": {"type": "string"},
+                "main_turning_point": {"type": "string"},
+                "primary_strength": {"type": "string"},
+                "primary_weakness": {"type": "string"},
+                "evidence_refs": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+        "game_phases": {
+            "type": "object",
+            "properties": {
+                clave: {
+                    "type": "object",
+                    "properties": {
+                        "assessment": {"type": "string"},
+                        "strengths": {"type": "array", "items": {"type": "string"}},
+                        "mistakes": {"type": "array", "items": {"type": "string"}},
+                        "recommendations": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "title": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "what_worked": {"type": "string"},
+                        "what_failed": {"type": "string"},
+                        "adaptation": {"type": "string"},
+                        "evidence_events": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "event_id": {"type": "string"},
+                                    "time_label": {"type": "string"},
+                                    "claim": {"type": "string"},
+                                    "evidence_type": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                }
+                for clave in ("early", "mid", "late")
+            },
+        },
+        **{
+            clave: {
+                "type": "object",
+                "properties": {
+                    propiedad: {"type": "array", "items": {"type": "string"}}
+                    if propiedad
+                    in {"strengths", "mistakes", "recommendations", "alternative_items"}
+                    else {"type": "string"}
+                    for propiedad in propiedades
+                },
+            }
+            for clave, propiedades in {
+                "farming": ("assessment", "recommendations"),
+                "itemization": (
+                    "strengths",
+                    "mistakes",
+                    "alternative_items",
+                    "recommendations",
+                ),
+                "purchase_timing": ("assessment", "recommendations"),
+                "objective_conversion": ("assessment", "recommendations"),
+                "death_impact": ("assessment", "recommendations"),
+            }.items()
+        },
+        "enemy_matchups": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "champion_id": {"type": "string"},
+                    "role": {"type": "string"},
+                    "threat_level": {"type": "string"},
+                    "kda": {
+                        "type": "object",
+                        "properties": {
+                            "kills": {"type": "integer"},
+                            "deaths": {"type": "integer"},
+                            "assists": {"type": "integer"},
+                        },
+                    },
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                    "dangerous_abilities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "slot": {"type": "string"},
+                                "name": {"type": "string"},
+                                "why_it_matters": {"type": "string"},
+                                "counterplay": {"type": "string"},
+                            },
+                        },
+                    },
+                    "itemization_interaction": {"type": "string"},
+                    "difficulty": {"type": "string"},
+                    "assessment": {"type": "string"},
+                    **{
+                        clave: {"type": "array", "items": {"type": "string"}}
+                        for clave in ("counterplay", "mistakes", "recommendations")
+                    },
+                },
+            },
+        },
+        "improvement_priorities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "explanation": {"type": "string"},
+                    "priority": {"type": "string"},
+                    "action": {"type": "string"},
+                },
+            },
+        },
+        "performance": {
+            "type": "object",
+            "properties": {
+                clave: {
+                    "type": "object",
+                    "properties": {
+                        "assessment": {"type": "string"},
+                        "tip": {"type": "string"},
+                    },
+                }
+                for clave in (
+                    "farming",
+                    "combat",
+                    "objectives",
+                    "vision",
+                    "survivability",
+                    "decision_making",
+                )
+            },
+        },
+        "build_assessment": {"type": "string"},
+        "itemization_notes": {"type": "array", "items": {"type": "string"}},
+        "situational_item_suggestions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "item_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                },
+            },
+        },
+        "item_reviews": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string"},
+                    "verdict": {"type": "string"},
+                    "assessment": {"type": "string"},
+                    "purchase_time": {"type": "string"},
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+        "item_alternatives": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "item_id": {"type": "string"},
+                    "replace_or_delay_item_id": {"type": "string"},
+                    "threat_champion_id": {"type": "string"},
+                    "mechanical_advantage": {"type": "string"},
+                    "tradeoff": {"type": "string"},
+                    "timing": {"type": "string"},
+                    "affordability": {"type": "string"},
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                },
+            },
+        },
+        "rune_comments": {"type": "array", "items": {"type": "string"}},
+        "key_enemies": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "champion_name": {"type": "string"},
+                    "role": {"type": "string"},
+                    "threat_level": {"type": "string"},
+                    "why_it_was_a_problem": {"type": "string"},
+                    "strengths": {"type": "array", "items": {"type": "string"}},
+                    "dangerous_tools": {"type": "array", "items": {"type": "string"}},
+                    "how_to_play_against": {"type": "string"},
+                    "matchup_note": {"type": "string"},
+                },
+            },
+        },
+        "next_game_priorities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "explanation": {"type": "string"},
+                    "concrete_action": {"type": "string"},
+                    "context_type": {"type": "string"},
+                    "reference": {"type": "string"},
+                    "priority": {"type": "string"},
+                    "phase": {"type": "string"},
+                    "evidence": {"type": "string"},
+                    "evidence_refs": {"type": "array", "items": {"type": "string"}},
+                    "champion_id": {"type": "string"},
+                    "item_id": {"type": "string"},
+                    "ability_slot": {"type": "string"},
+                },
+            },
+        },
+    },
+    "required": [
+        "schema_version",
+        "analysis_type",
+        "summary",
+        "game_phases",
+        "performance",
+        "build_assessment",
+        "itemization_notes",
+        "item_reviews",
+        "item_alternatives",
+        "rune_comments",
+        "key_enemies",
+        "next_game_priorities",
+    ],
+}
+
+
+class ErrorSolicitudGemini(RuntimeError):
+    """Conserva el diagnóstico seguro devuelto por una solicitud Gemini."""
+
+    def __init__(self, diagnostico: dict[str, Any]) -> None:
+        """Inicializa el error con detalles técnicos serializables."""
+        self.diagnostico = diagnostico
+        self.reintentable = diagnostico.get("http_status") != 400
+        super().__init__(json.dumps(diagnostico, ensure_ascii=False))
 
 
 class MatchAIAnalyzerService:
@@ -15,7 +277,7 @@ class MatchAIAnalyzerService:
     basándose en el fichero de log de la partida.
     """
 
-    FALLBACK_MODELS = [
+    FALLBACK_MODELS: ClassVar[list[str]] = [
         "gemini-2.5-flash-lite",
         "gemini-2.5-flash",
         "gemini-flash-latest",
@@ -28,10 +290,10 @@ class MatchAIAnalyzerService:
         self,
         session: dict[str, Any],
         api_key: str,
-    ) -> tuple[str, str]:
+    ) -> tuple[dict[str, Any], str, str, str]:
         """
         Analiza la partida utilizando el log registrado y la API de Gemini.
-        Devuelve una tupla (markdown_analysis, model_used).
+        Devuelve análisis validado, respuesta JSON original, modelo e huella del log.
         """
         api_key = api_key.strip()
         if not api_key:
@@ -44,300 +306,74 @@ class MatchAIAnalyzerService:
         log_service = MatchLogService()
         log_data, formatted_log = log_service.get_match_log(session)
 
-        # Construir el prompt para Gemini
+        # Construir evidencia reproducible antes de consultar Gemini.
+        evidencia = MatchAnalysisEvidenceService().build_evidence(log_data)
+        log_data["analysis_evidence"] = evidencia
         prompt = self._build_analysis_prompt(log_data, formatted_log)
 
         # Llamar a Gemini API
-        markdown_response, model_used = self._call_gemini_api(prompt, api_key)
-
-        return markdown_response, model_used
+        respuesta, model_used = self._call_gemini_api(prompt, api_key)
+        try:
+            contexto = {
+                **log_data,
+                "champion_name": log_data.get("metadata", {}).get("champion_name"),
+                "player_name": log_data.get("user_stats", {}).get("player_name"),
+            }
+            analisis = enriquecer_analisis_partida(json.loads(respuesta), contexto)
+        except (json.JSONDecodeError, TypeError, ValueError) as error:
+            raise ValueError(
+                f"Gemini devolvió un análisis estructurado no válido: {error}"
+            ) from error
+        if len(respuesta) > 200_000:
+            raise ValueError(
+                "La respuesta estructurada de Gemini supera el tamaño permitido."
+            )
+        huella = sha256(formatted_log.encode("utf-8")).hexdigest()
+        return analisis, respuesta, model_used, huella
 
     def _build_analysis_prompt(
         self,
         log_data: dict[str, Any],
         formatted_log: str,
     ) -> str:
-        metadata = log_data.get("metadata", {})
-        user_stats = log_data.get("user_stats", {})
-        champ = metadata.get("champion_name", "Campeón")
-
-        ITEM_DICTIONARY = {
-            # === CONSUMIBLES / TRINKETS / INICIALES ===
-            "1054": "Escudo de Doran (Doran's Shield)",
-            "1055": "Espada de Doran (Doran's Blade)",
-            "1056": "Anillo de Doran (Doran's Ring)",
-            "1082": "Sello Oscuro (The Dark Seal)",
-            "1083": "Sacrificio (Cull)",
-            "1101": "Brote de Brincamontes (Scorchclaw Pup)",
-            "1102": "Brote de Alaplata (Gustwalker Seedling)",
-            "1103": "Brote de Pisamusgo (Mosstomper Seedling)",
-            "2003": "Poción de salud (Health Potion)",
-            "2031": "Poción reutilizable (Refillable Potion)",
-            "2055": "Guardián de control (Control Ward)",
-            "2138": "Elixir de hierro (Elixir of Iron)",
-            "2139": "Elixir de sorbería (Elixir of Sorcery)",
-            "2140": "Elixir de cólera (Elixir of Wrath)",
-            "3340": "Totem de centinela (Stealth Ward)",
-            "3363": "Alteración de visión lejana (Farsight Alteration)",
-            "3364": "Lente del oráculo (Oracle Lens)",
-            "3865": "Atlas mundial (World Atlas)",
-            "3876": "Soporte rúnico (Runic Compass)",
-            "3877": "Recompensa del mundo (Bounty of Worlds)",
-
-            # === BOTAS ===
-            "1001": "Botas (Boots)",
-            "2422": "Botas de Mercurio mágicas (Slightly Magical Footwear)",
-            "3005": "Botas de dinamismo (Boots of Dynamism)",
-            "3006": "Botas de berserker (Berserker's Greaves)",
-            "3009": "Botas de rapidez (Boots of Swiftness)",
-            "3020": "Botas del hechicero (Sorcerer's Shoes)",
-            "3047": "Placas de acero revestidas (Plated Steelcaps)",
-            "3111": "Botas de mercurio (Mercury's Treads)",
-            "3158": "Botas jónicas de lucidez (Ionian Boots of Lucidity)",
-
-            # === COMPONENTES BÁSICOS / ÉPICOS ===
-            "1011": "Cinturón de gigante (Giant's Belt)",
-            "1018": "Capa de agilidad (Cloak of Agility)",
-            "1026": "Varita explosiva (Blasting Wand)",
-            "1027": "Tomo de amplificación (Amplifying Tome)",
-            "1028": "Cristal de rubí (Ruby Crystal)",
-            "1029": "Armadura de tela (Cloth Armor)",
-            "1031": "Capa de cadenas (Chain Vest)",
-            "1033": "Manto de anulación de magia (Null-Magic Mantle)",
-            "1035": "Cuchillo de brasa (Emberknife)",
-            "1036": "Espada larga (Long Sword)",
-            "1037": "Picacha (Pickaxe)",
-            "1038": "Espadón (B.F. Sword)",
-            "1042": "Daga (Dagger)",
-            "1043": "Arco curvo (Recurve Bow)",
-            "1052": "Tomo de amplificación (Amplifying Tome)",
-            "1057": "Armadura de negrura (Negatron Cloak)",
-            "1058": "Vara Innecesariamente Grande (Needlessly Large Rod)",
-            "1086": "Honda de explorador (Scout's Slingshot)",
-            "2015": "Fragmento de Kircheis (Kircheis Shard)",
-            "3012": "Cáliz de la bendición (Chalice of Blessing)",
-            "3024": "Brillo (Sheen)",
-            "3035": "Último Suspiro (Last Whisper)",
-            "3051": "Hacha de Hogar (Zeal)",
-            "3053": "Calibrador de Sterak (Sterak's Gage)",
-            "3057": "Brillo (Sheen)",
-            "3066": "Armadura de guardián (Winged Moonplate)",
-            "3067": "Gema de la luz (Kindlegem)",
-            "3070": "Lágrima de la diosa (Tear of the Goddess)",
-            "3076": "Chaleco de zarzas (Bramble Vest)",
-            "3082": "Prisión del buscador (Seeker's Armguard)",
-            "3086": "Fervor (Zeal)",
-            "3105": "Medallón de la cordura (Aegis of the Legion)",
-            "3113": "Espejo de cristal de Bandle (Bandle Glass Mirror)",
-            "3114": "Idolo prohibido (Forbidden Idol)",
-            "3123": "Llamado del verdugo (Executioner's Calling)",
-            "3133": "Martillo de guerra de Caulfield (Caulfield's Warhammer)",
-            "3134": "Daga de la bruma (Serrated Dirk)",
-            "3145": "Alternador Hextech (Hextech Alternator)",
-            "3191": "Cronómetro (Stopwatch)",
-            "3211": "Hábito del espectro (Spectre's Cowl)",
-            "3742": "Coraza del muerto (Dead Man's Plate)",
-            "3801": "Capa de fuego solar (Bami's Cinder)",
-            "3802": "Capítulo perdido (Lost Chapter)",
-            "3916": "Códice diabólico (Fiendish Codex)",
-            "6660": "Rectriz (Rectrix)",
-
-            # === OBJETOS LEGENDARIOS (FÍSICOS / CRÍTICOS / ASESINOS) ===
-            "2626": "Hidra profana (Profane Hydra)",
-            "3004": "Manamúne (Manamune)",
-            "3026": "Ángel guardián (Guardian Angel)",
-            "3031": "Filo Infinito (Infinity Edge)",
-            "3032": "Flechas salvajes de Yun Tal (Yun Tal Wildarrows)",
-            "3033": "Recordatorio Mortal (Mortal Reminder)",
-            "3036": "Recuerdos de Lord Dominik (Lord Dominik's Regards)",
-            "3046": "Bailarín Fantasma (Phantom Dancer)",
-            "3071": "Cuchilla Negra (Black Cleaver)",
-            "3072": "Sanguinaria (Bloodthirster)",
-            "3074": "Hidra voraz (Ravenous Hydra)",
-            "3078": "Fuerza de la trinidad (Trinity Force)",
-            "3085": "Huracán de Runaan (Runaan's Hurricane)",
-            "3094": "Cañón de fuego rápido (Rapid Firecannon)",
-            "3139": "Cimitarra mercurial (Mercurial Scimitar)",
-            "3142": "Filo de la fantasía de Youmuu (Youmuu's Ghostblade)",
-            "3153": "Espada del rey arruinado (Blade of the Ruined King)",
-            "3156": "Fauces de Malmortius (Maw of Malmortius)",
-            "3161": "Lanza de Shojin (Spear of Shojin)",
-            "3179": "Espada de la penumbra (Umbral Glaive)",
-            "3181": "Rompecascos (Hullbreaker)",
-            "3508": "Saqueador de esencias (Essence Reaver)",
-            "6333": "Baile de la muerte (Death's Dance)",
-            "6609": "Espada voltaica (Voltaic Cyclosword)",
-            "6616": "Oportunidad (Hubris / Opportunity)",
-            "6673": "Arcoescudo Inmortal (Immortal Shieldbow)",
-            "6676": "El Recaudador (The Collector)",
-            "6692": "Rencor de Serylda (Serylda's Grudge)",
-            "6695": "Prebenda de Axioma (Axiom Arc)",
-            "6699": "Cicloespada Voltaica (Voltaic Cyclosword)",
-            "6701": "Final del ingenio (Wit's End)",
-            "6706": "Hidra titánica (Titanic Hydra)",
-
-            # === OBJETOS LEGENDARIOS (MAGOS / AP) ===
-            "3003": "Abrazo del arcángel (Archangel's Staff)",
-            "3027": "Vara de las edades (Rod of Ages)",
-            "3041": "Mejai (Mejai's Soulstealer)",
-            "3089": "Sombrero mortal de Rabadon (Rabadon's Deathcap)",
-            "3100": "Perdición del liche (Lich Bane)",
-            "3115": "Diente de Nashor (Nashor's Tooth)",
-            "3116": "Cetro de cristal de Rylai (Rylai's Crystal Scepter)",
-            "3124": "Guantelete de guinsoo (Guinsoo's Rageblade)",
-            "3135": "Bastón del vacío (Void Staff)",
-            "3151": "Tormento de Liandry (Liandry's Torment)",
-            "3152": "Cinturón cohete Hextech (Hextech Rocketbelt)",
-            "3157": "Reloj de arena de Zhonya (Zhonya's Hourglass)",
-            "3165": "Morellonomicon (Morellonomicon)",
-            "3173": "Impulso cósmico (Cosmic Drive)",
-            "3175": "Enfoque al horizonte (Horizon Focus)",
-            "4628": "Impulso de las sombras (Shadowflame)",
-            "4629": "Cielo desgarrado (Sundered Sky)",
-            "4633": "Creador de grietas (Riftmaker)",
-            "4636": "Viento de tormenta (Stormsurge)",
-            "4645": "Llamasombría (Shadowflame)",
-            "6653": "Abrazo de la serafina (Seraph's Embrace)",
-            "6655": "Compañero de Luden (Luden's Companion)",
-            "6657": "Malignidad (Malignance)",
-            "6658": "Criptoflora (Cryptbloom)",
-
-            # === OBJETOS LEGENDARIOS (TANQUES / COLOSOS) ===
-            "3065": "Rostro espiritual (Spirit Visage)",
-            "3068": "Capa de fuego solar (Sunfire Aegis)",
-            "3075": "Malla de espinas (Thornmail)",
-            "3083": "Armadura de warmog (Warmog's Armor)",
-            "3109": "Promesa del caballero (Knight's Vow)",
-            "3110": "Corazón de hielo (Frozen Heart)",
-            "3143": "Presagio de Randuin (Randuin's Omen)",
-            "3193": "Máscara abisal (Abyssal Mask)",
-            "4401": "Desespero encallado (Unending Despair)",
-            "6662": "Guantelete de fuego escarchado (Iceborn Gauntlet)",
-            "6664": "Rastro de la estela (Trailblazer)",
-            "6665": "Jak'Sho, el Proteico (Jak'Sho, The Protean)",
-            "6667": "Rookern Kaenic (Kaenic Rookern)",
-            "6690": "Orgullo de Mwami (Heartsteel)",
-
-            # === OBJETOS LEGENDARIOS (SOPORTES / UTILIDAD) ===
-            "3011": "Renovador de piedra lunar (Moonstone Renewer)",
-            "3107": "Redención (Redemption)",
-            "3119": "Campana de Mikael (Mikael's Blessing)",
-            "3122": "Incensario ardiente (Ardent Censer)",
-            "3174": "Mandato imperial (Imperial Mandate)",
-            "3190": "Solari de Hierro (Locket of the Iron Solari)",
-            "3222": "Crisol de Mikael (Mikael's Crucible)",
-            "3504": "Incensario ardiente (Ardent Censer)",
-            "4005": "Mandato imperial (Imperial Mandate)",
-            "6617": "Eco de Helia (Echoes of Helia)",
-            "6620": "Tejesueños (Dream Maker)",
-            "6621": "Zaz'Zak (Zaz'Zak's Realmspike)",
-            "6622": "Trineo de solsticio (Solstice Sleigh)",
-            "6623": "Oposición celestial (Celestial Opposition)",
-        }
-
-        # Pre-traducir la lista de objetos finales del usuario
-        user_items_raw = user_stats.get("items", [])
-        if isinstance(user_items_raw, str):
-            try:
-                user_items_raw = json.loads(user_items_raw.replace("'", '"'))
-            except Exception:
-                user_items_raw = []
-
-        user_items_translated = [
-            ITEM_DICTIONARY.get(str(i), f"Objeto Oculto ({i})")
-            for i in user_items_raw
+        """Construye un prompt basado en hechos curados y eventos citables."""
+        del formatted_log
+        evidencia = log_data.get("analysis_evidence")
+        if not isinstance(evidencia, dict):
+            evidencia = MatchAnalysisEvidenceService().build_evidence(log_data)
+        roster = evidencia.get("participants", [])
+        rol = str(evidencia.get("player", {}).get("role") or "UNKNOWN")
+        rivales_directos = [
+            participante
+            for participante in roster
+            if not participante.get("is_ally")
+            and str(participante.get("role") or "").casefold() == rol.casefold()
         ]
-        user_items_str = (
-            ", ".join(user_items_translated)
-            if user_items_translated
-            else "Ninguno"
-        )
+        return f"""Eres coach postpartida de League of Legends. Redacta toda la salida en español.
 
-        # TRADUCCIÓN DEL LOG MEDIANTE REGEX
-        clean_log = re.sub(r"\bObjeto\s+", "", formatted_log)
-        pattern = re.compile(
-            r"\b(" + "|".join(ITEM_DICTIONARY.keys()) + r")\b"
-        )
-        clean_log = pattern.sub(
-            lambda m: ITEM_DICTIONARY[m.group(0)], clean_log
-        )
+La evidencia JSON adjunta fue extraída determinísticamente del registro de SOLRALOL. Trátala como fuente de hechos: no inventes posiciones, visión, lanzamientos de habilidades, oro disponible ni causas tácticas. Distingue hechos confirmados, cálculos e interpretaciones. Cada afirmación importante debe citar uno o más event_id de notable_timeline o champion_id/item_id. El catálogo de habilidades y objetos es estático de Data Dragon; menciona herramientas como mecánicas conocidas, nunca como habilidades observadas en esta partida.
 
-        return f"""Eres un Analista Profesional y Coach de Alto Nivel de League of Legends (Challenger).
-Tu trabajo es realizar una evaluación táctica post-partida profunda, estructurada y constructiva para el jugador que ha jugado con el campeón '{champ}'.
-A continuación tienes el REGISTRO OFICIAL Y COMPLETO DE LOG DE LA PARTIDA (Todos los IDs numéricos han sido sustituidos por sus nombres de texto correspondientes):
-text {clean_log} 
-INSTRUCCIONES OBLIGATORIAS DE FORMATO Y CONTENIDO:
-Responde EXCLUSIVAMENTE en español con formato Markdown bien formateado, limpio y visual.
-DEBES incluir de forma clara y detallada las siguientes secciones exactas:
+EVIDENCIA:
+{json.dumps(evidencia, ensure_ascii=False, separators=(",", ":"))}
 
+Devuelve únicamente JSON compatible con schema_version=3 y analysis_type="general_match_analysis". El resumen debe explicar decisiones y cambios de ritmo, sin repetir KDA/CS/oro como análisis. overall_grade debe ser una valoración verbal, no una nota del motor. Si performance_scoring contiene un resultado final, consérvalo como dato separado y no lo recalcules.
 
-📊 Análisis de Partida con IA: {champ}
+Incluye early, mid y late. En cada fase, cita entre 2 y 4 eventos relevantes, explica contribuciones y preocupaciones que sí se desprendan de ellos y da un ajuste concreto. No uses recuentos de eventos como evaluación.
 
+Eval?a farming, combat, objectives, vision, survivability y decision_making con evidencia y consejos proporcionales. En build, analiza cada objeto final importante con su funci?n del catálogo y un veredicto razonado. Vincula compras con tiempos solo cuando purchase_events existan. Propón como máximo alternativas legales del catálogo; identifica una ranura/objeto que se retrasaría o cambiar?a, el beneficio y el coste de oportunidad. La cobertura gold_on_hand_available indica si la asequibilidad exacta se conoce; si es falsa, declara que la asequibilidad exacta no es confirmable. No inventes runas: si faltan, indícalo.
 
-🎯 Resumen Ejecutivo
-Resultado de la partida: {metadata.get('result')} ({metadata.get('duration_formatted')})
-KDA Final: {user_stats.get('kills')}/{user_stats.get('deaths')}/{user_stats.get('assists')} | Farmeo: {user_stats.get('cs_total')} CS ({user_stats.get('cs_per_min')} CS/min)
-Calificación Global: [Asigna una nota: S+, S, A+, A, B, C, D]
-Resumen táctico general: Breve balance general de la partida y papel del jugador (3-4 frases).
+Devuelve un análisis de cada uno de los cinco enemigos observados en key_enemies, sin excluir apoyos o frontline. Ordena por importancia, pero incluye los cinco. Para cada uno incluye campeón, rol, amenaza, KDA, por qué importó, interacciones registradas, habilidades relevantes basadas solo en ability_catalog, contrajuego específico y relación de itemizaci?n. Identifica como rival directo solo a los campeones de roles coincidentes verificados; en este caso candidatos: {json.dumps(rivales_directos, ensure_ascii=False)}. Considera kills, muertes y asistencias al estimar amenaza; no ignores alto número de asistencias.
 
-
-⏳ Rendimiento por Fases de la Partida
-
-
-🟢 Early Game (0-15 min)
-Evaluación de la fase de líneas, tradeos, nivel de farmeo inicial, primeras bajas y control de visión temprano.
-
-
-🟡 Mid Game (15-25 min)
-Evaluación de rotaciones, peleas de equipo/escaramuzas, picos de poder de objetos y presión en el mapa.
-
-
-🔴 Late Game (25+ min)
-Evaluación de teamfights decisivas, ejecución de condiciones de victoria y control de Barón/Dragón Anciano (si la partida duró menos de 25 min, analizar cómo se cerró o se perdió la partida).
-
-
-🌾 Rendimiento del Farmeo (Farm / CS)
-Análisis de la eficiencia de CS por minuto ({user_stats.get('cs_per_min')} CS/min).
-Comparativa de farmeo con los rivales directos y ritmo de generación de oro a lo largo del tiempo.
-Consejos específicos para mejorar el farmeo en distintas etapas.
-
-
-⚔️ Valoración de la Build vs Equipo Enemigo
-Análisis de los objetos comprados ({user_items_str}) frente a la composición de campeones enemigos (daño físico/mágico, curaciones enemigas, tanques, CC).
-Aciertos y fallos en la adaptación de la build (¿Faltó penetración de armadura/mágica, cortacuras, resistencia o protección?).
-
-
-🤺 Cómo Deberías Haber Enfrentado a Cada Rival (Matchups y Counterplay)
-Identifica a cada uno de los campeones del equipo enemigo presentes en la partida/log y desglosa lo siguiente para cada rival:
-- **[Nombre del Campeón Enemigo]** - Dificultad del enfrentamiento: [Fácil | Normal | Difícil]
-  - **Consejos y Trucos:** Forma óptima de enfrentarte a él en fase de líneas/teamfights jugando con {champ} (tradeos, baits, dodgear habilidades clave).
-  - **Counterplay a su Build y Kit:** Cómo adaptarte o contrarrestar los objetos específicos que se hizo y sus habilidades (ej. cuándo comprar cortacuras, resistencia mágica, penetración, etc.).
-
-
-⏱️ Velocidad de Compra y Tempos de Receso (Recalls)
-Evaluación del timing de vuelta a base y compra de ítems principales.
-Análizar si las vueltas a base se hicieron aprovechando picos de poder (power spikes) o si se perdió tempo/oleadas innecesariamente.
-
-
-🎯 Impacto de Asesinatos en Objetivos (Kills vs Objetivos / Kills "Vacías")
-Análisis de si las bajas (kills) conseguidas se tradujeron en capturas de dragones, heraldos, torres, barones o ventajas en el mapa.
-Identificación y evaluación de "Kills Vacías" (asesinatos logrados que no aportaron ningún objetivo ni ventaja táctica real posterior).
-
-
-💀 Impacto de Muertes en Objetivos Perdidos
-Análisis de cómo las muertes del jugador facilitaron al equipo enemigo la pérdida de torres, dragones, barones o presión de líneas.
-Identificación de muertes críticas que cambiaron el tempo de la partida.
-
-
-💡 Consejos Clave para la Siguiente Partida
-Proporciona 3 o 4 consejos accionables, claros y prioritarios para mejorar en las próximas partidas.
+Devuelve entre 3 y 5 next_game_priorities, cada una con título, gravedad, evidence_refs, por qué importa, acción concreta, fase y referencias visuales mediante champion_id/item_id/ability_slot cuando existan. Si falta evidencia suficiente, formula una limitación explícita en vez de rellenar con ficción.
 """
 
     def _get_available_models(self, api_key: str) -> list[str]:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+            url = "https://generativelanguage.googleapis.com/v1beta/models"
             resp = requests.get(
-                url, headers={"Accept": "application/json"}, timeout=10
+                url,
+                headers={"Accept": "application/json", "x-goog-api-key": api_key},
+                timeout=10,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -346,11 +382,7 @@ Proporciona 3 o 4 consejos accionables, claros y prioritarios para mejorar en la
                 for m in raw_models:
                     methods = m.get("supportedGenerationMethods", [])
                     if "generateContent" in methods:
-                        name = (
-                            str(m.get("name", ""))
-                            .replace("models/", "")
-                            .strip()
-                        )
+                        name = str(m.get("name", "")).replace("models/", "").strip()
                         if name:
                             gen_models.append(name)
 
@@ -372,8 +404,14 @@ Proporciona 3 o 4 consejos accionables, claros y prioritarios para mejorar en la
                         if m not in sorted_models:
                             sorted_models.append(m)
                     return sorted_models
-        except Exception:
-            pass
+        except (
+            requests.RequestException,
+            AttributeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
+            return self.FALLBACK_MODELS
 
         return self.FALLBACK_MODELS
 
@@ -385,35 +423,84 @@ Proporciona 3 o 4 consejos accionables, claros y prioritarios para mejorar en la
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.3,
+                "maxOutputTokens": 8192,
+                "responseFormat": {
+                    "text": {
+                        "mimeType": "APPLICATION_JSON",
+                        "schema": ESQUEMA_ANALISIS_GEMINI,
+                    }
+                },
             },
         }
 
         for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             try:
                 resp = requests.post(
                     url,
                     json=payload,
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": api_key,
+                    },
                     timeout=35,
                 )
                 if resp.status_code == 200:
                     data = resp.json()
                     candidates = data.get("candidates", [])
                     if candidates:
-                        parts = (
-                            candidates[0]
-                            .get("content", {})
-                            .get("parts", [])
-                        )
+                        parts = candidates[0].get("content", {}).get("parts", [])
                         if parts:
                             text = parts[0].get("text", "")
                             if text and len(text.strip()) > 50:
                                 return text, model
-                elif resp.status_code in (400, 404):
-                    last_error = (
-                        f"HTTP {resp.status_code} ({model}): {resp.text[:150]}"
+                elif resp.status_code == 400:
+                    try:
+                        respuesta_error = resp.json().get("error", {})
+                    except (ValueError, AttributeError):
+                        respuesta_error = {}
+                    mensaje = str(respuesta_error.get("message") or resp.text)
+                    ruta = re.search(r"Invalid value at '([^']+)'", mensaje)
+                    cabeceras = getattr(resp, "headers", {}) or {}
+                    diagnostico = {
+                        "http_status": 400,
+                        "api_code": respuesta_error.get("code"),
+                        "category": str(
+                            respuesta_error.get("status") or "INVALID_ARGUMENT"
+                        ),
+                        "message": mensaje,
+                        "details": respuesta_error.get("details", []),
+                        "field_path": ruta.group(1) if ruta else None,
+                        "request_id": next(
+                            (
+                                cabeceras.get(nombre)
+                                for nombre in (
+                                    "x-request-id",
+                                    "x-goog-request-id",
+                                    "request-id",
+                                )
+                                if cabeceras.get(nombre)
+                            ),
+                            None,
+                        ),
+                        "model": model,
+                        "retryable": False,
+                    }
+                    for clave, valor in diagnostico.items():
+                        if isinstance(valor, str):
+                            diagnostico[clave] = re.sub(
+                                r"(?i)(AIza[0-9A-Za-z_-]{20,}|(?:key=)[^&\s]+)",
+                                "[REDACTED]",
+                                valor,
+                            )
+                    diagnostico["details"] = re.sub(
+                        r"(?i)(AIza[0-9A-Za-z_-]{20,}|(?:key=)[^&\s]+)",
+                        "[REDACTED]",
+                        json.dumps(diagnostico["details"], ensure_ascii=False),
                     )
+                    raise ErrorSolicitudGemini(diagnostico)
+                elif resp.status_code == 404:
+                    last_error = f"HTTP 404 ({model}): {resp.text}"
                     continue
                 else:
                     resp.raise_for_status()

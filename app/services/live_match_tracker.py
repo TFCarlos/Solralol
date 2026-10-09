@@ -254,12 +254,33 @@ class LiveMatchTracker:
             return (str(self.sessions_path), 0, 0)
 
     def delete_saved_session(self, session_id: str) -> None:
+        """Elimina la sesión guardada y con ella los análisis que contiene."""
         sessions = [
             session
             for session in self.load_saved_sessions()
             if session.get("session_id") != session_id
         ]
         self._save_sessions(sessions)
+
+    def guardar_analisis_partida(
+        self, session_id: str, registro: dict[str, Any]
+    ) -> None:
+        """Guarda el análisis validado dentro de su partida canónica."""
+        from app.services.match_analysis_models import validar_analisis_partida
+
+        if not session_id or registro.get("saved_match_id") != session_id:
+            raise ValueError("El análisis no corresponde al identificador de partida.")
+        validar_analisis_partida(registro.get("analysis"))
+        sesiones_guardadas = deepcopy(self.load_saved_sessions())
+        for sesion in sesiones_guardadas:
+            if str(sesion.get("session_id") or "") == session_id:
+                sesion["ai_match_analysis"] = deepcopy(registro)
+                self._save_sessions(sesiones_guardadas)
+                return
+        if self.session and str(self.session.get("session_id") or "") == session_id:
+            self.session["ai_match_analysis"] = deepcopy(registro)
+            return
+        raise KeyError("No existe una partida guardada con ese identificador.")
 
     def _index_players(self, snapshot: dict[str, Any]) -> None:
         if self.session is None:

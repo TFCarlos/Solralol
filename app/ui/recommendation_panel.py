@@ -440,15 +440,62 @@ class RecommendationPanel(QFrame):
                 body.addLayout(row)
                 card.setToolTip(entry.get("reason", ""))
                 layout.addWidget(card)
-        layout.addWidget(
-            self._details(
-                "actionPlan",
-                "Plan y coordinación",
-                [f"{heading}: {text}" for heading, text in report["actions"]],
-            )
-        )
+        layout.addWidget(self._action_plan(report))
         layout.addStretch(1)
         return section
+
+    def _action_plan(self, report: dict[str, Any]) -> QFrame:
+        """Presenta acciones priorizadas en bloques que se pueden contraer."""
+        card, body = self.card("actionPlan")
+        body.setContentsMargins(12, 10, 12, 10)
+        body.setSpacing(8)
+        toggle = QToolButton()
+        toggle.setObjectName("actionPlanToggle")
+        toggle.setText("PLAN Y COORDINACION")
+        toggle.setCheckable(True)
+        toggle.setChecked(True)
+        toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        toggle.setArrowType(Qt.ArrowType.DownArrow)
+        contenido = QWidget()
+        acciones_layout = QVBoxLayout(contenido)
+        acciones_layout.setContentsMargins(0, 0, 0, 0)
+        acciones_layout.setSpacing(8)
+        body.addWidget(toggle)
+        body.addWidget(contenido)
+        toggle.toggled.connect(contenido.setVisible)
+        toggle.toggled.connect(
+            lambda expandir: toggle.setArrowType(
+                Qt.ArrowType.DownArrow if expandir else Qt.ArrowType.RightArrow
+            )
+        )
+        actions = report.get("actions") or []
+        if not actions:
+            acciones_layout.addWidget(
+                self.label("No hay senales suficientes para proponer un plan tactico.", "muted")
+            )
+            return card
+        title, explanation = actions[0]
+        immediate, immediate_body = self.card("immediateAction")
+        immediate_body.addWidget(self.label("ACCION INMEDIATA", "eyebrow"))
+        immediate_body.addWidget(self.label(title, "accent"))
+        immediate_body.addWidget(self.label(explanation, "body"))
+        acciones_layout.addWidget(immediate)
+        if len(actions) > 1:
+            title, explanation = actions[1]
+            team, team_body = self.card("teamCoordination")
+            team_body.addWidget(self.label("COORDINACION", "eyebrow"))
+            team_body.addWidget(self.label(title, "itemName"))
+            team_body.addWidget(self.label(explanation, "muted"))
+            acciones_layout.addWidget(team)
+        if len(actions) > 2:
+            acciones_layout.addWidget(
+                self._details(
+                    "additionalInsights",
+                    "Mas informacion tactica",
+                    [f"{title}: {description}" for title, description in actions[2:]],
+                )
+            )
+        return card
 
     def _context(self, report: dict[str, Any]) -> QWidget:
         """Presenta la fuerza estimada y el inventario de cada rival."""
@@ -485,117 +532,115 @@ class RecommendationPanel(QFrame):
                 layout.addWidget(note)
         for threat in self._ordered_threats(report["threats"]):
             card, body = self.card(f"enemyCard_{threat['key']}")
-            body.setContentsMargins(7, 5, 7, 5)
-            body.setSpacing(3)
-            # Una sola línea compacta: retrato · nivel · campeón · KDA · fuerza · coste de build.
-            heading = QHBoxLayout()
-            heading.setSpacing(8)
-            heading.addWidget(self.champion_icon(threat["champion"], 26))
-            level = self.label(f"Nv {threat['level'] or '—'}", "eyebrow")
+            card.setProperty("performanceRank", str(threat.get("performance_rank") or ""))
+            body.setContentsMargins(8, 6, 8, 6)
+            body.setSpacing(4)
+            first_row = QHBoxLayout()
+            first_row.setContentsMargins(0, 0, 0, 0)
+            first_row.setSpacing(6)
+            first_row.addWidget(self.champion_icon(threat["champion"], 32))
+            identity = QVBoxLayout()
+            identity.setContentsMargins(0, 0, 0, 0)
+            identity.setSpacing(0)
+            name = self.label(threat["champion"], "itemName")
+            name.setObjectName("enemyChampionName")
+            name.setWordWrap(False)
+            name.setToolTip(threat["champion"])
+            identity.addWidget(name)
+            level = self.label(f"Nv {threat['level'] or 'N/D'}", "muted")
             level.setObjectName("enemyLevel")
             level.setWordWrap(False)
-            level.setSizePolicy(
-                QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
-            )
-            heading.addWidget(level)
-            name = self.label(threat["champion"], "section")
-            name.setObjectName("enemyChampionName")
-            name.setSizePolicy(
-                QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
-            )
-            heading.addWidget(name)
+            identity.addWidget(level)
+            first_row.addLayout(identity)
             kda = self.label(threat["kda"], "muted")
             kda.setObjectName("enemyKda")
             kda.setWordWrap(False)
-            kda.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-            heading.addWidget(kda)
-            heading.addStretch(1)
-            strength_label = threat["strength_label"]
-            if strength_label:
-                role = (
-                    "strong"
-                    if strength_label.startswith("MÁS FUERTE")
-                    else ("weak" if strength_label.startswith("MÁS DÉBIL") else "muted")
-                )
-                badge = self.label(strength_label, role)
-                badge.setObjectName("enemyStrengthBadge")
-                badge.setWordWrap(False)
-                badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                badge.setSizePolicy(
-                    QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum
-                )
-                badge.setToolTip(
-                    "Fuerza relativa estimada; más débil no significa una baja segura."
-                )
-                heading.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
+            first_row.addWidget(kda)
+            first_row.addStretch(1)
+            rank = threat.get("performance_rank")
+            score_100 = threat.get("performance_score_100")
+            score_text = (
+                f"#{rank} · {score_100:.1f}/100"
+                if rank is not None and score_100 is not None
+                else "Sin ranking"
+            )
+            performance = self.label(
+                score_text, "score" if rank is not None else "muted"
+            )
+            performance.setObjectName("enemyPerformanceScore")
+            performance.setProperty("rank", str(rank or ""))
+            performance.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            performance.setWordWrap(False)
+            performance.setToolTip(
+                "Rendimiento provisional basado en metricas LIVE y en el modelo postpartida compartido. "
+                "No representa fuerza de duelo."
+                if rank is not None
+                else "Se requieren al menos dos rivales con metricas comparables."
+            )
+            first_row.addWidget(performance)
+            completeness = float(
+                (threat.get("performance_score") or {}).get("completeness", 0)
+            )
+            confidence = self.label(f"{completeness:.0%} datos", "muted")
+            confidence.setObjectName("enemyPerformanceConfidence")
+            confidence.setWordWrap(False)
+            confidence.setToolTip(
+                f"Completitud de categorias del modelo: {completeness:.0%}. "
+                "Las metricas ausentes no se interpretan como cero."
+            )
+            first_row.addWidget(confidence)
             inventory = threat["inventory"]
             value = inventory["value"]
             gold_text = (
-                "Build: oro desconocido"
+                "Build: no disponible"
                 if value is None
-                else (
-                    f"Build: ≥ {value:,} oro · catálogo incompleto"
-                    if inventory["partial"]
-                    else f"Build: {value:,} oro"
-                )
+                else f"aprox. {value:,} oro"
+                if inventory["partial"]
+                else f"{value:,} oro"
             )
             gold = self.label(gold_text, "eyebrow")
             gold.setObjectName("enemyBuildGold")
-            gold.setToolTip(
-                "Valor de catálogo de los objetos actuales, incluidos componentes. "
-                "No es oro disponible, oro ganado ni gasto histórico."
-            )
-            gold.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+            gold.setWordWrap(False)
             gold.setAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
-            heading.addWidget(gold)
-            body.addLayout(heading)
-            icons = QGridLayout()
-            icons.setHorizontalSpacing(4)
-            icons.setVerticalSpacing(2)
-            for index, ident in enumerate(threat["items"]):
-                icon = self.icon(ident, 26)
+            gold.setToolTip(
+                "Valor estimado de catalogo de los objetos actuales; no es oro disponible, ganado ni gastado."
+            )
+            first_row.addWidget(gold)
+            body.addLayout(first_row)
+
+            second_row = QHBoxLayout()
+            second_row.setContentsMargins(0, 0, 0, 0)
+            second_row.setSpacing(4)
+            for ident in threat["items"][:6]:
+                icon = self.icon(ident, 22)
                 icon.setObjectName("enemyItemIcon")
                 icon.setProperty("itemId", ident)
-                icons.addWidget(icon, index // 7, index % 7)
-            icons.setColumnStretch(7, 1)
-            if threat["items"]:
-                body.addLayout(icons)
-            else:
-                body.addWidget(
-                    self.label(
-                        "Inventario vacío"
-                        if inventory["known"]
-                        else "Inventario no disponible",
-                        "muted",
-                    )
+                second_row.addWidget(icon)
+            if not threat["items"]:
+                inventory_label = (
+                    "Inventario vacio"
+                    if inventory["known"]
+                    else "Inventario no disponible"
                 )
-            badge_container = QWidget()
-            badges = QGridLayout(badge_container)
-            badges.setContentsMargins(0, 0, 0, 0)
-            badges.setHorizontalSpacing(4)
-            badges.setVerticalSpacing(2)
-            for index, fact in enumerate(inventory["badges"]):
+                second_row.addWidget(self.label(inventory_label, "muted"))
+            for fact in inventory["badges"]:
                 badge = self.label(fact["label"], "enemyBadge")
                 badge.setObjectName("enemyInventoryBadge")
                 badge.setProperty("kind", fact["kind"])
                 badge.setToolTip(fact["detail"])
-                badge.setSizePolicy(
-                    QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
-                )
-                badges.addWidget(badge, index // 3, index % 3)
-            if inventory["badges"]:
-                body.addWidget(badge_container, 0, Qt.AlignmentFlag.AlignLeft)
-            else:
-                badge_container.deleteLater()
-            texts = [s["evidence"] for s in threat["signals"]]
+                badge.setWordWrap(False)
+                second_row.addWidget(badge)
+            second_row.addStretch(1)
+            body.addLayout(second_row)
+            evidence = [signal["evidence"] for signal in threat["signals"]]
             card.setToolTip(
-                "\n".join(texts)
-                or "Sin amenazas adicionales identificadas en la última muestra."
+                "\n".join(evidence)
+                or "Sin amenazas adicionales identificadas en la ultima muestra."
             )
             if threat["stale"]:
-                body.addWidget(self.label("Muestra antigua o sin timestamp", "eyebrow"))
+                card.setToolTip(card.toolTip() + "\nMuestra antigua o sin timestamp.")
             layout.addWidget(card)
         if not report["threats"]:
             layout.addWidget(

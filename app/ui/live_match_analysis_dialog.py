@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import time
 from bisect import bisect_left
 from copy import deepcopy
+from datetime import UTC, datetime
 from functools import partial
 from typing import Any
 
@@ -36,9 +38,14 @@ from app.services.live_analysis_models_and_calculator import (
 )
 from app.services.live_event_participation import filter_participating_events
 from app.services.live_match_tracker import LiveMatchTracker
+from app.services.match_analysis_models import (
+    VERSION_ESQUEMA_ANALISIS,
+    enriquecer_analisis_partida,
+)
 from app.services.match_log_service import MatchLogService
 from app.services.servicio_puntuacion_rendimiento import puntuar_sesion
 from app.services.settings_service import SettingsService
+from app.ui.analisis_partida_ia import AnalisisPartidaIA
 from app.ui.desglose_rendimiento_dialogo import DialogoDesgloseRendimiento
 from app.ui.draft_icon_cache import DraftIconCache
 from app.ui.live_analysis_task import AnalysisTask
@@ -575,12 +582,14 @@ class LiveMatchAnalysisDialog(QDialog):
         assets: DataDragonAssetService,
         item_catalog: dict[str, Any],
         parent=None,
+        tracker: LiveMatchTracker | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.session = session or {}
         self.assets = assets
         self.item_catalog = item_catalog or {}
+        self.tracker = tracker
 
         self.timeline_mode = "lane"
         self.current_role = "TOP"
@@ -592,6 +601,9 @@ class LiveMatchAnalysisDialog(QDialog):
         self.ai_tab_button: QPushButton | None = None
         self.ai_worker: MatchAIWorker | None = None
         self.is_analyzing_ai = False
+        self.is_saving_analysis = False
+        self._pending_analysis_record: dict[str, Any] | None = None
+        self._analysis_save_task: AnalysisTask | None = None
         self._last_ui_refresh = 0.0
         self._revision = 0
         self._role_pages = {}
@@ -988,8 +1000,14 @@ class LiveMatchAnalysisDialog(QDialog):
         if self.ai_tab_button is not None:
             self.ai_tab_button.setChecked(True)
 
+        registro_ia = self.session.get("ai_match_analysis")
+        if not isinstance(registro_ia, dict):
+            registro_ia = {}
         key = (
             self.is_analyzing_ai,
+            self.is_saving_analysis,
+            (self._pending_analysis_record or {}).get("created_at"),
+            registro_ia.get("created_at"),
             self.session.get("ai_analysis"),
             self.session.get("ai_analysis_model"),
         )
@@ -1002,6 +1020,16 @@ class LiveMatchAnalysisDialog(QDialog):
             self._ai_page_key = key
             self.content.addWidget(self._ai_page)
         self.content.setCurrentWidget(self._ai_page)
+
+    def invalidar_analisis_guardado(self, session_id: str) -> None:
+        """Invalida el informe visible cuando se borra su partida propietaria."""
+        if str(self.session.get("session_id") or "") != str(session_id or ""):
+            return
+        self.session.pop("ai_match_analysis", None)
+        self.session.pop("ai_analysis", None)
+        if self.current_view == "ai_analysis":
+            self._ai_page_key = None
+            self.show_ai_analysis()
 
     def _create_ai_analysis_view(self, formatted_log: str) -> QWidget:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -1039,19 +1067,23 @@ class LiveMatchAnalysisDialog(QDialog):
         h_layout.addWidget(view_log_btn)
 
         # Botón para ejecutar/re-ejecutar el análisis
-        has_analysis = bool(self.session.get("ai_analysis"))
+        has_analysis = bool(
+            self.session.get("ai_match_analysis") or self.session.get("ai_analysis")
+        )
         analyze_btn = QPushButton(
             "🔄 Re-analizar con IA" if has_analysis else "🤖 Analizar Partida con IA"
         )
         analyze_btn.setObjectName("primaryAiButton")
-        analyze_btn.setEnabled(not getattr(self, "is_analyzing_ai", False))
+        analyze_btn.setEnabled(not self.is_analyzing_ai and not self.is_saving_analysis)
         analyze_btn.clicked.connect(self._start_ai_analysis)
         h_layout.addWidget(analyze_btn)
 
         layout.addWidget(header_card)
 
         # Cuerpo principal
-        if getattr(self, "is_analyzing_ai", False):
+        if (self.is_analyzing_ai or self.is_saving_analysis) and not self.session.get(
+            "ai_match_analysis"
+        ):
             loading_card = QFrame()
             loading_card.setObjectName("aiIntroCard")
             l_layout = QVBoxLayout(loading_card)
@@ -1079,6 +1111,32 @@ class LiveMatchAnalysisDialog(QDialog):
 
             layout.addWidget(loading_card, 1)
 
+        elif isinstance(self.session.get("ai_match_analysis"), dict):
+            registro = self.session["ai_match_analysis"]
+            try:
+                panel = AnalisisPartidaIA(
+                    self.session,
+                    registro,
+                    assets=self.assets,
+                    parent=container,
+                    item_catalog=self.item_catalog,
+                )
+            except (TypeError, ValueError) as error:
+                layout.addWidget(QLabel(f"El análisis guardado no es válido: {error}"))
+            else:
+                if self.is_analyzing_ai:
+                    layout.addWidget(
+                        QLabel(
+                            "Generando una nueva versión; el análisis guardado sigue disponible."
+                        )
+                    )
+                elif self.is_saving_analysis:
+                    layout.addWidget(
+                        QLabel(
+                            "Guardando el nuevo análisis; la versión anterior sigue disponible."
+                        )
+                    )
+                layout.addWidget(panel, 1)
         elif has_analysis:
             model_used = self.session.get("ai_analysis_model", "Gemini AI")
             model_info = QLabel(f"✨ Análisis generado por {model_used}")
@@ -1088,7 +1146,7 @@ class LiveMatchAnalysisDialog(QDialog):
             text_browser = QTextBrowser()
             text_browser.setObjectName("aiAnalysisTextBrowser")
             text_browser.setOpenExternalLinks(True)
-            text_browser.setMarkdown(self.session["ai_analysis"])
+            text_browser.setPlainText(self.session["ai_analysis"])
             layout.addWidget(text_browser, 1)
 
         else:
@@ -1168,38 +1226,127 @@ class LiveMatchAnalysisDialog(QDialog):
             )
             return
 
+        try:
+            worker = MatchAIWorker(deepcopy(self.session), api_key, self)
+        except (RuntimeError, ValueError) as error:
+            QMessageBox.information(self, "Análisis de partida", str(error))
+            return
         self.is_analyzing_ai = True
         self.show_ai_analysis()
-
-        self.ai_worker = MatchAIWorker(deepcopy(self.session), api_key, self)
+        self.ai_worker = worker
         self.ai_worker.finished_analysis.connect(self._on_ai_analysis_success)
         self.ai_worker.error_occurred.connect(self._on_ai_analysis_error)
         self.ai_worker.finished.connect(self._dispose_if_idle)
         self.ai_worker.start()
 
-    def _on_ai_analysis_success(self, markdown_text: str, model_used: str) -> None:
+    def _on_ai_analysis_success(
+        self,
+        analysis: dict[str, Any],
+        response: str,
+        model_used: str,
+        fingerprint: str,
+        source_session_id: str,
+    ) -> None:
+        """Valida, conserva y persiste el informe estructurado recibido."""
         self.is_analyzing_ai = False
-        self.session["ai_analysis"] = markdown_text
-        self.session["ai_analysis_model"] = model_used
-
-        session = deepcopy(self.session)
-        self._save_task = AnalysisTask(
-            self._revision, lambda: MatchLogService().save_match_log(session)
-        )
-        QThreadPool.globalInstance().start(self._save_task)
+        session_id = str(self.session.get("session_id") or "")
+        if source_session_id != session_id:
+            if not self._closed and self.current_view == "ai_analysis":
+                self.show_ai_analysis()
+            return
+        try:
+            validated = enriquecer_analisis_partida(analysis)
+            if not session_id:
+                raise ValueError(
+                    "No se puede guardar el análisis sin un identificador de partida."
+                )
+            ahora = datetime.now(UTC).isoformat()
+            registro = {
+                "saved_match_id": session_id,
+                "analysis_type": "general_match_analysis",
+                "schema_version": VERSION_ESQUEMA_ANALISIS,
+                "provider": "Gemini",
+                "model": model_used,
+                "created_at": ahora,
+                "last_successful_analysis_at": ahora,
+                "source_fingerprint": fingerprint,
+                "status": "complete",
+                "analysis": validated,
+                "source_response": response,
+            }
+            if self.tracker is not None:
+                self._pending_analysis_record = registro
+                self.is_saving_analysis = True
+                self.show_ai_analysis()
+                tarea = AnalysisTask(
+                    session_id,
+                    lambda: self.tracker.guardar_analisis_partida(session_id, registro),
+                )
+                tarea.signals.finished.connect(self._on_analysis_persisted)
+                self._analysis_save_task = tarea
+                QThreadPool.globalInstance().start(tarea)
+                return
+            self.session["ai_match_analysis"] = registro
+        except (KeyError, TypeError, ValueError, OSError) as error:
+            self._on_ai_analysis_error(str(error))
+            return
 
         if not self._closed and self.current_view == "ai_analysis":
             self.show_ai_analysis()
 
+    @Slot(object, object, object)
+    def _on_analysis_persisted(self, token: str, result: Any, error: Any) -> None:
+        """Aplica el análisis después de persistirlo sin bloquear la interfaz."""
+        self._analysis_save_task = None
+        self.is_saving_analysis = False
+        registro = self._pending_analysis_record
+        self._pending_analysis_record = None
+        if error:
+            self._on_ai_analysis_error(str(error))
+            return
+        if not registro or token != registro.get("saved_match_id"):
+            return
+        self.session["ai_match_analysis"] = registro
+        if not self._closed and self.current_view == "ai_analysis":
+            self.show_ai_analysis()
+
     def _on_ai_analysis_error(self, error_msg: str) -> None:
+        """Restaura el estado de análisis y presenta un diagnóstico copiable."""
         self.is_analyzing_ai = False
         if self._closed:
             return
-        QMessageBox.critical(
-            self,
-            "Error en Análisis IA",
-            f"No se pudo completar el análisis de la partida con IA:\n\n{error_msg}",
+        detalle = str(error_msg)
+        mensaje_usuario = "No se pudo completar el análisis de la partida. Puedes intentarlo de nuevo."
+        try:
+            diagnostico = json.loads(detalle)
+        except (json.JSONDecodeError, TypeError):
+            diagnostico = {}
+        if diagnostico.get("http_status") == 400:
+            if diagnostico.get("field_path") == (
+                "generation_config.response_format.text.mime_type"
+            ):
+                mensaje_usuario = (
+                    "Gemini rechazó la configuración del formato de respuesta. "
+                    "Consulta los detalles del error."
+                )
+            else:
+                mensaje_usuario = (
+                    "Gemini rechazó la configuración de la solicitud. "
+                    "Consulta los detalles del error."
+                )
+        caja = QMessageBox(self)
+        caja.setIcon(QMessageBox.Icon.Critical)
+        caja.setWindowTitle("Error en Análisis IA")
+        caja.setText(mensaje_usuario)
+        caja.setInformativeText("El informe anterior, si existe, sigue disponible.")
+        caja.setDetailedText(detalle)
+        boton_copiar = caja.addButton(
+            "Copiar diagnóstico", QMessageBox.ButtonRole.ActionRole
         )
+        caja.addButton("Cerrar", QMessageBox.ButtonRole.RejectRole)
+        caja.exec()
+        if caja.clickedButton() == boton_copiar:
+            QApplication.clipboard().setText(detalle)
         if self.current_view == "ai_analysis":
             self.show_ai_analysis()
 

@@ -1,25 +1,24 @@
 from __future__ import annotations
 
-import weakref
 import json
 import re
+import unicodedata
+import weakref
 from pathlib import Path
 from urllib.parse import quote
-
-from _paths import DATA_DIR
 
 import requests
 from PySide6.QtCore import (
     QObject,
-    QUrl,
     Qt,
+    QUrl,
     Signal,
-    Slot,
 )
-
 from PySide6.QtGui import QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import QLabel
+
+from _paths import DATA_DIR
 
 
 class DataDragonAssetService(QObject):
@@ -35,7 +34,8 @@ class DataDragonAssetService(QObject):
         catalog = self._load_json(catalog_path)
         version = catalog.get("version") if isinstance(catalog, dict) else None
         self.version = (
-            version if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+", version)
+            version
+            if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+", version)
             else "15.16.1"
         )
         self.language = "en_US"
@@ -80,7 +80,7 @@ class DataDragonAssetService(QObject):
         """
         if not item_id or item_id == 0:
             return f"Objeto {item_id}"
-        
+
         # Intentar con el catálogo en inglés (ya cargado)
         item_key = self.items.get(item_id)
         if item_key:
@@ -90,7 +90,7 @@ class DataDragonAssetService(QObject):
             item_data = data.get("data", {}).get(str(item_id))
             if item_data and isinstance(item_data, dict):
                 return item_data.get("name", f"Objeto {item_id}")
-        
+
         # Fallback: petición directa en español
         try:
             url = (
@@ -105,7 +105,7 @@ class DataDragonAssetService(QObject):
                 return item_data.get("name", f"Objeto {item_id}")
         except Exception:
             pass
-        
+
         return f"Objeto {item_id}"
 
     def _load_item_catalog(self) -> None:
@@ -141,10 +141,38 @@ class DataDragonAssetService(QObject):
             return {}
 
     def champion_url(self, champion_name: str) -> str:
-        champion_id = self.champions.get(champion_name, champion_name)
+        champion_id = self.resolve_champion_id(champion_name) or champion_name
         return (
             f"https://ddragon.leagueoflegends.com/cdn/"
             f"{self.version}/img/champion/{quote(champion_id)}.png"
+        )
+
+    def resolve_champion_id(self, champion_name: str) -> str | None:
+        """Resuelve nombres visibles e identificadores Data Dragon localmente."""
+        buscado = self._normalizar_nombre_campeon(champion_name)
+        for nombre, champion_id in self.champions.items():
+            if buscado in {
+                self._normalizar_nombre_campeon(nombre),
+                self._normalizar_nombre_campeon(champion_id),
+            }:
+                return champion_id
+        for ruta in (DATA_DIR / "champion_abilities").glob("*.json"):
+            if self._normalizar_nombre_campeon(ruta.stem) == buscado:
+                return ruta.stem
+        return None
+
+    @staticmethod
+    def _normalizar_nombre_campeon(nombre: str) -> str:
+        """Normaliza acentos y espacios para comparar alias de campeones."""
+        normalizado = unicodedata.normalize("NFKD", str(nombre))
+        return re.sub(
+            r"[^a-z0-9]",
+            "",
+            "".join(
+                caracter
+                for caracter in normalizado
+                if not unicodedata.combining(caracter)
+            ).casefold(),
         )
 
     def item_url(self, item_id: int) -> str:
@@ -182,9 +210,7 @@ class DataDragonAssetService(QObject):
             reply = self.network.get(request)
             self.pending[url] = reply
             reply.finished.connect(
-                lambda reply=reply, url=url, key=key: self._receive(
-                    reply, url, key
-                )
+                lambda reply=reply, url=url, key=key: self._receive(reply, url, key)
             )
 
         return QPixmap()
@@ -208,9 +234,7 @@ class DataDragonAssetService(QObject):
         url: str,
         key: str,
         size: int,
-        mode: Qt.AspectRatioMode = (
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding
-        ),
+        mode: Qt.AspectRatioMode = (Qt.AspectRatioMode.KeepAspectRatioByExpanding),
     ) -> None:
         label.setProperty("asset_key", key)
         label.setProperty("asset_size", size)
@@ -268,9 +292,7 @@ class DataDragonAssetService(QObject):
             if label.property("asset_key") != key:
                 return
 
-            size = int(
-                label.property("asset_size") or 32
-            )
+            size = int(label.property("asset_size") or 32)
 
             mode = label.property("asset_mode")
 
@@ -278,18 +300,14 @@ class DataDragonAssetService(QObject):
                 mode,
                 Qt.AspectRatioMode,
             ):
-                mode = (
-                    Qt.AspectRatioMode
-                    .KeepAspectRatioByExpanding
-                )
+                mode = Qt.AspectRatioMode.KeepAspectRatioByExpanding
 
             label.setPixmap(
                 pixmap.scaled(
                     size,
                     size,
                     mode,
-                    Qt.TransformationMode
-                    .SmoothTransformation,
+                    Qt.TransformationMode.SmoothTransformation,
                 )
             )
         except RuntimeError:

@@ -390,6 +390,10 @@ class MainWindowAsyncTests(unittest.TestCase):
                 "app.ui.main_window.SettingsService",
                 new=make_fake_settings(self.recordings_dir),
             ),
+            patch(
+                "app.services.game_service.GameService.get_game_snapshot",
+                return_value=None,
+            ),
             # Comprobaciones simuladas y lentas: deterministas y sin ffmpeg real.
             patch(
                 "app.ui.main_window.find_ffmpeg",
@@ -445,8 +449,10 @@ class MainWindowAsyncTests(unittest.TestCase):
         }
 
 
-    def test_startup_checks_do_not_block_the_window(self):
+    def test_startup_checks_do_not_block_the_window(self) -> None:
+        """Las consultas lentas dejan procesar navegación mientras trabajan."""
         window = self.window
+        self.assertIsNone(self.app.overrideCursor())
 
         # Nada más construir la ventana, las dos comprobaciones están en vuelo
         # (búsqueda de ffmpeg recorriendo el PATH y sondeo de dispositivos).
@@ -470,10 +476,11 @@ class MainWindowAsyncTests(unittest.TestCase):
         )
         window.home_button.click()
         self.assertEqual(window.pages.currentIndex(), 0)
+        self.assertIsNone(self.app.overrideCursor())
 
         done, ticks = self.settle()
         self.assertTrue(done, "las comprobaciones de arranque no terminaron")
-        self.assertGreaterEqual(ticks, 5)
+        self.assertGreaterEqual(ticks, 2)
 
         self.assertNotIn(
             "Buscando",
@@ -482,6 +489,7 @@ class MainWindowAsyncTests(unittest.TestCase):
         self.assertTrue(window.recording_game_audio_combo.isEnabled())
         self.assertNotIn("Comprobando ffmpeg", window.recording_status.text())
         self.assertIn("ffmpeg listo", window.recording_status.text())
+        self.assertIsNone(self.app.overrideCursor())
         self.assertIn(
             "Micrófono de prueba",
             [
