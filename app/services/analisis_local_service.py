@@ -12,6 +12,7 @@ from typing import Any
 import data_dragon
 from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
 from app.services.champion_variant_service import ChampionVariantService
+from app.services.curador_recomendaciones_build import CuradorRecomendacionesBuild
 from app.services.elegibilidad_objetos import MODO_SOLOQ
 from app.services.preparador_datos_campeon import combinar_perfil
 from app.services.rangos_campeones import normalizar_rango
@@ -32,10 +33,16 @@ class AnalisisLocalService:
         self.ruta_campeones = ruta_campeones
         self.version = version
         self.variantes = ChampionVariantService(ruta_campeones)
+        objetos_estrictos = {
+            str(objeto.get("id")): objeto
+            for objeto in catalogo.objetos
+            if isinstance(objeto, dict) and objeto.get("id")
+        }
+        self.curador = CuradorRecomendacionesBuild(catalogo, objetos_estrictos)
         self.recursos: dict[tuple[str, str, str], tuple[Path | None, bytes, float]] = {}
         self.metadatos: dict[str, dict[str, Any]] = {}
         self._preparados: dict[
-            tuple[str, str, str, tuple[int, int], str], dict[str, Any]
+            tuple[str, str, str, tuple[int, int], str, str, str], dict[str, Any]
         ] = {}
 
     @staticmethod
@@ -116,7 +123,17 @@ class AnalisisLocalService:
         pagina_defecto: dict[str, Any],
         cancelado: Callable[[], bool],
     ) -> dict[str, Any]:
-        """Prepara perfil/línea/rango y runas por defecto; devuelve datos, recursos y tiempos."""
+        """Prepara an?lisis y builds cacheados para cada p?gina de runas.
+
+        Par?metros:
+            perfil: campe?n elegido.
+            linea: rol estad?stico consultado.
+            rango: filtro estad?stico activo.
+            pagina_defecto: p?gina de respaldo cuando faltan runas v?lidas.
+            cancelado: consulta de cancelaci?n del worker.
+
+        Retorna:
+            An?lisis preparado con perfiles separados por identidad de runas."""
         inicio = perf_counter()
         rango = normalizar_rango(rango) or rango
         campeon = str(perfil.get("character", ""))
@@ -139,7 +156,15 @@ class AnalisisLocalService:
         if cancelado():
             raise InterruptedError("Análisis sustituido")
         variante = self._filtrar_recomendaciones_ilegales(variante, campeon)
-        clave_preparacion = (campeon, linea, rango, consulta.revision, self.version)
+        clave_preparacion = (
+            campeon,
+            linea,
+            rango,
+            consulta.revision,
+            self.version,
+            self.catalogo.parche,
+            self.curador.VERSION_ALGORITMO,
+        )
         anterior = self._preparados.get(clave_preparacion)
         if anterior is not None:
             return dict(
@@ -147,6 +172,10 @@ class AnalisisLocalService:
                 actualizacion=consulta.actualizacion,
                 perfil=copy.deepcopy(anterior["perfil"]),
                 variante=copy.deepcopy(anterior["variante"]),
+                rune_profiles_by_key=copy.deepcopy(
+                    anterior.get("rune_profiles_by_key", {})
+                ),
+                rune_profile_keys=list(anterior.get("rune_profile_keys", [])),
                 tiempos={
                     "variante_ms": (perf_counter() - inicio) * 1000,
                     "calculo_ms": 0.0,
@@ -173,6 +202,7 @@ class AnalisisLocalService:
             candidatos_guardados
             if isinstance(candidatos_guardados, list) and candidatos_guardados
             else variante.get("recommendations", [])
+            or variante.get("situational_item_candidates", [])
         )
         candidatos_afinidad = [
             ItemRecommendation(
@@ -189,7 +219,63 @@ class AnalisisLocalService:
             )
             for valor in fuente_recomendaciones
         ]
+        candidatos_contextuales = self.curador.preparar_candidatos(
+            combinado, candidatos_afinidad
+        )
         recomendaciones = candidatos_afinidad[:30]
+        paginas = combinado.get("runes") or combinado.get("common_runes") or []
+        primera_pagina = paginas[0] if isinstance(paginas, list) and paginas else None
+        segunda_pagina = (
+            paginas[1] if isinstance(paginas, list) and len(paginas) > 1 else None
+        )
+        if not self._pagina_runas_valida(primera_pagina):
+            primera_pagina = pagina_defecto
+        paginas_validas = [
+            pagina
+            for pagina in (primera_pagina, segunda_pagina)
+            if self._pagina_runas_valida(pagina)
+        ]
+        perfiles_runas: list[dict[str, Any]] = []
+        variantes_runas: list[dict[str, Any]] = []
+        for pagina in paginas_validas:
+            if cancelado():
+                raise InterruptedError("An?lisis sustituido")
+            variante_runas = self.curador.curar(
+                variante,
+                combinado,
+                candidatos_contextuales,
+                pagina,
+                candidatos_preparados=True,
+            )
+            perfil_runas = self._filtrar_recomendaciones_ilegales(
+                combinar_perfil(consulta.perfil or perfil, variante_runas), campeon
+            )
+            variantes_runas.append(variante_runas)
+            perfiles_runas.append(perfil_runas)
+        claves_runas = [
+            self.curador.clave_pagina_runas(
+                pagina,
+                self.catalogo.parche,
+                campeon,
+                linea,
+                rango,
+                str(consulta.revision),
+            )
+            for pagina in paginas_validas
+        ]
+        if perfiles_runas:
+            variante = variantes_runas[0]
+            combinado = perfiles_runas[0]
+        else:
+            variante = self.curador.curar(
+                variante,
+                combinado,
+                candidatos_contextuales,
+                candidatos_preparados=True,
+            )
+            combinado = self._filtrar_recomendaciones_ilegales(
+                combinar_perfil(consulta.perfil or perfil, variante), campeon
+            )
         fin_calculo = perf_counter()
         if campeon not in self.metadatos:
             self.metadatos[campeon] = data_dragon.get_champion_data(
@@ -265,6 +351,10 @@ class AnalisisLocalService:
             "actualizacion": consulta.actualizacion,
             "perfil": combinado,
             "variante": variante,
+            "rune_profiles_by_key": dict(
+                zip(claves_runas, perfiles_runas, strict=True)
+            ),
+            "rune_profile_keys": claves_runas,
             "recomendaciones": recomendaciones,
             "candidatos_afinidad": candidatos_afinidad,
             "objetos": objetos,
@@ -277,6 +367,27 @@ class AnalisisLocalService:
             self._preparados.pop(next(iter(self._preparados)))
         self._preparados[clave_preparacion] = preparado
         return preparado
+
+    @staticmethod
+    def _pagina_runas_valida(pagina: Any) -> bool:
+        """Comprueba que la p?gina contenga selecciones primarias y secundarias.
+
+        Par?metros:
+            pagina: p?gina de runas candidata.
+
+        Retorna:
+            True si contiene tres runas primarias y dos secundarias como m?nimo.
+        """
+        if not isinstance(pagina, dict):
+            return False
+        primarias = pagina.get("slots") or pagina.get("runes")
+        secundarias = pagina.get("secondary_slots")
+        return (
+            isinstance(primarias, list)
+            and len(primarias) >= 3
+            and isinstance(secundarias, list)
+            and len(secundarias) >= 2
+        )
 
     def _filtrar_recomendaciones_ilegales(
         self, variante: dict[str, Any], campeon: str
@@ -300,6 +411,7 @@ class AnalisisLocalService:
             "later_item_options",
             "recommended_build",
             "recommended_build_details",
+            "recommended_core_items",
             "situational_item_candidates",
             "item_candidates",
             "recommendations",

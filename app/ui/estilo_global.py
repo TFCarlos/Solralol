@@ -92,6 +92,111 @@ QFrame[superficie="separador"][estado="advertencia"] {background:$oro;}
 QFrame[seleccionado="true"] {border:1px solid $oro; border-left:3px solid $oro;}
 QFrame[estado="exito"] {border-left:2px solid $ventaja;}
 QFrame[estado="error"] {border-left:2px solid $desventaja;}
+QFrame#postgameEventRow {background:#111720; border:1px solid $borde; border-radius:10px;}
+QFrame#postgameEventRow[tono="positivo"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #192a28,stop:0.42 #141b21,stop:1 #111720); border-color:#35564e;}
+QFrame#postgameEventRow[tono="negativo"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #2a1d21,stop:0.42 #1c181d,stop:1 #111720); border-color:#69413f;}
+QFrame#postgameEventRow[tono="neutral"] {background:#131922; border-color:$borde;}
+QFrame#postgameEventRow:hover {border-color:$oro_oscuro;}
+QLabel#postgameEventParticipantIcon {background:$superficie; color:$marfil; border:1px solid $borde; border-radius:5px; font-size:${ayuda}px; font-weight:700;}
+QLabel#postgameTeamfightOutcome {color:$oro_suave; font-weight:700; padding:2px 0;}
+QFrame#postgameAIHeader {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $calida,stop:1 $superficie); border:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
+QLabel#postgameAIChampion {background:$base; color:$oro_suave; border:1px solid $oro_oscuro; border-radius:10px; font-size:${seccion}px; font-weight:700;}
+QLabel#postgameAIKicker {color:$oro_suave; font-size:${ayuda}px; font-weight:700; letter-spacing:1px;}
+QLabel#postgameAIChampionTitle {color:$marfil; font-size:${titulo_tarjeta}px; font-weight:700;}
+QLabel#postgameAIMatchContext {color:$secundario; font-size:${metadatos}px;}
+QLabel#postgameAIMatchContext[resultado="victoria"] {color:$ventaja; font-weight:700;}
+QLabel#postgameAIMatchContext[resultado="derrota"] {color:$desventaja; font-weight:700;}
+QLabel#postgameAIStatus {color:$secundario; background:$elevada; border:1px solid $borde; border-radius:8px; padding:4px 7px; font-size:${ayuda}px;}
+QFrame#postgameAISummary {background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #1c201b,stop:1 $superficie); border:1px solid $oro_oscuro; border-left:3px solid $oro; border-radius:${tarjeta}px;}
+QLabel#postgameAISummaryText {color:$marfil; font-size:${cuerpo}px; font-weight:600;}
+QLabel#postgameAISummaryStrength {color:$ventaja; font-size:${metadatos}px;}
+QLabel#postgameAISummaryPriority {color:$oro_suave; font-size:${metadatos}px;}
+QLabel#postgameAISummaryTurning {color:$secundario; font-size:${metadatos}px;}
+QLabel#postgameAISummaryCoverage {color:$oro_suave; font-size:${metadatos}px;}
+QPushButton#postgameAIFilter {padding:5px 8px; border:1px solid $borde; border-radius:8px; background:$superficie; color:$secundario; font-size:${ayuda}px;}
+QPushButton#postgameAIFilter:hover, QPushButton#postgameAIFilter:checked {background:$activo; border-color:$oro_oscuro; color:$marfil;}
+QPushButton#postgameAIOrder {padding:5px 8px; border:1px solid $borde; border-radius:8px; background:transparent; color:$secundario; font-size:${ayuda}px;}
+QLabel#postgameAIReportCount {color:$marfil; font-size:${metadatos}px; font-weight:700; padding:2px 3px;}
+QPushButton#postgameAIEvaluationFilter {padding:5px 8px; border:1px solid $borde; border-radius:8px; background:$superficie; color:$secundario; font-size:${ayuda}px;}
+QPushButton#postgameAIEvaluationFilter:hover, QPushButton#postgameAIEvaluationFilter:checked {background:$activo; border-color:$oro_oscuro; color:$marfil;}
+QFrame#postgameAIInsight {background:$superficie; border:1px solid $borde; border-radius:${compacto}px;}
+QFrame#postgameAIInsight[category="standout"] {background:#211d16; border-left:3px solid $oro;}
+QFrame#postgameAIInsight[category="positive_fight"] {background:#15221f; border-left:3px solid $ventaja;}
+QFrame#postgameAIInsight[category="negative_fight"] {background:#241a1d; border-left:3px solid $desventaja;}
+QFrame#postgameAIInsight[category="objective"] {background:#211d16; border-left:3px solid $advertencia;}
+QFrame#postgameAIInsight[category="improvement"] {background:#151e26; border-left:3px solid $informacion;}
+QFrame#postgameAIInsight[evaluation="good"] {background:#15221e; border-left:3px solid $ventaja;}
+QFrame#postgameAIInsight[evaluation="improvable"] {background:#211e16; border-left:3px solid $advertencia;}
+QFrame#postgameAIInsight[evaluation="bad"] {background:#241a1d; border-left:3px solid $desventaja;}
+QFrame#postgameAIInsight[seleccionado="true"] {border-color:$oro;}
+QPushButton#postgameAIInsightToggle {text-align:left; border:0; background:transparent; color:$marfil; font-weight:700; padding:2px;}
+QPushButton#postgameAIInsightToggle:hover {color:$oro_suave;}
+QPushButton#postgameAIInsightToggle[evaluation="good"] {color:$ventaja;}
+QPushButton#postgameAIInsightToggle[evaluation="improvable"] {color:$advertencia;}
+QPushButton#postgameAIInsightToggle[evaluation="bad"] {color:$desventaja;}
+QLabel#postgameAIInsightCollapsed {color:$texto; padding:0 9px 2px 9px;}
+QLabel#postgameAIInsightDetail {color:$texto; background:rgba(0,0,0,0.10); border-radius:6px; padding:5px 7px;}
+QLabel#postgameAIInsightCategory {color:$secundario; font-size:${ayuda}px; font-weight:700; letter-spacing:0.5px;}
+QLabel#postgameAIInsightCategory[category="standout"] {color:$oro_suave;}
+QLabel#postgameAIInsightCategory[category="positive_fight"] {color:$ventaja;}
+QLabel#postgameAIInsightCategory[category="negative_fight"] {color:$desventaja;}
+QLabel#postgameAIInsightCategory[category="objective"] {color:$advertencia;}
+QLabel#postgameAIInsightCategory[category="improvement"] {color:$informacion;}
+QLabel#postgameAIInsightTitle {color:$marfil; font-size:${cuerpo}px; font-weight:700; padding:0 11px;}
+QLabel#postgameAIInsightDescription {color:$texto; padding:0 11px;}
+QLabel#postgameAIInsightEvidence, QLabel#postgameAIInsightRecommendation {color:$secundario; font-size:${metadatos}px; padding:0 11px;}
+QLabel#postgameAIInsightRecommendation {color:$oro_suave;}
+QLabel#postgameAIConfidence {color:$tenue; font-size:${ayuda}px; padding:0 11px;}
+QPushButton#postgameAIInsightTimestamp {color:$oro_suave; background:$calida; border:1px solid $oro_oscuro; border-radius:8px; padding:3px 8px; font-weight:700;}
+QPushButton#postgameAIInsightTimestamp:hover {background:$activo; border-color:$oro;}
+QFrame#postgameAIEmpty {background:$elevada; border:1px dashed $borde; border-radius:${tarjeta}px;}
+QLabel#postgameAIEmptyMessage {color:$secundario;}
+QFrame#postgameHeader {background:$superficie; border:1px solid $borde; border-radius:${tarjeta}px;}
+QFrame#postgamePlayerCard {background:#121821; border:1px solid $borde; border-left:3px solid $secundario; border-radius:8px;}
+QFrame#postgamePlayerCard[bando="aliado"] {border-left-color:$teal;}
+QFrame#postgamePlayerCard[bando="rival"] {border-left-color:$desventaja;}
+QFrame#postgamePlayerCard[bando="desconocido"] {border-left-color:$borde;}
+QFrame#postgamePlayerCard:hover {background:#1a2028; border-color:$oro_oscuro;}
+QFrame#postgamePlayerCard[seleccionado="true"] {background:#1d2024; border:1px solid $oro;}
+QFrame#postgamePlayerCard[bando="aliado"][seleccionado="true"] {border-left:3px solid $teal;}
+QFrame#postgamePlayerCard[bando="rival"][seleccionado="true"] {border-left:3px solid $oro_suave;}
+QFrame#postgameControlsSurface, QFrame#postgameMarkerTools {background:$elevada; border:1px solid $borde; border-radius:${compacto}px;}
+QLabel#postgameTitle {color:$marfil; font-size:${titulo_tarjeta}px; font-weight:700;}
+QLabel#postgameSubtitle {color:$secundario; font-size:${metadatos}px;}
+QLabel#postgameTime {color:$marfil; font-weight:700; font-size:${cuerpo}px;}
+QLabel#postgameMarkerTitle {color:$oro_suave; font-size:${ayuda}px; font-weight:700; letter-spacing:1px;}
+QLabel#postgameMarkerLegend {color:$secundario; font-size:${metadatos}px;}
+QLabel#postgameMarkerContextLabel {color:$tenue; font-size:${ayuda}px; font-weight:700; letter-spacing:0.5px;}
+QComboBox#postgameTimelineContext {min-height:22px; padding:1px 6px; font-size:${metadatos}px;}
+QLabel#postgameTeamColumnTitle {color:$secundario; font-size:${metadatos}px; font-weight:700; letter-spacing:0.5px;}
+QLabel#postgameTeamColumnTitle[side="ally"] {color:$teal;}
+QLabel#postgameTeamColumnTitle[side="enemy"] {color:$desventaja;}
+QLabel#postgameTeamResult {font-size:${ayuda}px; font-weight:800; padding:3px 5px; border-radius:5px;}
+QLabel#postgameTeamResult[state="win"] {color:$ventaja; background:$superficie_victoria;}
+QLabel#postgameTeamResult[state="loss"] {color:$desventaja; background:$superficie_derrota;}
+QLabel#postgameTeamResult[state="unknown"] {color:$secundario; background:$elevada;}
+QWidget#postgameAllyColumn {background:#10191a; border:1px solid #263738; border-radius:9px;}
+QWidget#postgameEnemyColumn {background:#1b171a; border:1px solid #3b2a2c; border-radius:9px;}
+QLabel#postgameChampionName {color:$texto; font-size:${cuerpo}px; font-weight:700;}
+QLabel#postgameRoleBadge, QLabel#postgameLevelBadge {color:$secundario; font-size:${metadatos}px; font-weight:600;}
+QLabel#postgameStatKda {color:$marfil; font-size:${metadatos}px; font-weight:700;}
+QLabel#postgameCompactMetrics {color:$texto; font-size:${metadatos}px;}
+QLabel#postgameBuildCaption {color:$tenue; font-size:${metadatos}px; font-weight:700;}
+QPushButton#postgamePerformanceScore {min-height:18px; padding:1px 4px; font-size:${ayuda}px; font-weight:700;}
+QLabel#postgameStatsLine {font-size:${metadatos}px;}
+QTabBar#postgameTabs::tab {padding:8px 12px;}
+QSlider#postgameMarkerSlider::groove:horizontal {height:5px; background:$borde; border-radius:3px;}
+QSlider#postgameMarkerSlider::sub-page:horizontal {background:$oro; border-radius:3px;}
+QSlider#postgameMarkerSlider::handle:horizontal {width:14px; margin:-5px 0; border-radius:7px; background:$marfil; border:2px solid $oro;}
+QPushButton#postgameMarkerFilter {background:$elevada; color:$secundario; border:1px solid $borde; border-radius:8px; padding:3px 7px; font-size:${metadatos}px;}
+QPushButton#postgameMarkerFilter:hover {border-color:$oro_oscuro;}
+QPushButton#postgameMarkerFilter[markerGroup="kill"]:checked {color:$ventaja; border-color:$ventaja; background:#1b2522;}
+QPushButton#postgameMarkerFilter[markerGroup="death"]:checked {color:$desventaja; border-color:$desventaja; background:$superficie_derrota;}
+QPushButton#postgameMarkerFilter[markerGroup="assist"]:checked {color:$teal; border-color:$teal; background:#172323;}
+QPushButton#postgameMarkerFilter[markerGroup="dragon"]:checked, QPushButton#postgameMarkerFilter[markerGroup="tower"]:checked {color:$oro_suave; border-color:$oro_oscuro; background:$calida;}
+QPushButton#postgameMarkerFilter[markerGroup="herald"]:checked, QPushButton#postgameMarkerFilter[markerGroup="baron"]:checked {color:$magenta; border-color:$magenta; background:#241b25;}
+QPushButton#postgameMarkerFilter[markerGroup="inhibitor"]:checked {color:$informacion; border-color:$informacion; background:#17212a;}
+QPushButton#postgameMarkerFilter[markerGroup="other"]:checked {color:$secundario; border-color:$borde; background:$superficie;}
 QFrame#draftBanSlot {background:$base; border:1px solid $borde; border-radius:${compacto}px;}
 QFrame#draftBanSlot[equipo="aliado"] {border-color:$teal;}
 QFrame#draftBanSlot[equipo="enemigo"] {border-color:$desventaja;}

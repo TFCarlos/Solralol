@@ -12,6 +12,7 @@ que es lo útil cuando se acaba de actualizar la partida con la Riot API.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -21,24 +22,33 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
+    QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSlider,
     QSplitter,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from app.services.recording_service import (
+    MARKER_LABELS,
     SESSION_VIDEO_TOLERANCE_SECONDS,
     RecordingLibrary,
     build_markers,
     find_video_for_session,
     format_duration,
+    normalise_marker_kind,
     parse_iso_timestamp,
 )
 from app.ui.postgame_sidebar import PostgameSidebar
@@ -50,6 +60,98 @@ from app.ui.tema import (
 
 #: Segundos que retrocede/avanza cada botón de salto.
 SEEK_SECONDS = 10
+KEYBOARD_SEEK_SECONDS = 5
+
+REPLAY_MARKER_GROUPS: tuple[tuple[str, str, str, frozenset[str]], ...] = (
+    ("kill", "Asesinatos", "⚔", frozenset({"kill"})),
+    ("death", "Muertes", "☠", frozenset({"death"})),
+    ("assist", "Asistencias", "✦", frozenset({"assist"})),
+    ("dragon", "Dragones", "🐉", frozenset({"dragon"})),
+    ("herald", "Heraldos", "◈", frozenset({"herald", "rift_herald"})),
+    ("baron", "Barones", "♛", frozenset({"baron"})),
+    ("tower", "Torres", "♜", frozenset({"tower"})),
+    ("inhibitor", "Inhibidores", "◆", frozenset({"inhibitor"})),
+    ("other", "Otros", "•", frozenset({"teamfight", "horde", "objective"})),
+)
+
+
+def marker_filter_group(kind: Any) -> str:
+    """Clasifica un tipo de marcador para el filtro de la cronología.
+
+    Args:
+        kind: Tipo canónico o alias del marcador.
+
+    Returns:
+        Clave del grupo visible correspondiente.
+    """
+    raw_category = kind.get("category") if isinstance(kind, dict) else kind
+    if not raw_category and isinstance(kind, dict):
+        raw_category = kind.get("kind")
+
+    normalizado = normalise_marker_kind(str(raw_category or ""))
+
+    if normalizado in {"kill_exact", "death_exact", "assist_exact", "championkill"}:
+        return "unclassified"
+
+    for group, _label, _glyph, kinds in REPLAY_MARKER_GROUPS:
+        if normalizado in kinds:
+            return group
+
+    return "other"
+
+
+def filter_replay_markers(
+    markers: list[dict[str, Any]], active_categories: set[str]
+) -> list[dict[str, Any]]:
+    """Filtra marcadores por su categoría normalizada.
+
+    Args:
+        markers: Marcadores independientes ya asociados a una perspectiva.
+        active_categories: Claves de las categorías seleccionadas.
+
+    Returns:
+        Marcadores cuya categoría está activa, en el orden original.
+    """
+    return [
+        marker for marker in markers if marker_filter_group(marker) in active_categories
+    ]
+
+
+def marker_filter_summary(
+    markers: list[dict[str, Any]], active_categories: set[str]
+) -> str:
+    """Resume marcadores visibles, totales y categorías activas.
+
+    Args:
+        markers: Marcadores completos de la perspectiva seleccionada.
+        active_categories: Claves de las categorías seleccionadas.
+
+    Returns:
+        Resumen breve en español con singular y plural correctos.
+    """
+    if not markers:
+        return "Sin marcadores"
+
+    count = len(active_categories)
+    label = "categoría activa" if count == 1 else "categorías activas"
+    visible = len(filter_replay_markers(markers, active_categories))
+    return f"{visible} de {len(markers)} marcadores · {count} {label}"
+
+
+def game_time_to_video_position_ms(game_seconds: float, offset_seconds: float) -> int:
+    """Convierte un segundo de partida a la posición del vídeo.
+
+    Args:
+        game_seconds: Tiempo de partida del marcador seleccionado.
+        offset_seconds: Diferencia entre el inicio del vídeo y la partida.
+
+    Returns:
+        Posición de vídeo en milisegundos, limitada a cero como mínimo.
+    """
+    try:
+        return max(0, int((float(game_seconds) - float(offset_seconds)) * 1000))
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
 
 class ReplayVideoWidget(QVideoWidget):
@@ -57,7 +159,7 @@ class ReplayVideoWidget(QVideoWidget):
 
     double_clicked = Signal()
 
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 - Qt
+    def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.double_clicked.emit()
             event.accept()
@@ -77,8 +179,8 @@ class PostgameMarkerSlider(MarkerSlider):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("postgameMarkerSlider")
-        self.setMinimumHeight(48)
-        self.set_show_marker_glyphs(True)
+        self.setMinimumHeight(38)
+        self.set_show_marker_glyphs(False)
 
 
 class PostgameReplayWindow(QMainWindow):
@@ -86,39 +188,46 @@ class PostgameReplayWindow(QMainWindow):
 
     closed = Signal()
 
-    def __init__(self, *, session: dict[str, Any] | None=None, video_path: str | Path | None=None, library: RecordingLibrary | None=None, tracker: Any=None, service: Any=None, assets: Any=None, item_catalog: dict[str, Any] | None=None, parent: QWidget | None=None) -> None:
+    def __init__(
+        self,
+        *,
+        session: dict[str, Any] | None = None,
+        video_path: str | Path | None = None,
+        library: RecordingLibrary | None = None,
+        tracker: Any = None,
+        service: Any = None,
+        assets: Any = None,
+        item_catalog: dict[str, Any] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setObjectName("postgameReplayWindow")
         self.setWindowTitle("Repaso de partida · SolraLol")
         self.resize(1520, 900)
-        self.setMinimumSize(1120, 700)
+        self.setMinimumSize(1000, 640)
 
-        self.session: dict[str, Any] = (
-            session if isinstance(session, dict) else {}
-        )
-        self.video_path: Path | None = (
-            Path(video_path) if video_path else None
-        )
+        self.session: dict[str, Any] = session if isinstance(session, dict) else {}
+        self.video_path: Path | None = Path(video_path) if video_path else None
         self.library = library if library is not None else RecordingLibrary()
         self.tracker = tracker
         self.service = service
         self.assets = assets
-        self.item_catalog = (
-            item_catalog if isinstance(item_catalog, dict) else {}
-        )
+        self.item_catalog = item_catalog if isinstance(item_catalog, dict) else {}
         self.game_time_offset = 0.0
         self.metadata: dict[str, Any] = {}
         self.markers: list[dict[str, Any]] = []
         self._pending_seek_ms = 0
-        self.live_view: Any | None = None
-        self._live_tab_index = -1
+        self.ai_review_view: Any | None = None
+        self._ai_review_tab_index = -1
         # Ventana dedicada para la pantalla completa del vídeo (con la barra
         # de reproducción dentro); se crea la primera vez que se pide.
         self._fs_window: QWidget | None = None
         self._fs_video_host: QWidget | None = None
         self._fs_bar_layout: QVBoxLayout | None = None
         self._card_layout: QVBoxLayout | None = None
+        self._playback_shortcuts: list[QShortcut] = []
+        self._fullscreen_shortcuts: list[QShortcut] = []
 
         self._build_ui()
         self._build_player()
@@ -146,97 +255,70 @@ class PostgameReplayWindow(QMainWindow):
         root.setObjectName("postgameRoot")
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
 
         layout.addWidget(self._build_header())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("postgameSplitter")
+        splitter.setChildrenCollapsible(False)
         splitter.addWidget(self._build_video_column())
         self.sidebar = PostgameSidebar(self.session or None)
-        self.sidebar.setMinimumWidth(430)
+        self.sidebar.setMinimumWidth(390)
         self.sidebar.event_activated.connect(self.jump_to_game_time)
+        self.selector_contexto_cronologia.currentIndexChanged.connect(
+            self._on_timeline_context_changed
+        )
         try:
             self.sidebar.events_changed.connect(self._refresh_markers)
         except (AttributeError, RuntimeError, TypeError):
             pass
         splitter.addWidget(self.sidebar)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-        splitter.setSizes([960, 580])
+        splitter.setStretchFactor(0, 6)
+        splitter.setStretchFactor(1, 5)
+        splitter.setSizes([880, 600])
         layout.addWidget(splitter, 1)
 
         self.status_label = QLabel("Selecciona una grabación para verla.")
         self.status_label.setObjectName("postgameStatus")
         layout.addWidget(self.status_label)
 
-        self._ensure_live_tab()
+        self._ensure_ai_review_tab()
 
-    def _ensure_live_tab(self) -> None:
-        """Inserta las pantallas del análisis LIVE como pestaña del repaso.
-
-        Reutiliza ``LiveMatchAnalysisDialog`` (mismos datos, mismos timers y
-        mismas pantallas: roles, recomendaciones e IA) pero sin abrir un
-        diálogo aparte: su contenido vive en una pestaña «Análisis LIVE».
-        """
-        if self._live_tab_index >= 0 and self.live_view is not None:
+    def _ensure_ai_review_tab(self) -> None:
+        """Inserta el lector de coaching IA y lo conecta con el reproductor."""
+        if self._ai_review_tab_index >= 0 and self.ai_review_view is not None:
             return
-
-        if self.assets is None:
-            return
-
-        try:
-            from app.ui.live_match_analysis_dialog import (
-                LiveMatchAnalysisDialog,
-            )
-        except ImportError:
-            return
-
         tabs = getattr(self.sidebar, "tabs", None)
         if tabs is None:
             return
-
         try:
-            view = LiveMatchAnalysisDialog(
-                dict(self.session or {}),
-                self.assets,
-                dict(self.item_catalog or {}),
-                self,
-                tracker=self.tracker,
-            )
-        except (RuntimeError, TypeError, ValueError):
+            from app.ui.postgame_ai_review import PostgameAIReview
+
+            view = PostgameAIReview(self.tracker, self.sidebar)
+            view.seek_requested.connect(self.jump_to_game_time)
+        except (ImportError, RuntimeError, TypeError, ValueError):
             return
+        self.ai_review_view = view
+        self._ai_review_tab_index = tabs.addTab(view, "Análisis con IA")
+        self._sync_ai_review_tab()
 
-        # Sin botones de ventana: el contenido pasa a ser una pestaña más.
-        # QDialog también es un QWidget, así que puede vivir incrustado
-        # directamente como página del QTabWidget (ya no es una ventana).
-        try:
-            view.setWindowFlags(Qt.Widget)
-            view.setParent(self.sidebar)
-        except RuntimeError:
-            return
-
-        for button in view.findChildren(QPushButton):
-            text = str(button.text() or "").strip().lower()
-            if text == "cerrar":
-                button.setVisible(False)
-
-        self.live_view = view
-        self._live_tab_index = tabs.addTab(view, "Análisis LIVE")
-
-    def _sync_live_tab(self) -> None:
-        """Propaga la sesión del repaso a la pestaña LIVE (datos + timers)."""
-        view = self.live_view
+    def _sync_ai_review_tab(self) -> None:
+        """Actualiza el lector de IA con la sesión del vídeo seleccionado."""
+        view = self.ai_review_view
         if view is None:
-            self._ensure_live_tab()
-            view = self.live_view
+            self._ensure_ai_review_tab()
+            view = self.ai_review_view
 
         if view is None:
             return
 
         try:
-            view.update_session(dict(self.session or {}))
+            ai_session = dict(self.session or {})
+            if self.video_path is not None:
+                ai_session["recording_id"] = self.video_path.name
+            view.set_session(ai_session)
         except RuntimeError:
             pass
 
@@ -244,8 +326,8 @@ class PostgameReplayWindow(QMainWindow):
         header = QFrame()
         header.setObjectName("postgameHeader")
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(12)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(9)
 
         texts = QVBoxLayout()
         texts.setSpacing(2)
@@ -281,16 +363,17 @@ class PostgameReplayWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("postgamePlayerCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 9)
+        layout.setSpacing(5)
         self._card_layout = layout
 
         self.video_widget = ReplayVideoWidget()
         self.video_widget.setObjectName("postgameVideo")
+        self.video_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.video_widget.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        self.video_widget.setMinimumHeight(320)
+        self.video_widget.setMinimumHeight(260)
         self.video_widget.double_clicked.connect(self.toggle_fullscreen)
         layout.addWidget(self.video_widget, 1)
 
@@ -310,38 +393,47 @@ class PostgameReplayWindow(QMainWindow):
 
         return card
 
-    def _build_transport(self) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setSpacing(8)
+    def _build_transport(self) -> QVBoxLayout:
+        """Construye controles agrupados y filtros de sucesos.
 
+        Returns:
+            Diseño vertical con transporte y filtros de marcadores.
+        """
+        transport = QVBoxLayout()
+        transport.setContentsMargins(0, 0, 0, 0)
+        transport.setSpacing(5)
+
+        controls = QFrame()
+        controls.setObjectName("postgameControlsSurface")
+        row = QHBoxLayout(controls)
+        row.setContentsMargins(8, 5, 8, 5)
+        row.setSpacing(6)
         self.back_button = QPushButton("⏪ 10 s")
         self.back_button.setObjectName("recordingPlayButton")
-        self.back_button.setToolTip("Retroceder 10 segundos")
-        self.back_button.clicked.connect(
-            lambda: self.seek_relative(-SEEK_SECONDS)
-        )
+        self.back_button.setToolTip("Retroceder 10 segundos · ← retrocede 5 segundos")
+        self.back_button.clicked.connect(lambda: self.seek_relative(-SEEK_SECONDS))
         row.addWidget(self.back_button)
 
         self.play_button = QPushButton("▶")
         self.play_button.setObjectName("recordingPlayButton")
-        self.play_button.setFixedWidth(64)
+        self.play_button.setFixedSize(48, 34)
         self.play_button.setToolTip("Reproducir / pausar (Espacio)")
         self.play_button.clicked.connect(self.toggle_play)
         row.addWidget(self.play_button)
 
         self.forward_button = QPushButton("10 s ⏩")
         self.forward_button.setObjectName("recordingPlayButton")
-        self.forward_button.setToolTip("Avanzar 10 segundos")
-        self.forward_button.clicked.connect(
-            lambda: self.seek_relative(SEEK_SECONDS)
-        )
+        self.forward_button.setToolTip("Avanzar 10 segundos · → avanza 5 segundos")
+        self.forward_button.clicked.connect(lambda: self.seek_relative(SEEK_SECONDS))
         row.addWidget(self.forward_button)
 
         self.time_label = QLabel("00:00 / 00:00")
         self.time_label.setObjectName("postgameTime")
+        self.time_label.setMinimumWidth(112)
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         row.addWidget(self.time_label)
 
-        self.volume_button = QPushButton("\U0001F50A")
+        self.volume_button = QPushButton("\U0001f50a")
         self.volume_button.setObjectName("recordingPlayButton")
         self.volume_button.setFixedWidth(44)
         self.volume_button.setToolTip("Silenciar / activar audio (M)")
@@ -352,24 +444,90 @@ class PostgameReplayWindow(QMainWindow):
         self.volume_slider.setObjectName("postgameVolume")
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(80)
-        self.volume_slider.setFixedWidth(120)
+        self.volume_slider.setFixedWidth(100)
         self.volume_slider.setToolTip("Volumen del reproductor")
         self.volume_slider.valueChanged.connect(self.set_volume)
         row.addWidget(self.volume_slider)
 
         row.addStretch(1)
 
-        self.marker_summary = QLabel("Sin marcadores")
-        self.marker_summary.setObjectName("postgameMarkerLegend")
-        row.addWidget(self.marker_summary)
-
         self.fullscreen_button = QPushButton("⛶ Pantalla completa")
         self.fullscreen_button.setObjectName("secondaryButton")
+        self.fullscreen_button.setMinimumWidth(124)
         self.fullscreen_button.setToolTip("Pantalla completa (F)")
         self.fullscreen_button.clicked.connect(self.toggle_fullscreen)
         row.addWidget(self.fullscreen_button)
+        transport.addWidget(controls)
 
-        return row
+        marker_tools = QFrame()
+        marker_tools.setObjectName("postgameMarkerTools")
+        tools_layout = QVBoxLayout(marker_tools)
+        tools_layout.setContentsMargins(8, 5, 8, 5)
+        tools_layout.setSpacing(4)
+
+        marker_heading = QHBoxLayout()
+        marker_heading.setSpacing(6)
+        marker_title = QLabel("MARCADORES")
+        marker_title.setObjectName("postgameMarkerTitle")
+        marker_heading.addWidget(marker_title)
+        etiqueta_contexto = QLabel("CONTEXTO")
+        etiqueta_contexto.setObjectName("postgameMarkerContextLabel")
+        marker_heading.addWidget(etiqueta_contexto)
+        self.selector_contexto_cronologia = QComboBox()
+        self.selector_contexto_cronologia.setObjectName("postgameTimelineContext")
+        self.selector_contexto_cronologia.addItem("Jugador seleccionado", "player")
+        self.selector_contexto_cronologia.addItem("Todos", "all")
+        self.selector_contexto_cronologia.setToolTip(
+            "Elige si la cronología muestra los sucesos del jugador o de todos."
+        )
+        self.selector_contexto_cronologia.setAccessibleName("Contexto de la cronología")
+        marker_heading.addWidget(self.selector_contexto_cronologia)
+        marker_heading.addStretch(1)
+        self.marker_summary = QLabel("Sin marcadores")
+        self.marker_summary.setObjectName("postgameMarkerLegend")
+        self.marker_summary.setToolTip(
+            "Cuenta marcadores por perspectiva mostrados en la barra; "
+            "un mismo evento original puede generar una marca por participante."
+        )
+        marker_heading.addWidget(self.marker_summary)
+        tools_layout.addLayout(marker_heading)
+
+        self.marker_filter_scroll = QScrollArea()
+        self.marker_filter_scroll.setObjectName("postgameMarkerFilterScroll")
+        self.marker_filter_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.marker_filter_scroll.setWidgetResizable(True)
+        self.marker_filter_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.marker_filter_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.marker_filter_scroll.setFixedHeight(32)
+        marker_strip = QWidget()
+        marker_strip_layout = QHBoxLayout(marker_strip)
+        marker_strip_layout.setContentsMargins(0, 0, 0, 0)
+        marker_strip_layout.setSpacing(4)
+        self.marker_filter_buttons: dict[str, QPushButton] = {}
+
+        for key, label, glyph, kinds in REPLAY_MARKER_GROUPS:
+            button = QPushButton(f"{glyph} {label}")
+            button.setObjectName("postgameMarkerFilter")
+            button.setCheckable(True)
+            button.setChecked(True)
+            button.setToolTip(f"Mostrar u ocultar marcadores: {label.lower()}")
+            button.setAccessibleName(f"Filtro de marcadores: {label}")
+            button.setProperty("markerGroup", key)
+            button.setMinimumHeight(25)
+            button.toggled.connect(self._apply_marker_filters)
+            self.marker_filter_buttons[key] = button
+            marker_strip_layout.addWidget(button)
+
+        marker_strip_layout.addStretch(1)
+        self.marker_filter_scroll.setWidget(marker_strip)
+        tools_layout.addWidget(self.marker_filter_scroll)
+        transport.addWidget(marker_tools)
+
+        return transport
 
     def _build_player(self) -> None:
         self.player = QMediaPlayer(self)
@@ -387,24 +545,50 @@ class PostgameReplayWindow(QMainWindow):
             pass
 
     def _install_shortcuts(self) -> None:
-        shortcuts = (
+        """Registra atajos únicamente en la ventana de repaso activa.
+
+        Returns:
+            None.
+        """
+        actions: tuple[tuple[str, Callable[[], None]], ...] = (
             ("Space", self.toggle_play),
-            ("Left", lambda: self.seek_relative(-SEEK_SECONDS)),
-            ("Right", lambda: self.seek_relative(SEEK_SECONDS)),
+            ("Left", lambda: self.seek_relative(-KEYBOARD_SEEK_SECONDS)),
+            ("Right", lambda: self.seek_relative(KEYBOARD_SEEK_SECONDS)),
             ("M", self.toggle_muted),
             ("F", self.toggle_fullscreen),
             ("Esc", self.exit_fullscreen),
             ("Ctrl+R", self.reload_breakdown),
         )
 
-        for sequence, slot in shortcuts:
-            shortcut = QShortcut(QKeySequence(sequence), self)
-            shortcut.activated.connect(slot)
-            # Cuando el vídeo está en pantalla completa vive en su propia
-            # ventana de nivel superior: los atajos de la ventana principal
-            # no llegan, así que se duplican sobre el propio widget.
-            mirror = QShortcut(QKeySequence(sequence), self.video_widget)
-            mirror.activated.connect(slot)
+        for sequence, slot in actions:
+            shortcut_parent = self.video_widget.parentWidget() or self
+            shortcut = QShortcut(QKeySequence(sequence), shortcut_parent)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(
+                lambda action=slot: self._run_replay_shortcut(action)
+            )
+            self._playback_shortcuts.append(shortcut)
+
+    def _run_replay_shortcut(self, action: Callable[[], None]) -> None:
+        """Ignora atajos si el foco está escribiendo en un control editable.
+
+        Args:
+            action: Acción de reproducción o ventana que se ejecutará.
+
+        Returns:
+            None.
+        """
+        focused = QApplication.focusWidget()
+
+        if isinstance(
+            focused, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)
+        ):
+            return
+
+        if isinstance(focused, QComboBox) and focused.isEditable():
+            return
+
+        action()
 
     def set_volume(self, value: int) -> None:
         clamped = max(0, min(100, int(value)))
@@ -420,7 +604,7 @@ class PostgameReplayWindow(QMainWindow):
     def _sync_volume_button(self) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         muted = self.audio.isMuted() or self.audio.volume() <= 0.0
-        actualizar_texto_boton(self.volume_button, '🔇' if muted else '🔊')
+        actualizar_texto_boton(self.volume_button, "🔇" if muted else "🔊")
         tip = "Activar audio (M)" if muted else "Silenciar (M)"
         self.volume_button.setToolTip(tip)
 
@@ -439,11 +623,24 @@ class PostgameReplayWindow(QMainWindow):
             self.player.play()
 
     def seek_relative(self, seconds: float) -> None:
+        """Busca un desplazamiento relativo sin salir de la duración conocida.
+
+        Args:
+            seconds: Desplazamiento en segundos.
+
+        Returns:
+            None.
+        """
         if self.player.source().isEmpty():
             return
 
         target = self.player.position() + int(seconds * 1000)
-        target = max(0, min(target, max(0, self.player.duration())))
+        target = max(0, target)
+        duration = int(self.player.duration())
+
+        if duration > 0:
+            target = min(target, duration)
+
         self.player.setPosition(target)
 
     def seek_to_ms(self, position_ms: int) -> None:
@@ -451,13 +648,25 @@ class PostgameReplayWindow(QMainWindow):
             return
 
         duration = max(0, self.player.duration())
-        clamped = max(0, min(int(position_ms), duration if duration else int(position_ms)))
+        clamped = max(
+            0, min(int(position_ms), duration if duration else int(position_ms))
+        )
         self.player.setPosition(clamped)
 
     def jump_to_game_time(self, game_seconds: float) -> None:
-        """Salta al momento del vídeo correspondiente a ese segundo de juego."""
-        video_seconds = max(0.0, float(game_seconds) - self.game_time_offset)
-        self.seek_to_ms(int(video_seconds * 1000))
+        """Salta al momento del vídeo correspondiente al marcador elegido.
+
+        Args:
+            game_seconds: Tiempo de partida del marcador.
+
+        Returns:
+            None.
+        """
+        video_position_ms = game_time_to_video_position_ms(
+            game_seconds, self.game_time_offset
+        )
+        video_seconds = video_position_ms / 1000
+        self.seek_to_ms(video_position_ms)
         self.status_label.setText(
             f"Saltando a {format_duration(video_seconds)} del vídeo "
             f"(minuto {format_duration(game_seconds)} de partida)."
@@ -484,6 +693,7 @@ class PostgameReplayWindow(QMainWindow):
         self._fs_bar_layout.addWidget(self.transport_row)
         window.showFullScreen()
         window.activateWindow()
+        self.video_widget.setFocus(Qt.FocusReason.OtherFocusReason)
         self.fullscreen_button.setText("⛶ Salir de pantalla completa")
 
     def _ensure_fullscreen_window(self) -> QWidget:
@@ -491,9 +701,7 @@ class PostgameReplayWindow(QMainWindow):
         if self._fs_window is not None:
             return self._fs_window
 
-        window = QWidget(
-            None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
-        )
+        window = QWidget(None, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         window.setObjectName("postgameFullscreenWindow")
         window.setWindowTitle("Repaso de partida · pantalla completa")
         aplicar_tema(window)
@@ -519,16 +727,41 @@ class PostgameReplayWindow(QMainWindow):
         self._fs_window = window
         self._fs_video_host = host
         self._fs_bar_layout = bar_layout
+        actions: tuple[tuple[str, Callable[[], None]], ...] = (
+            ("Space", self.toggle_play),
+            ("Left", lambda: self.seek_relative(-KEYBOARD_SEEK_SECONDS)),
+            ("Right", lambda: self.seek_relative(KEYBOARD_SEEK_SECONDS)),
+            ("M", self.toggle_muted),
+            ("F", self.toggle_fullscreen),
+            ("Esc", self.exit_fullscreen),
+            ("Ctrl+R", self.reload_breakdown),
+        )
+
+        for sequence, action in actions:
+            shortcut = QShortcut(QKeySequence(sequence), window)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(
+                lambda callback=action: self._run_replay_shortcut(callback)
+            )
+            self._fullscreen_shortcuts.append(shortcut)
 
         return window
 
     def exit_fullscreen(self) -> None:
+        """Devuelve vídeo y controles a la ventana de repaso.
+
+        Returns:
+            None.
+        """
         if self._fs_window is not None and self._fs_window.isVisible():
             self._fs_window.hide()
             self._card_layout.insertWidget(0, self.video_widget, 1)
             self._card_layout.addWidget(self.marker_slider)
             self._card_layout.addWidget(self.transport_row)
             self.fullscreen_button.setText("⛶ Pantalla completa")
+            self.raise_()
+            self.activateWindow()
+            self.video_widget.setFocus(Qt.FocusReason.OtherFocusReason)
         elif self.isFullScreen():
             self.showNormal()
 
@@ -543,9 +776,7 @@ class PostgameReplayWindow(QMainWindow):
         try:
             directory.mkdir(parents=True, exist_ok=True)
         except OSError:
-            self.status_label.setText(
-                f"No se pudo preparar la carpeta {directory}."
-            )
+            self.status_label.setText(f"No se pudo preparar la carpeta {directory}.")
             return
 
         from app.ui.recordings_page import RecordingsPage
@@ -574,15 +805,16 @@ class PostgameReplayWindow(QMainWindow):
 
     def _on_state(self, state: QMediaPlayer.PlaybackState) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
-        actualizar_texto_boton(self.play_button, '⏸' if state == QMediaPlayer.PlayingState else '▶')
+        actualizar_texto_boton(
+            self.play_button, "⏸" if state == QMediaPlayer.PlayingState else "▶"
+        )
 
     def _on_error(self, error: Any, message: str = "") -> None:
         if error == QMediaPlayer.Error.NoError:
             return
 
         self.status_label.setText(
-            "No se pudo reproducir la grabación "
-            f"({message or 'formato no soportado'})."
+            f"No se pudo reproducir la grabación ({message or 'formato no soportado'})."
         )
 
     # -- datos de la partida -------------------------------------------
@@ -598,9 +830,7 @@ class PostgameReplayWindow(QMainWindow):
 
         return data if isinstance(data, dict) else {}
 
-    def video_for_session(
-        self, session: dict[str, Any] | None
-    ) -> Path | None:
+    def video_for_session(self, session: dict[str, Any] | None) -> Path | None:
         """Grabación que corresponde a esa sesión.
 
         Empareja por ``session_id`` del sidecar y, si ningún sidecar lo
@@ -724,9 +954,7 @@ class PostgameReplayWindow(QMainWindow):
 
         return best
 
-    def _session_by_time_window(
-        self, sessions: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    def _session_by_time_window(self, sessions: list[dict[str, Any]]) -> dict[str, Any]:
         """Sesión cuya ventana temporal contiene el inicio del vídeo.
 
         Se prefiere la misma campeona, después la copia con más sucesos y
@@ -756,12 +984,9 @@ class PostgameReplayWindow(QMainWindow):
                 continue
 
             end = parse_iso_timestamp(session.get("ended_at"))
-            inside = (
-                abs((video_start - start).total_seconds()) <= margin
-                or (
-                    end is not None
-                    and start <= video_start <= end + timedelta(seconds=margin)
-                )
+            inside = abs((video_start - start).total_seconds()) <= margin or (
+                end is not None
+                and start <= video_start <= end + timedelta(seconds=margin)
             )
 
             if not inside:
@@ -818,14 +1043,12 @@ class PostgameReplayWindow(QMainWindow):
         if current_id and candidate_id and current_id != candidate_id:
             return
 
-        if self._session_richness(candidate) <= self._session_richness(
-            self.session
-        ):
+        if self._session_richness(candidate) <= self._session_richness(self.session):
             return
 
         self.session = candidate
         self.sidebar.set_session(self.session)
-        self._sync_live_tab()
+        self._sync_ai_review_tab()
 
     def _session_from_metadata(self) -> dict[str, Any]:
         """Sesión descrita por el sidecar del vídeo (si trae eventos).
@@ -884,7 +1107,14 @@ class PostgameReplayWindow(QMainWindow):
     def _events_from_metadata_markers(
         metadata: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        """Reconstruye eventos desde los ``markers`` del sidecar."""
+        """Reconstruye eventos conservando la categoría del sidecar.
+
+        Args:
+            metadata: Metadatos persistidos junto al vídeo.
+
+        Returns:
+            Eventos tipados disponibles en el sidecar.
+        """
         markers = metadata.get("markers")
         if not isinstance(markers, list) or not markers:
             return []
@@ -897,19 +1127,21 @@ class PostgameReplayWindow(QMainWindow):
             if not isinstance(marker, dict):
                 continue
 
-            kind = str(marker.get("kind") or "")
+            kind = str(marker.get("category") or marker.get("kind") or "")
+            kind = normalise_marker_kind(kind)
+
+            if kind not in MARKER_LABELS:
+                continue
+
+            marker_player_key = str(marker.get("player_key") or local_key)
 
             try:
                 moment = float(marker.get("time") or 0.0)
             except (TypeError, ValueError):
                 moment = 0.0
 
-            label = str(
-                marker.get("detail") or marker.get("label") or kind
-            )
-            marker_team = str(
-                marker.get("team") or marker.get("objective_team") or ""
-            )
+            label = str(marker.get("detail") or marker.get("label") or kind)
+            marker_team = str(marker.get("team") or marker.get("objective_team") or "")
             objective_name = str(
                 marker.get("objective")
                 or marker.get("objective_label")
@@ -922,7 +1154,9 @@ class PostgameReplayWindow(QMainWindow):
                         "time": moment,
                         "order": order,
                         "type": kind,
-                        "player_key": local_key or None,
+                        "category": kind,
+                        "event_id": marker.get("source_event_id"),
+                        "player_key": marker_player_key or None,
                         "team": marker_team or team,
                         "objective_team": marker_team or "",
                         "label": label,
@@ -946,13 +1180,10 @@ class PostgameReplayWindow(QMainWindow):
         return events
 
     def _build_markers(self) -> list[dict[str, Any]]:
-        """Indicadores de la barra: filtro de la revisión primero.
+        """Indicadores de la barra según el contexto activo.
 
-        Los marcadores reflejan los sucesos de ``sidebar.review_markers()``
-        (jugador y alcance elegidos en la pestaña Revisión): si se elige un
-        campeón o "Todos", la barra muestra esos mismos sucesos. Solo cuando
-        la revisión está vacía se recurre a los marcadores de la sesión local
-        y, en última instancia, al sidecar del vídeo.
+        Si existe un desglose, incluso una perspectiva vacía es definitiva y
+        no se reemplaza por sucesos globales del sidecar.
         """
         sidebar = getattr(self, "sidebar", None)
         review = getattr(sidebar, "review_markers", None)
@@ -963,8 +1194,7 @@ class PostgameReplayWindow(QMainWindow):
             except (TypeError, ValueError, AttributeError):
                 markers = []
 
-            if markers:
-                return markers
+            return markers
 
         markers = []
 
@@ -1008,38 +1238,72 @@ class PostgameReplayWindow(QMainWindow):
             status = str(final_sync.get("status") or "")
 
         self.badge.setText(
-            "RIOT SINCRONIZADO"
-            if status == "synced"
-            else "TELEMETRÍA LIVE LOCAL"
+            "RIOT SINCRONIZADO" if status == "synced" else "TELEMETRÍA LIVE LOCAL"
         )
         self.badge.setProperty("state", status or "live")
         self.badge.style().unpolish(self.badge)
         self.badge.style().polish(self.badge)
 
     def _refresh_markers(self) -> None:
+        """Reconstruye marcadores al cambiar la partida o el filtro de revisión.
+
+        Returns:
+            None.
+        """
+        self._sync_timeline_context()
         self.markers = self._build_markers()
+
+        self._apply_marker_filters()
+
+    def _sync_timeline_context(self) -> None:
+        """Sincroniza el selector con el alcance activo del desglose.
+
+        Returns:
+            None.
+        """
+        sidebar = getattr(self, "sidebar", None)
+        alcance = getattr(sidebar, "scope", PostgameSidebar.SCOPE_PLAYER)
+        indice = self.selector_contexto_cronologia.findData(alcance)
+
+        if indice >= 0 and self.selector_contexto_cronologia.currentIndex() != indice:
+            self.selector_contexto_cronologia.blockSignals(True)
+            self.selector_contexto_cronologia.setCurrentIndex(indice)
+            self.selector_contexto_cronologia.blockSignals(False)
+
+    def _on_timeline_context_changed(self, indice: int) -> None:
+        """Cambia el alcance de eventos compartido con la pestaña Revisión.
+
+        Args:
+            indice: Índice seleccionado en el selector de contexto.
+
+        Returns:
+            None.
+        """
+        alcance = str(self.selector_contexto_cronologia.itemData(indice) or "player")
+        self.sidebar.set_scope(alcance)
+
+    def _apply_marker_filters(self) -> None:
+        """Aplica las categorías activas a los marcadores ya preparados.
+
+        Returns:
+            None.
+        """
         duration_ms = self.player.duration()
         stored = float(self.metadata.get("duration_seconds") or 0) * 1000
 
         if duration_ms <= 0 and stored > 0:
             duration_ms = int(stored)
 
-        self.marker_slider.set_markers(self.markers, int(duration_ms))
-        kinds = sorted(
-            {str(marker.get("kind") or "") for marker in self.markers} - {""}
+        active_categories = {
+            category
+            for category, button in self.marker_filter_buttons.items()
+            if button.isChecked()
+        }
+        visibles = filter_replay_markers(self.markers, active_categories)
+        self.marker_slider.set_markers(visibles, int(duration_ms))
+        self.marker_summary.setText(
+            marker_filter_summary(self.markers, active_categories)
         )
-
-        if self.markers:
-            from app.services.recording_service import MARKER_LABELS
-
-            readable = ", ".join(
-                MARKER_LABELS.get(kind, kind) for kind in kinds
-            )
-            self.marker_summary.setText(
-                f"{len(self.markers)} marcador(es) · {readable}"
-            )
-        else:
-            self.marker_summary.setText("Sin marcadores")
 
     # -- API pública ----------------------------------------------------
 
@@ -1048,18 +1312,14 @@ class PostgameReplayWindow(QMainWindow):
         target = Path(path)
 
         if not target.is_file():
-            self.status_label.setText(
-                f"No se encontró el vídeo {target.name}."
-            )
+            self.status_label.setText(f"No se encontró el vídeo {target.name}.")
             return
 
         self.video_path = target
         self.player.stop()
         self.player.setSource(QUrl())
         self.metadata = self._load_metadata(target)
-        self.game_time_offset = float(
-            self.metadata.get("game_time_offset") or 0.0
-        )
+        self.game_time_offset = float(self.metadata.get("game_time_offset") or 0.0)
         # El sidecar puede traer la partida (eventos, jugador local...) y el
         # tracker la sesión completa en disco: se toma la más rica de las
         # dos, sin mezclar partidas distintas.
@@ -1080,7 +1340,7 @@ class PostgameReplayWindow(QMainWindow):
         self.sidebar.set_session(self.session)
         self._refresh_header()
         self._refresh_markers()
-        self._sync_live_tab()
+        self._sync_ai_review_tab()
 
         if self.video_path is None:
             found = self.video_for_session(self.session)
@@ -1092,9 +1352,7 @@ class PostgameReplayWindow(QMainWindow):
         """Alias en vivo: mismos datos/timers que el diálogo LIVE."""
         self.set_session(session)
 
-    def reload_breakdown(
-        self, first_load: bool = False, **kwargs: Any
-    ) -> None:
+    def reload_breakdown(self, first_load: bool = False, **kwargs: Any) -> None:
         """Reconstruye el desglose con la telemetría LOCAL de la sesión.
 
         Se recarga la sesión de disco (por si acaba de sincronizarse con la
@@ -1107,13 +1365,11 @@ class PostgameReplayWindow(QMainWindow):
         # coincidentes o emparejada por tiempo): así nunca se pisa la sesión
         # viva del diálogo LIVE ni se mezclan partidas distintas.
         self._adopt_session_for_video()
-        self.game_time_offset = float(
-            self.metadata.get("game_time_offset") or 0.0
-        )
+        self.game_time_offset = float(self.metadata.get("game_time_offset") or 0.0)
         self.sidebar.set_session(self.session)
         self._refresh_header()
         self._refresh_markers()
-        self._sync_live_tab()
+        self._sync_ai_review_tab()
 
         if self.video_path is None:
             self.video_path = self.video_for_session(self.session)

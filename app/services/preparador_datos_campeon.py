@@ -5,20 +5,26 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import math
 import re
 from collections.abc import Callable
 from dataclasses import asdict
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
 import data_dragon
 from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
+from app.services.curador_recomendaciones_build import CuradorRecomendacionesBuild
 from app.services.elegibilidad_objetos import (
     MODO_SOLOQ,
     ValidadorElegibilidadObjetos,
 )
 from app.services.repositorio_campeones import RepositorioCampeones
-from app.services.synergy_recommendation_service import SynergyRecommendationService
+from app.services.synergy_recommendation_service import (
+    ItemRecommendation,
+    SynergyRecommendationService,
+)
 
 CAMPOS_VARIANTE = (
     "runes",
@@ -32,6 +38,7 @@ CAMPOS_VARIANTE = (
     "summoner_spells",
     "situational_items",
     "situational_item_candidates",
+    "situational_coverage_failures",
     "source_situational_items",
     "matchups",
     "damage_breakdown",
@@ -47,6 +54,7 @@ CAMPOS_VARIANTE = (
     "boots",
     "recommended_build",
     "recommended_build_details",
+    "recommended_core_items",
     "item_candidates",
     "recommendation_diagnostics",
     "recommendation_mode",
@@ -104,6 +112,9 @@ class PreparadorDatosCampeon:
             if isinstance(item, dict) and item.get("id")
         }
         self.version = str(objetos.get("version") or "16.17.1")
+        self.curador = CuradorRecomendacionesBuild(
+            self.catalogo, self.objetos_estrictos
+        )
 
     def preparar(
         self,
@@ -148,18 +159,33 @@ class PreparadorDatosCampeon:
                     )
                     for valor in candidatos
                 ]
-                self._preparar_recomendaciones_situacionales(
-                    variante,
-                    candidatos,
-                    combinado,
-                    ValidadorElegibilidadObjetos.diagnosticar_catalogo(
-                        self.catalogo.catalogo,
-                        str(combinado.get("character") or ""),
-                        MODO_SOLOQ,
-                        self.version,
-                    ),
+                curada = self.curador.curar(variante, combinado, candidatos)
+                variante.clear()
+                variante.update(curada)
+                diagnosticos = variante.get("recommendation_diagnostics", {})
+                diagnosticos.update(
+                    {
+                        "champion": combinado.get("character"),
+                        "lane": linea,
+                        "rank": rango,
+                        "patch": variante.get("source_patch"),
+                        "overall_matches": variante.get("overall_matches"),
+                        "raw_core_entries": len(variante.get("core_build", [])),
+                        "eligible_situational_candidates": len(
+                            variante.get("situational_item_candidates", [])
+                        ),
+                        "affinity_candidate_count": len(candidatos),
+                        "eligibility": ValidadorElegibilidadObjetos.diagnosticar_catalogo(
+                            self.catalogo.catalogo,
+                            str(combinado.get("character") or ""),
+                            MODO_SOLOQ,
+                            self.version,
+                        ),
+                    }
                 )
-                self._preparar_build_recomendada(variante, combinado)
+                variante["recommendation_diagnostics"] = diagnosticos
+                variante["recommendation_mode"] = MODO_SOLOQ
+                variante["recommendation_catalog_version"] = self.version
                 variante["role"] = linea
                 variante["rank"] = rango
                 variante["generated_at"] = documento["updated_at"]
@@ -433,6 +459,8 @@ class PreparadorDatosCampeon:
                 puntuacion = self._puntuar_botas_locales(
                     perfil, str(item_id), item, motor
                 )
+                if puntuacion is None:
+                    continue
                 if seleccion is None or puntuacion > float(seleccion.get("score", -1)):
                     seleccion = {
                         "item_id": str(item_id),
@@ -459,31 +487,46 @@ class PreparadorDatosCampeon:
         item_id: str,
         item: dict[str, Any],
         motor: SynergyRecommendationService,
-    ) -> float:
-        """Puntúa botas válidas según su equipo y el estilo general del campeón."""
+    ) -> float | None:
+        """Puntúa una bota o devuelve None si el motor incumple el contrato.
+
+        Parámetros: perfil e identidad del objeto, su catálogo y motor tipado.
+        Retorno: puntuación finita o None para una recomendación no válida.
+        """
         estilo = str(perfil.get("basic_info", {}).get("play_style", "Adaptable"))
         recomendacion = motor.score_item(perfil, estilo, item_id, item, [])
+        if not isinstance(recomendacion, ItemRecommendation):
+            logging.getLogger(__name__).error(
+                "El motor devolvió un tipo de recomendación inválido para botas (%s)",
+                item_id,
+            )
+            return None
+        puntuacion = recomendacion.score
+        if (
+            isinstance(puntuacion, bool)
+            or not isinstance(puntuacion, Real)
+            or not math.isfinite(float(puntuacion))
+        ):
+            logging.getLogger(__name__).error(
+                "El motor devolvió una puntuación inválida para botas (%s)", item_id
+            )
+            return None
+        puntuacion = float(puntuacion)
         etiquetas = set(item.get("tags", []))
         estilo_normalizado = estilo.casefold()
         if estilo_normalizado in {"juggernaut", "fighter", "bruise", "bruiser"}:
-            recomendacion = recomendacion.score + (
-                3.0 if "CooldownReduction" in etiquetas else 0.0
-            )
+            puntuacion += 3.0 if "CooldownReduction" in etiquetas else 0.0
         elif estilo_normalizado in {"marksman", "adc", "hypercarry"}:
-            recomendacion = recomendacion.score + (
-                3.0 if "AttackSpeed" in etiquetas else 0.0
-            )
+            puntuacion += 3.0 if "AttackSpeed" in etiquetas else 0.0
         elif estilo_normalizado in {"mage", "assassin"}:
-            recomendacion = recomendacion.score + (
-                2.0 if "MagicPenetration" in etiquetas else 0.0
-            )
+            puntuacion += 2.0 if "MagicPenetration" in etiquetas else 0.0
         elif estilo_normalizado in {"tank", "support"}:
-            recomendacion = recomendacion.score + (
+            puntuacion += (
                 2.0
                 if etiquetas.intersection({"Armor", "SpellBlock", "Tenacity"})
                 else 0.0
             )
-        return round(float(recomendacion), 1)
+        return round(puntuacion, 1)
 
     @staticmethod
     def _item_comprable(item: dict[str, Any]) -> bool:

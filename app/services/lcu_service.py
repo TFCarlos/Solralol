@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import base64
-import json
-import os
+import itertools
+import logging
 import re
 import subprocess
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class LCUService:
@@ -222,11 +225,13 @@ class LCUService:
         self.auth_token = password
         auth_bytes = f"riot:{self.auth_token}".encode("utf-8")
         auth_b64 = base64.b64encode(auth_bytes).decode("utf-8")
-        self.session.headers.update({
-            "Authorization": f"Basic {auth_b64}",
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        })
+        self.session.headers.update(
+            {
+                "Authorization": f"Basic {auth_b64}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+        )
         return True
 
     def _find_lockfile(self) -> list[str] | None:
@@ -244,11 +249,19 @@ class LCUService:
         # 2. Buscar proceso LeagueClientUx mediante command line (Windows)
         try:
             cmd = "wmic process where name='LeagueClientUx.exe' get commandline"
-            output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
-            port_match = re.search(r'--app-port=(\d+)', output)
-            auth_match = re.search(r'--remoting-auth-token=([\w-]+)', output)
+            output = subprocess.check_output(
+                cmd, shell=True, text=True, stderr=subprocess.DEVNULL
+            )
+            port_match = re.search(r"--app-port=(\d+)", output)
+            auth_match = re.search(r"--remoting-auth-token=([\w-]+)", output)
             if port_match and auth_match:
-                return ["LeagueClient", "0", port_match.group(1), auth_match.group(1), "https"]
+                return [
+                    "LeagueClient",
+                    "0",
+                    port_match.group(1),
+                    auth_match.group(1),
+                    "https",
+                ]
         except Exception:
             pass
 
@@ -259,7 +272,10 @@ class LCUService:
             if not self.refresh_connection():
                 return False
         try:
-            resp = self.session.get(f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner", timeout=1.5)
+            resp = self.session.get(
+                f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner",
+                timeout=1.5,
+            )
             return resp.status_code == 200
         except requests.RequestException:
             return False
@@ -268,7 +284,10 @@ class LCUService:
         if not self.is_connected():
             return False
         try:
-            resp = self.session.get(f"https://127.0.0.1:{self.port}/lol-champ-select/v1/session", timeout=1.5)
+            resp = self.session.get(
+                f"https://127.0.0.1:{self.port}/lol-champ-select/v1/session",
+                timeout=1.5,
+            )
             return resp.status_code == 200
         except requests.RequestException:
             return False
@@ -277,7 +296,9 @@ class LCUService:
         if not self.is_connected():
             return None
         try:
-            resp = self.session.get(f"https://127.0.0.1:{self.port}/lol-champ-select/v1/session", timeout=2)
+            resp = self.session.get(
+                f"https://127.0.0.1:{self.port}/lol-champ-select/v1/session", timeout=2
+            )
             if resp.status_code == 200:
                 return resp.json()
         except requests.RequestException:
@@ -287,79 +308,470 @@ class LCUService:
     def import_rune_page(
         self,
         name: str,
-        primary_tree: str,
-        secondary_tree: str,
-        keystone_name: str,
-        slots: list[str],
-        secondary_slots: list[str],
-        shards: list[str],
+        primary_tree: str | int,
+        secondary_tree: str | int,
+        keystone_name: str | int,
+        slots: list[str | int],
+        secondary_slots: list[str | int],
+        shards: list[str | int],
+        *,
+        keystone_id: int | None = None,
+        slot_ids: list[int] | None = None,
+        secondary_slot_ids: list[int] | None = None,
+        shard_ids: list[int] | None = None,
     ) -> tuple[bool, str]:
-        """Aplica la página de runas directamente en el cliente mediante LCU API."""
+        """Valida, guarda y comprueba una página completa usando reglas LCU.
+
+        Parámetros: recomendación de runas, incluyendo IDs canónicos opcionales.
+        Retorno: éxito confirmado al releer la página o diagnóstico en español.
+        """
         if not self.is_connected():
             return False, "Cliente de League of Legends no está conectado."
-
-        primary_style_id = self.RUNE_STYLE_IDS.get(primary_tree.casefold(), 8000)
-        sub_style_id = self.RUNE_STYLE_IDS.get(secondary_tree.casefold(), 8400)
-
-        perk_ids: list[int] = []
-
-        # Keystone
-        ks_id = self.RUNE_NAME_TO_ID.get(keystone_name.casefold())
-        if ks_id:
-            perk_ids.append(ks_id)
-
-        # Primary slots
-        for slot in slots:
-            pid = self.RUNE_NAME_TO_ID.get(slot.casefold())
-            if pid and pid not in perk_ids:
-                perk_ids.append(pid)
-
-        # Secondary slots
-        for sslot in secondary_slots:
-            pid = self.RUNE_NAME_TO_ID.get(sslot.casefold())
-            if pid and pid not in perk_ids:
-                perk_ids.append(pid)
-
-        # Stat shards
-        for shard in shards:
-            pid = self.RUNE_NAME_TO_ID.get(shard.casefold())
-            if pid:
-                perk_ids.append(pid)
-
-        if len(perk_ids) < 6:
-            return False, f"Solo se pudieron identificar {len(perk_ids)} runas válidas para el cliente."
-
-        payload = {
-            "name": f"Solralol - {name}"[:30],
-            "primaryStyleId": primary_style_id,
-            "subStyleId": sub_style_id,
-            "selectedPerkIds": perk_ids,
-            "current": True,
-        }
-
         try:
-            # Obtener páginas existentes
-            resp_pages = self.session.get(f"https://127.0.0.1:{self.port}/lol-perks/v1/pages", timeout=3)
-            if resp_pages.status_code == 200:
-                pages = resp_pages.json()
-                current_page = next((p for p in pages if p.get("current") or p.get("isEditable")), None)
-                if current_page and current_page.get("id"):
-                    page_id = current_page["id"]
-                    # Eliminar página actual si no se puede sobrescribir o actualizar directamente
-                    del_resp = self.session.delete(f"https://127.0.0.1:{self.port}/lol-perks/v1/pages/{page_id}", timeout=3)
+            base = f"https://127.0.0.1:{self.port}/lol-perks/v1"
+            perks_response = self.session.get(f"{base}/perks", timeout=3)
+            styles_response = self.session.get(f"{base}/styles", timeout=3)
+            pages_response = self.session.get(f"{base}/pages", timeout=3)
+            for endpoint, response in (
+                ("perks", perks_response),
+                ("styles", styles_response),
+                ("pages", pages_response),
+            ):
+                if response.status_code != 200:
+                    _LOGGER.error(
+                        "[LCU][Runas] GET %s falló: HTTP %s; detalle=%s",
+                        endpoint,
+                        response.status_code,
+                        response.text[:400],
+                    )
+                    return (
+                        False,
+                        f"No se pudieron leer las definiciones de runas ({response.status_code}).",
+                    )
+            perks = perks_response.json()
+            styles = styles_response.json()
+            pages = pages_response.json()
+            if not all(isinstance(value, list) for value in (perks, styles, pages)):
+                return (
+                    False,
+                    "El cliente devolvió definiciones de runas con formato no válido.",
+                )
 
-            post_resp = self.session.post(f"https://127.0.0.1:{self.port}/lol-perks/v1/pages", json=payload, timeout=3)
-            if post_resp.status_code in (200, 201):
-                return True, "¡Página de runas importada correctamente al cliente!"
-            
-            # Intentar PUT a currentpage como alternativa
-            put_resp = self.session.put(f"https://127.0.0.1:{self.port}/lol-perks/v1/currentpage", json=payload, timeout=3)
-            if put_resp.status_code in (200, 201, 204):
-                return True, "¡Página de runas importada a la página activa del cliente!"
+            perks_by_id = {
+                int(item["id"]): item
+                for item in perks
+                if isinstance(item, dict) and str(item.get("id", "")).isdigit()
+            }
+            styles_by_id = {
+                int(item["id"]): item
+                for item in styles
+                if isinstance(item, dict) and str(item.get("id", "")).isdigit()
+            }
+            primary_style_id = self._resolve_rune_style(primary_tree, styles_by_id)
+            secondary_style_id = self._resolve_rune_style(secondary_tree, styles_by_id)
+            if primary_style_id is None or secondary_style_id is None:
+                return (
+                    False,
+                    "El árbol principal o secundario no existe en este cliente.",
+                )
 
-            return False, f"El cliente respondió con código {post_resp.status_code}."
+            raw_perks: list[str | int] = [
+                keystone_id if keystone_id is not None else keystone_name,
+                *(slot_ids if slot_ids is not None else slots),
+                *(
+                    secondary_slot_ids
+                    if secondary_slot_ids is not None
+                    else secondary_slots
+                ),
+                *(shard_ids if shard_ids is not None else shards),
+            ]
+            perk_ids = [
+                self._resolve_rune_id(value, perks_by_id) for value in raw_perks
+            ]
+            if any(value is None for value in perk_ids):
+                missing = [
+                    str(value)
+                    for value, resolved in zip(raw_perks, perk_ids, strict=True)
+                    if resolved is None
+                ]
+                return (
+                    False,
+                    f"No se reconocieron estas runas recomendadas: {', '.join(missing)}.",
+                )
+            ids = [int(value) for value in perk_ids if value is not None]
+            ids, order_error = self._order_rune_selection(
+                primary_style_id,
+                secondary_style_id,
+                ids,
+                styles_by_id,
+            )
+            if order_error:
+                _LOGGER.warning(
+                    "[LCU][Runas] No se pudo ordenar la selección en filas LCU: %s; IDs=%s",
+                    order_error,
+                    ids,
+                )
+                return False, order_error
+            _LOGGER.debug(
+                "[LCU][Runas] Recomendación recibida: primaria=%s secundaria=%s "
+                "keystone=%s primarias=%s secundarias=%s fragmentos=%s; "
+                "IDs_normalizados=%s",
+                primary_tree,
+                secondary_tree,
+                keystone_name,
+                slots,
+                secondary_slots,
+                shards,
+                ids,
+            )
+            error = self._validate_rune_selection(
+                primary_style_id,
+                secondary_style_id,
+                ids,
+                perks_by_id,
+                styles_by_id,
+            )
+            if error:
+                _LOGGER.warning(
+                    "[LCU][Runas] Validación rechazada: %s; IDs=%s", error, ids
+                )
+                return False, error
+
+            page_name = f"Solralol - {name}"[:30]
+            payload = {
+                "name": page_name,
+                "primaryStyleId": primary_style_id,
+                "subStyleId": secondary_style_id,
+                "selectedPerkIds": ids,
+                "current": True,
+            }
+            _LOGGER.debug("[LCU][Runas] Payload validado: %s", payload)
+            matching_pages = [
+                page
+                for page in pages
+                if isinstance(page, dict) and page.get("name") == page_name
+            ]
+            existing = next(
+                (page for page in matching_pages if page.get("isEditable")),
+                None,
+            )
+            if matching_pages and existing is None:
+                return (
+                    False,
+                    "Ya existe una página con ese nombre que el cliente no permite editar.",
+                )
+            if existing and existing.get("id") is not None:
+                page_id = existing["id"]
+                response = self.session.put(
+                    f"{base}/pages/{page_id}", json=payload, timeout=3
+                )
+                accion = "PUT"
+            elif existing:
+                return (
+                    False,
+                    "La página existente no incluye un identificador editable.",
+                )
+            else:
+                response = self.session.post(f"{base}/pages", json=payload, timeout=3)
+                accion = "POST"
+            _LOGGER.info(
+                "[LCU][Runas] %s /pages respondió HTTP %s; nombre=%s",
+                accion,
+                response.status_code,
+                page_name,
+            )
+            if response.status_code not in (200, 201, 204):
+                _LOGGER.error(
+                    "[LCU][Runas] Escritura fallida: HTTP %s; detalle=%s",
+                    response.status_code,
+                    response.text[:500],
+                )
+                return (
+                    False,
+                    f"El cliente rechazó la página de runas (HTTP {response.status_code}).",
+                )
+
+            verify_response = self.session.get(f"{base}/pages", timeout=3)
+            if verify_response.status_code != 200:
+                return (
+                    False,
+                    "La página se envió, pero no se pudo verificar en el cliente.",
+                )
+            saved_pages = verify_response.json()
+            saved = next(
+                (
+                    page
+                    for page in saved_pages
+                    if isinstance(page, dict) and page.get("name") == page_name
+                ),
+                None,
+            )
+            if not saved or not self._same_rune_page(saved, payload):
+                _LOGGER.error(
+                    "[LCU][Runas] Lectura posterior discrepante: solicitado=%s guardado=%s",
+                    payload,
+                    self._safe_rune_page(saved),
+                )
+                return (
+                    False,
+                    "El cliente guardó una configuración distinta; revisa la página de runas.",
+                )
+            _LOGGER.info(
+                "[LCU][Runas] Página confirmada tras lectura: %s",
+                self._safe_rune_page(saved),
+            )
+            return (
+                True,
+                "¡Página completa de runas importada y verificada en el cliente!",
+            )
         except requests.RequestException as exc:
             return False, f"Error de comunicación con LCU: {exc}"
+        except (KeyError, TypeError, ValueError):
+            _LOGGER.exception("[LCU][Runas] Respuesta o definición inválida")
+            return False, "El cliente devolvió datos de runas incompletos o no válidos."
+
+    @staticmethod
+    def _normalize_rune_text(value: str) -> str:
+        """Normaliza nombres de runas para comparar nombres traducidos.
+
+        Parámetros: nombre o identificador textual recibido.
+        Retorno: texto en minúsculas sin marcas diacríticas ni espacios externos.
+        """
+        normalizado = unicodedata.normalize("NFKD", value.casefold().strip())
+        return "".join(
+            caracter for caracter in normalizado if not unicodedata.combining(caracter)
+        )
+
+    @classmethod
+    def _resolve_rune_id(
+        cls, value: str | int, perks_by_id: dict[int, dict[str, Any]]
+    ) -> int | None:
+        """Resuelve una runa contra las definiciones vigentes del cliente.
+
+        Parámetros: ID o nombre recomendado y definiciones LCU por ID.
+        Retorno: ID vigente o None si no se reconoce.
+        """
+        if isinstance(value, int) or str(value).strip().isdigit():
+            perk_id = int(value)
+            return perk_id if perk_id in perks_by_id else None
+        sought = cls._normalize_rune_text(str(value))
+        for perk_id, definition in perks_by_id.items():
+            if cls._normalize_rune_text(str(definition.get("name", ""))) == sought:
+                return perk_id
+        alias = cls.RUNE_NAME_TO_ID.get(str(value).casefold().strip())
+        return alias if alias in perks_by_id else None
+
+    @staticmethod
+    def _resolve_rune_style(
+        value: str | int, styles_by_id: dict[int, dict[str, Any]]
+    ) -> int | None:
+        """Resuelve el árbol recomendado contra estilos activos del cliente.
+
+        Parámetros: ID o nombre del árbol y estilos LCU por ID.
+        Retorno: ID del estilo vigente o None si no existe.
+        """
+        if isinstance(value, int) or str(value).strip().isdigit():
+            style_id = int(value)
+            return style_id if style_id in styles_by_id else None
+        sought = LCUService._normalize_rune_text(str(value))
+        for style_id, definition in styles_by_id.items():
+            if sought in {
+                LCUService._normalize_rune_text(str(definition.get("name", ""))),
+                LCUService._normalize_rune_text(str(definition.get("idName", ""))),
+            }:
+                return style_id
+        aliases = {
+            "precision": 8000,
+            "domination": 8100,
+            "sorcery": 8200,
+            "inspiration": 8300,
+            "resolve": 8400,
+            "precision española": 8000,
+            "dominacion": 8100,
+            "brujeria": 8200,
+            "inspiracion": 8300,
+            "valor": 8400,
+        }
+        style_id = aliases.get(sought)
+        return style_id if style_id in styles_by_id else None
+
+    @staticmethod
+    def _validate_rune_selection(
+        primary_style_id: int,
+        secondary_style_id: int,
+        perk_ids: list[int],
+        perks_by_id: dict[int, dict[str, Any]],
+        styles_by_id: dict[int, dict[str, Any]],
+    ) -> str:
+        """Comprueba orden, árboles, filas, shards y unicidad con reglas LCU.
+
+        Parámetros: IDs ordenados, definiciones de perks y estilos vigentes.
+        Retorno: motivo de rechazo o cadena vacía si la página es válida.
+        """
+        if len(perk_ids) != 9:
+            return f"La página requiere 9 selecciones y recibió {len(perk_ids)}."
+        if len(set(perk_ids[:6])) != 6:
+            return (
+                "La recomendación contiene runas principales o secundarias duplicadas."
+            )
+        primary = styles_by_id.get(primary_style_id)
+        secondary = styles_by_id.get(secondary_style_id)
+        if not primary or not secondary or primary_style_id == secondary_style_id:
+            return "Los árboles principal y secundario no son válidos o son iguales."
+        if secondary_style_id not in primary.get("allowedSubStyles", []):
+            return "El árbol secundario no está permitido por el árbol principal."
+        primary_slots = primary.get("slots")
+        secondary_slots = secondary.get("slots")
+        if not isinstance(primary_slots, list) or len(primary_slots) < 7:
+            return "El cliente no proporcionó las filas completas del árbol principal."
+        if not isinstance(secondary_slots, list) or len(secondary_slots) < 4:
+            return "El cliente no proporcionó las filas completas del árbol secundario."
+        if perk_ids[0] not in primary_slots[0].get("perks", []):
+            return "La primera selección no es una keystone del árbol principal."
+        for indice in range(1, 4):
+            if perk_ids[indice] not in primary_slots[indice].get("perks", []):
+                return f"La runa principal {indice} no pertenece a su fila correspondiente."
+        filas_secundarias: list[int] = []
+        for perk_id in perk_ids[4:6]:
+            fila = next(
+                (
+                    indice
+                    for indice in range(1, 4)
+                    if perk_id in secondary_slots[indice].get("perks", [])
+                ),
+                None,
+            )
+            if fila is None:
+                return "Una runa secundaria no pertenece a una fila menor del árbol elegido."
+            filas_secundarias.append(fila)
+        if filas_secundarias[0] == filas_secundarias[1]:
+            return "Las dos runas secundarias deben ocupar filas distintas."
+        for indice, perk_id in enumerate(perk_ids[6:9], start=4):
+            if perk_id not in primary_slots[indice].get("perks", []):
+                return f"El fragmento de estadísticas {indice - 3} no corresponde a su fila."
+        for indice, perk_id in enumerate(perk_ids):
+            definition = perks_by_id.get(perk_id)
+            if not definition:
+                return f"El ID de runa {perk_id} no existe en esta versión del cliente."
+            if indice < 4 and int(definition.get("styleId", -1)) != primary_style_id:
+                return f"La runa {perk_id} no pertenece al árbol principal."
+            if (
+                4 <= indice < 6
+                and int(definition.get("styleId", -1)) != secondary_style_id
+            ):
+                return f"La runa {perk_id} no pertenece al árbol secundario."
+        return ""
+
+    @staticmethod
+    def _order_rune_selection(
+        primary_style_id: int,
+        secondary_style_id: int,
+        perk_ids: list[int],
+        styles_by_id: dict[int, dict[str, Any]],
+    ) -> tuple[list[int], str]:
+        """Ordena las selecciones según las filas activas expuestas por LCU.
+
+        Parámetros: árboles elegidos, nueve IDs recomendados y estilos del cliente.
+        Retorno: IDs en orden LCU y error vacío, o IDs originales con diagnóstico.
+        """
+        if len(perk_ids) != 9:
+            return (
+                perk_ids,
+                f"La página requiere 9 selecciones y recibió {len(perk_ids)}.",
+            )
+        primary = styles_by_id.get(primary_style_id, {}).get("slots", [])
+        secondary = styles_by_id.get(secondary_style_id, {}).get("slots", [])
+        if len(primary) < 7 or len(secondary) < 4:
+            return (
+                perk_ids,
+                "El cliente no proporcionó filas suficientes para ordenar la página.",
+            )
+        menores_primarias = list(perk_ids[1:4])
+        ordenadas_primarias: list[int] = []
+        for row_index in range(1, 4):
+            elegibles = [
+                perk_id
+                for perk_id in menores_primarias
+                if perk_id in primary[row_index].get("perks", [])
+            ]
+            if len(elegibles) != 1:
+                return perk_ids, (
+                    f"La recomendación tiene {len(elegibles)} runas para la fila "
+                    f"principal {row_index}."
+                )
+            seleccionado = elegibles[0]
+            ordenadas_primarias.append(seleccionado)
+            menores_primarias.remove(seleccionado)
+        secundarias: list[tuple[int, int]] = []
+        for perk_id in perk_ids[4:6]:
+            rows = [
+                row_index
+                for row_index in range(1, 4)
+                if perk_id in secondary[row_index].get("perks", [])
+            ]
+            if len(rows) != 1:
+                return perk_ids, (
+                    f"La runa secundaria {perk_id} no pertenece a una fila menor "
+                    "única del árbol seleccionado."
+                )
+            secundarias.append((rows[0], perk_id))
+        if secundarias[0][0] == secundarias[1][0]:
+            return (
+                perk_ids,
+                "Las dos runas secundarias deben proceder de filas distintas.",
+            )
+        secundarias.sort()
+        fragmentos: tuple[int, ...] | None = None
+        for permutacion in itertools.permutations(perk_ids[6:9]):
+            if all(
+                perk_id in primary[row_index].get("perks", [])
+                for row_index, perk_id in zip(range(4, 7), permutacion, strict=True)
+            ):
+                fragmentos = permutacion
+                break
+        if fragmentos is None:
+            return (
+                perk_ids,
+                "Los tres fragmentos no corresponden a sus filas de estadísticas.",
+            )
+        return (
+            [
+                perk_ids[0],
+                *ordenadas_primarias,
+                *(perk_id for _, perk_id in secundarias),
+                *fragmentos,
+            ],
+            "",
+        )
+
+    @staticmethod
+    def _same_rune_page(saved: dict[str, Any], payload: dict[str, Any]) -> bool:
+        """Compara selecciones guardadas con la configuración solicitada.
+
+        Parámetros: página releída y carga útil esperada.
+        Retorno: True cuando árboles e IDs coinciden exactamente.
+        """
+        return (
+            saved.get("primaryStyleId") == payload["primaryStyleId"]
+            and saved.get("subStyleId") == payload["subStyleId"]
+            and saved.get("selectedPerkIds") == payload["selectedPerkIds"]
+        )
+
+    @staticmethod
+    def _safe_rune_page(page: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Limita el diagnóstico a nombre, árboles e IDs, omitiendo datos privados.
+
+        Parámetros: página LCU opcional.
+        Retorno: resumen seguro o None si no existe página.
+        """
+        if page is None:
+            return None
+        return {
+            "name": page.get("name"),
+            "primaryStyleId": page.get("primaryStyleId"),
+            "subStyleId": page.get("subStyleId"),
+            "selectedPerkIds": page.get("selectedPerkIds"),
+        }
 
     ITEM_SET_TITLE_PREFIX = "Solralol - "
     ITEM_SET_UID_PREFIX = "solralol-"
@@ -369,7 +781,9 @@ class LCUService:
     JUNGLE_ROLES = frozenset({"jungle", "jungla", "jgl"})
 
     @staticmethod
-    def _item_set_container(payload: Any) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+    def _item_set_container(
+        payload: Any,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
         """Normaliza la lectura de conjuntos: contenedor {itemSets} o lista suelta.
 
         El cliente devuelve un objeto ``{accountId, itemSets, timestamp}``, pero
@@ -383,7 +797,9 @@ class LCUService:
         return None
 
     @staticmethod
-    def _situational_blocks(situational: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    def _situational_blocks(
+        situational: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
         """Convierte los grupos situacionales del campeón en bloques de la página.
 
         Cada grupo se traduce a un bloque con el mismo nombre que muestra la
@@ -400,17 +816,26 @@ class LCUService:
                 continue
             ids: list[str] = []
             for entry in raw_items:
-                item_id = str(entry.get("id", "")) if isinstance(entry, dict) else str(entry)
+                item_id = (
+                    str(entry.get("id", "")) if isinstance(entry, dict) else str(entry)
+                )
                 if item_id.isdigit() and int(item_id) > 0 and item_id not in ids:
                     ids.append(item_id)
             if ids:
-                blocks.append({"type": label,
-                               "items": [{"id": i, "count": 1} for i in ids]})
+                blocks.append(
+                    {"type": label, "items": [{"id": i, "count": 1} for i in ids]}
+                )
         return blocks
 
-    def import_item_set(self, champion_id: int, champion_name: str, role: str,
-                        item_ids: list[str], boots_id: str | None = None,
-                        situational: list[dict[str, Any]] | None = None) -> tuple[bool, str]:
+    def import_item_set(
+        self,
+        champion_id: int,
+        champion_name: str,
+        role: str,
+        item_ids: list[str],
+        boots_id: str | None = None,
+        situational: list[dict[str, Any]] | None = None,
+    ) -> tuple[bool, str]:
         """Crea la página general «Solralol - <Campeón> Build» sin tocar los conjuntos del usuario.
 
         La página es general (sin campeón asociado), así que el cliente la ofrece en
@@ -437,14 +862,20 @@ class LCUService:
             if str(role or "").strip().casefold() in self.JUNGLE_ROLES
             else []
         )
-        ids = [str(i) for i in item_ids] + ([str(boots_id)] if boots_id else []) + starter_ids
+        ids = (
+            [str(i) for i in item_ids]
+            + ([str(boots_id)] if boots_id else [])
+            + starter_ids
+        )
         if not all(i.isdigit() and int(i) > 0 for i in ids):
             return False, "La build contiene IDs de objetos inválidos."
         if not self.is_connected():
             return False, "Cliente de League of Legends no está conectado."
         try:
             summoner = self.session.get(
-                f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner", timeout=3)
+                f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner",
+                timeout=3,
+            )
             if summoner.status_code != 200:
                 return False, "No se pudo identificar al invocador local."
             summoner_id = summoner.json().get("summonerId")
@@ -453,10 +884,16 @@ class LCUService:
             url = f"https://127.0.0.1:{self.port}/lol-item-sets/v1/item-sets/{summoner_id}/sets"
             existing = self.session.get(url, timeout=3)
             if existing.status_code != 200:
-                return False, "No se pudieron leer los conjuntos existentes; no se ha sobrescrito nada."
+                return (
+                    False,
+                    "No se pudieron leer los conjuntos existentes; no se ha sobrescrito nada.",
+                )
             container = self._item_set_container(existing.json())
             if container is None:
-                return False, "Formato de conjuntos inesperado; no se ha sobrescrito nada."
+                return (
+                    False,
+                    "Formato de conjuntos inesperado; no se ha sobrescrito nada.",
+                )
             current_sets, wrapper = container
 
             title = f"{self.ITEM_SET_TITLE_PREFIX}{name} Build"
@@ -467,28 +904,45 @@ class LCUService:
             blocks: list[dict[str, Any]] = []
             if starter_ids:
                 # En jungla el hueco de starter lo ocupan los tres compañeros.
-                blocks.append({
-                    "type": "Objetos iniciales (starter): elige un compañero de jungla",
-                    "items": [{"id": str(i), "count": 1} for i in starter_ids],
-                })
-            blocks.append({"type": "Objetos principales (6; última compra alternativa)",
-                           "items": [{"id": str(i), "count": 1} for i in item_ids]})
+                blocks.append(
+                    {
+                        "type": "Objetos iniciales (starter): elige un compañero de jungla",
+                        "items": [{"id": str(i), "count": 1} for i in starter_ids],
+                    }
+                )
+            blocks.append(
+                {
+                    "type": "Objetos principales (6; última compra alternativa)",
+                    "items": [{"id": str(i), "count": 1} for i in item_ids],
+                }
+            )
             if boots_id:
-                blocks.append({"type": "Botas recomendadas contra este equipo",
-                               "items": [{"id": str(boots_id), "count": 1}]})
+                blocks.append(
+                    {
+                        "type": "Botas recomendadas contra este equipo",
+                        "items": [{"id": str(boots_id), "count": 1}],
+                    }
+                )
             situational_blocks = self._situational_blocks(situational)
             blocks.extend(situational_blocks)
             item_set = {
-                "uid": uid, "title": title,
-                "type": "custom", "map": "any", "mode": "any",
-                "associatedMaps": [11, 12], "associatedChampions": [],
-                "preferredItemSlots": [], "sortrank": 0, "startedFrom": "blank",
+                "uid": uid,
+                "title": title,
+                "type": "custom",
+                "map": "any",
+                "mode": "any",
+                "associatedMaps": [11, 12],
+                "associatedChampions": [],
+                "preferredItemSlots": [],
+                "sortrank": 0,
+                "startedFrom": "blank",
                 "blocks": blocks,
             }
             # Página general única: la anterior de Solralol se reemplaza, la del
             # jugador se conserva intacta.
             kept = [
-                s for s in current_sets
+                s
+                for s in current_sets
                 if not str(s.get("uid", "")).startswith(self.ITEM_SET_UID_PREFIX)
             ]
             payload = dict(wrapper)
@@ -499,7 +953,8 @@ class LCUService:
             if response.status_code in (200, 201, 204):
                 extra = (
                     f" Incluye {len(situational_blocks)} bloques de objetos situacionales."
-                    if situational_blocks else ""
+                    if situational_blocks
+                    else ""
                 )
                 if starter_ids:
                     extra += (
@@ -514,7 +969,9 @@ class LCUService:
         except (requests.RequestException, ValueError, TypeError) as exc:
             return False, f"Error al importar la build: {exc}"
 
-    def import_summoner_spells(self, spell1_name: str, spell2_name: str) -> tuple[bool, str]:
+    def import_summoner_spells(
+        self, spell1_name: str, spell2_name: str
+    ) -> tuple[bool, str]:
         """Aplica los hechizos de invocador en el cliente mediante LCU API."""
         if not self.is_connected():
             return False, "Cliente de League of Legends no está conectado."
@@ -523,7 +980,10 @@ class LCUService:
         sp2_id = self.SPELL_NAME_TO_ID.get(spell2_name.casefold())
 
         if not sp1_id or not sp2_id:
-            return False, f"No se reconocieron los hechizos: {spell1_name}, {spell2_name}."
+            return (
+                False,
+                f"No se reconocieron los hechizos: {spell1_name}, {spell2_name}.",
+            )
 
         try:
             payload = {
@@ -540,4 +1000,3 @@ class LCUService:
             return False, f"Error del cliente al cambiar hechizos ({resp.status_code})."
         except requests.RequestException as exc:
             return False, f"Error de comunicación con LCU: {exc}"
-

@@ -1,8 +1,9 @@
 """Grabación de partidas y biblioteca local de grabaciones.
 
-El motor de captura es **ffmpeg**: graba la pantalla, mezcla el sonido del
-sistema (el audio de la partida) con el micrófono cuando se activa y escribe
-un MP4 con la calidad y el bitrate elegidos en Ajustes.
+El vídeo usa FFmpeg con Desktop Duplication (DXGI) y codificación AMD AMF
+H.264. El monitor se fija al iniciar, usando League of Legends.exe cuando
+está visible y el monitor elegido como alternativa. DirectShow no aísla el
+audio del juego; el modo Solo juego se diagnostica como no disponible.
 
 El módulo sólo depende de Qt en ``RecordingService``, que usa ``QProcess``
 para no bloquear la interfaz mientras dura la grabación. Todo lo demás
@@ -19,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -26,7 +28,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -146,15 +148,15 @@ AUDIO_MODE_LABELS = {
 
 VIDEO_SUFFIXES = (".mp4", ".mkv")
 
-#: Qué parte de la pantalla se graba. ``game`` (por defecto) localiza la
-#: ventana de League y graba solo el monitor donde está; ``all`` reproduce el
-#: comportamiento antiguo (todo el escritorio, con todos los monitores).
-CAPTURE_MODES = ("game", "all")
-DEFAULT_CAPTURE_MODE = "game"
+#: Qué fuente se graba. ``game`` captura la ventana verificada del proceso
+#: League of Legends.exe; ``all`` es una elección explícita del usuario.
+CAPTURE_MODES = ("game", "all", "monitor")
+DEFAULT_CAPTURE_MODE = "monitor"
 
 CAPTURE_MODE_LABELS = {
-    "game": "Solo la pantalla del juego (recomendado)",
-    "all": "Toda la pantalla (todos los monitores)",
+    "game": "Monitor de League of Legends (DXGI)",
+    "all": "Monitor configurado (DXGI)",
+    "monitor": "Monitor de League of Legends (DXGI)",
 }
 
 #: Título exacto de la ventana de la partida (la del cliente de lobby se
@@ -166,6 +168,42 @@ GAME_WINDOW_HINTS = ("League of Legends (TM) Client", "League of Legends")
 def default_recordings_dir() -> Path:
     """Carpeta de grabaciones por defecto (Vídeos del usuario)."""
     return Path.home() / "Videos" / "Solralol"
+
+
+def validar_contenedor_mp4(path: str | Path) -> bool:
+    """Comprueba que un MP4 tenga una tabla de película finalizada.
+
+    Parámetros: ruta del archivo que produjo FFmpeg.
+    Retorno: True solo si los átomos superiores incluyen ``moov``.
+    """
+    try:
+        size_total = Path(path).stat().st_size
+        with Path(path).open("rb") as archivo:
+            posicion = 0
+            while posicion + 8 <= size_total:
+                archivo.seek(posicion)
+                cabecera = archivo.read(8)
+                if len(cabecera) != 8:
+                    return False
+                size_atom = int.from_bytes(cabecera[:4], "big")
+                tipo = cabecera[4:8]
+                cabecera_size = 8
+                if size_atom == 1:
+                    extendido = archivo.read(8)
+                    if len(extendido) != 8:
+                        return False
+                    size_atom = int.from_bytes(extendido, "big")
+                    cabecera_size = 16
+                elif size_atom == 0:
+                    size_atom = size_total - posicion
+                if size_atom < cabecera_size or posicion + size_atom > size_total:
+                    return False
+                if tipo == b"moov":
+                    return True
+                posicion += size_atom
+    except OSError:
+        _LOGGER.exception("[Recording] No se pudo validar el contenedor MP4: %s", path)
+    return False
 
 
 # --------------------------------------------------------------------------
@@ -234,11 +272,7 @@ def session_matches_video_metadata(
     if session_end is None:
         return False
 
-    return (
-        session_start
-        <= video_start
-        <= session_end + timedelta(seconds=margin)
-    )
+    return session_start <= video_start <= session_end + timedelta(seconds=margin)
 
 
 def find_video_for_session(
@@ -263,9 +297,10 @@ def find_video_for_session(
         for path in reversed(videos):
             metadata = metadata_loader(path)
 
-            if isinstance(metadata, dict) and str(
-                metadata.get("session_id") or ""
-            ) == wanted:
+            if (
+                isinstance(metadata, dict)
+                and str(metadata.get("session_id") or "") == wanted
+            ):
                 return path
 
     for path in reversed(videos):
@@ -345,6 +380,7 @@ class RecordingConfig:
     ffmpeg_path: str = ""
     capture_mode: str = DEFAULT_CAPTURE_MODE
     capture_window_title: str = ""
+    monitor_index: int = -1
     audio_mode: str = DEFAULT_AUDIO_MODE
 
     @property
@@ -392,9 +428,7 @@ class RecordingConfig:
         output_dir = str(data.get("recording_output_dir") or "").strip()
 
         try:
-            limit_value = float(
-                data.get("recording_size_limit_gb", LIMIT_DEFAULT_GB)
-            )
+            limit_value = float(data.get("recording_size_limit_gb", LIMIT_DEFAULT_GB))
         except (TypeError, ValueError):
             limit_value = float(LIMIT_DEFAULT_GB)
 
@@ -409,18 +443,14 @@ class RecordingConfig:
             or data.get("recording_mic_capture_device")
             or ""
         )
-        mic_capture_enabled = bool(
-            data.get("recording_mic_capture_enabled", False)
-        )
+        mic_capture_enabled = bool(data.get("recording_mic_capture_enabled", False))
         # Los modos nuevos ("all"/"full" y el futuro "system") ya implican
         # captura del sistema aunque el flag antiguo no exista en ajustes
         # viejos: se deriva aquí para que el arranque no pierda el insumo.
         _raw_audio_mode = str(data.get("recording_audio_mode") or "").strip()
         if _raw_audio_mode in ("all", "full", "system"):
             mic_capture_enabled = True
-        game_audio_device = str(
-            data.get("recording_game_audio_device") or ""
-        )
+        game_audio_device = str(data.get("recording_game_audio_device") or "")
 
         # Migración: los ajustes antiguos no tienen modo de audio, se
         # deduce del micrófono, del capturador de sistema y del dispositivo
@@ -451,11 +481,10 @@ class RecordingConfig:
             game_audio_device=game_audio_device,
             size_limit_gb=limit_value,
             ffmpeg_path=str(data.get("ffmpeg_path") or ""),
-            capture_mode=normalize_capture_mode(
-                data.get("recording_capture")
-            ),
-            capture_window_title=str(
-                data.get("recording_capture_window") or ""
+            capture_mode=normalize_capture_mode(data.get("recording_capture")),
+            capture_window_title=str(data.get("recording_capture_window") or ""),
+            monitor_index=normalize_monitor_index(
+                data.get("recording_monitor_index", -1)
             ),
             audio_mode=audio_mode,
         )
@@ -481,6 +510,7 @@ def recording_settings_defaults() -> dict[str, Any]:
         "recording_game_audio_device": "",
         "recording_output_dir": str(default_recordings_dir()),
         "recording_size_limit_gb": float(LIMIT_DEFAULT_GB),
+        "recording_monitor_index": -1,
         "ffmpeg_path": "",
     }
 
@@ -529,8 +559,7 @@ def find_ffmpeg(
     found = _search_ffmpeg(key)
     _FFMPEG_CACHE[key] = (now, found)
     _LOGGER.debug(
-        "Búsqueda FFmpeg finalizada: disponible=%s, duración_ms=%.1f, "
-        "hilo=%s (%s)",
+        "Búsqueda FFmpeg finalizada: disponible=%s, duración_ms=%.1f, hilo=%s (%s)",
         bool(found),
         (time.monotonic() - started) * 1000,
         threading.current_thread().name,
@@ -559,18 +588,13 @@ def _search_ffmpeg(configured_path: str) -> str | None:
     candidates.append(Path("C:/ffmpeg/ffmpeg.exe"))
 
     if local_appdata:
+        candidates.append(Path(local_appdata) / "ffmpeg" / "bin" / "ffmpeg.exe")
         candidates.append(
-            Path(local_appdata) / "ffmpeg" / "bin" / "ffmpeg.exe"
-        )
-        candidates.append(
-            Path(local_appdata) / "Microsoft" / "WinGet" / "Links"
-            / "ffmpeg.exe"
+            Path(local_appdata) / "Microsoft" / "WinGet" / "Links" / "ffmpeg.exe"
         )
 
     if program_data:
-        candidates.append(
-            Path(program_data) / "chocolatey" / "bin" / "ffmpeg.exe"
-        )
+        candidates.append(Path(program_data) / "chocolatey" / "bin" / "ffmpeg.exe")
 
     for candidate in candidates:
         try:
@@ -687,9 +711,7 @@ def pick_game_audio_device(devices: list[str]) -> str:
 def pick_microphone_device(devices: list[str]) -> str:
     """Mejor candidato para el micrófono (sin coger la mezcla)."""
     candidates = [
-        device
-        for device in devices
-        if not matches_any(device, GAME_AUDIO_HINTS)
+        device for device in devices if not matches_any(device, GAME_AUDIO_HINTS)
     ]
 
     for device in candidates:
@@ -707,9 +729,27 @@ CaptureArea = tuple[int, int, int, int]  # (x, y, ancho, alto)
 
 
 def normalize_capture_mode(value: Any) -> str:
-    mode = str(value or "")
+    """Normaliza ajustes antiguos al modo actual de captura de monitor.
 
-    return mode if mode in CAPTURE_MODES else DEFAULT_CAPTURE_MODE
+    Parámetros: valor persistido de modo de captura.
+    Retorno: modo DXGI válido, conservando modos heredados como monitor.
+    """
+    mode = str(value or "")
+    if mode in {"game", "all", "monitor"}:
+        return "monitor"
+    return DEFAULT_CAPTURE_MODE
+
+
+def normalize_monitor_index(value: Any) -> int:
+    """Normaliza el monitor guardado; -1 representa selección automática.
+
+    Parámetros: valor persistido en ajustes.
+    Retorno: índice DXGI no negativo o -1 para modo automático.
+    """
+    try:
+        return max(-1, int(value))
+    except (TypeError, ValueError):
+        return -1
 
 
 def normalize_audio_mode(value: Any) -> str:
@@ -795,11 +835,7 @@ def pick_system_audio_device(
     YouTube, y no se añade nada más. Si hay otro capturador libre
     (VB-Cable, Voicemeeter...), se usa como fuente adicional.
     """
-    skip = {
-        str(value)
-        for value in (exclude or set())
-        if str(value or "").strip()
-    }
+    skip = {str(value) for value in (exclude or set()) if str(value or "").strip()}
 
     for device in devices:
         if device in skip:
@@ -814,9 +850,7 @@ def pick_system_audio_device(
 def capture_mode_label(mode: Any) -> str:
     key = normalize_capture_mode(mode)
 
-    return CAPTURE_MODE_LABELS.get(
-        key, CAPTURE_MODE_LABELS[DEFAULT_CAPTURE_MODE]
-    )
+    return CAPTURE_MODE_LABELS.get(key, CAPTURE_MODE_LABELS[DEFAULT_CAPTURE_MODE])
 
 
 if sys.platform == "win32":
@@ -843,9 +877,7 @@ if sys.platform == "win32":
             ("dwFlags", wintypes.DWORD),
         ]
 
-    _WNDENUMPROC = ctypes.WINFUNCTYPE(
-        wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
-    )
+    _WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
     _user32 = ctypes.windll.user32
     # En 64 bits los handles son punteros: sin estos prototipos el valor se
@@ -861,6 +893,20 @@ if sys.platform == "win32":
         ctypes.POINTER(_MONITORINFO),
     ]
     _user32.GetMonitorInfoW.restype = wintypes.BOOL
+    _MONITORENUMPROC = ctypes.WINFUNCTYPE(
+        wintypes.BOOL,
+        ctypes.c_void_p,
+        wintypes.HDC,
+        ctypes.POINTER(_RECT),
+        wintypes.LPARAM,
+    )
+    _user32.EnumDisplayMonitors.argtypes = [
+        wintypes.HDC,
+        ctypes.POINTER(_RECT),
+        _MONITORENUMPROC,
+        wintypes.LPARAM,
+    ]
+    _user32.EnumDisplayMonitors.restype = wintypes.BOOL
     _user32.GetForegroundWindow.restype = wintypes.HWND
     _user32.IsWindowVisible.argtypes = [wintypes.HWND]
     _user32.IsWindowVisible.restype = wintypes.BOOL
@@ -872,6 +918,23 @@ if sys.platform == "win32":
         ctypes.c_int,
     ]
     _user32.GetWindowTextW.restype = ctypes.c_int
+    _user32.GetWindowThreadProcessId.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    _user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    _kernel32 = ctypes.windll.kernel32
+    _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    _kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _kernel32.CloseHandle.restype = wintypes.BOOL
     _user32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
     _user32.EnumWindows.restype = wintypes.BOOL
     _user32.GetSystemMetrics.argtypes = [ctypes.c_int]
@@ -906,23 +969,74 @@ def _monitor_area_of_window(hwnd: Any) -> CaptureArea | None:
     return None
 
 
-def _find_game_window() -> int | None:
-    """Handle de la ventana de la partida (título exacto, luego a pistas).
+def _monitor_index_of_window(hwnd: Any) -> int:
+    """Obtiene el índice de monitor DXGI asociado a una ventana.
 
-    Entre candidatos con la misma pista gana el de mayor área: la ventana
-    del juego a pantalla completa es mayor que la del lobby.
+    Parámetros: HWND validado de la ventana del juego.
+    Retorno: ordinal de monitor o cero si no puede resolverse.
     """
-    hwnd = _user32.FindWindowW(None, GAME_WINDOW_TITLE)
+    if sys.platform != "win32":
+        return 0
+    target = _user32.MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+    if not target:
+        return 0
+    monitors: list[int] = []
 
-    if hwnd:
-        return hwnd
+    def collect(monitor: Any, _dc: Any, _rect: Any, _data: Any) -> bool:
+        monitors.append(int(monitor))
+        return True
 
-    candidates: list[tuple[int, int, Any]] = []
+    callback = _MONITORENUMPROC(collect)
+    _user32.EnumDisplayMonitors(None, None, callback, 0)
+    try:
+        return monitors.index(int(target))
+    except ValueError:
+        return 0
+
+
+def _game_process_path(pid: int) -> str:
+    """Devuelve la ruta del ejecutable del PID o una cadena vacía si falla.
+
+    Parámetros: pid es el identificador del proceso asociado a la ventana.
+    Retorno: ruta completa obtenida mediante QueryFullProcessImageNameW.
+    """
+    if sys.platform != "win32" or pid <= 0:
+        return ""
+    handle = _kernel32.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return ""
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = wintypes.DWORD(len(buffer))
+        if _kernel32.QueryFullProcessImageNameW(
+            handle, 0, buffer, ctypes.byref(length)
+        ):
+            return buffer.value
+        return ""
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def find_game_window() -> tuple[int, int, str] | None:
+    """Localiza una ventana visible propiedad de League of Legends.exe.
+
+    Parámetros: ninguno.
+    Retorno: tupla HWND, PID y titulo, o None si no hay coincidencia.
+    """
+    if sys.platform != "win32":
+        return None
+    candidates: list[tuple[int, int, Any, int, str]] = []
 
     def _callback(handle: Any, _lparam: Any) -> bool:
         length = _user32.GetWindowTextLengthW(handle)
 
         if length <= 0 or not _user32.IsWindowVisible(handle):
+            return True
+
+        pid = wintypes.DWORD()
+        _user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
+        path = _game_process_path(int(pid.value))
+        if Path(path).name.casefold() != "league of legends.exe":
             return True
 
         buffer = ctypes.create_unicode_buffer(length + 1)
@@ -942,7 +1056,7 @@ def _find_game_window() -> int | None:
                     (rect.right - rect.left) * (rect.bottom - rect.top),
                 )
 
-            candidates.append((index, -area, handle))
+            candidates.append((index, -area, handle, int(pid.value), title))
             break
 
         return True
@@ -955,47 +1069,40 @@ def _find_game_window() -> int | None:
 
     candidates.sort()
 
-    return candidates[0][2]
+    selected = candidates[0]
+    _LOGGER.info(
+        "[Recording] Proceso de juego detectado: pid=%s, hwnd=%s, title=%s",
+        selected[3],
+        selected[2],
+        selected[4],
+    )
+    return selected[2], selected[3], selected[4]
 
 
 def find_game_capture_area() -> CaptureArea | None:
-    """Área a grabar: el monitor donde está la ventana de League.
+    """Compatibilidad heredada: devuelve None y nunca habilita escritorio.
 
-    Orden de intención: ventana del juego (por título) → ventana en primer
-    plano → monitor principal. Devuelve ``None`` si no se puede determinar
-    (fuera de Windows o fallo de la API); en ese caso se graba el escritorio
-    completo, como hasta ahora. Nunca lanza: un fallo de la API de Windows
-    no puede impedir la grabación.
+    Parámetros: ninguno.
+    Retorno: None; la captura segura requiere el título de una ventana verificada.
+    """
+    return None
+
+
+def _get_game_capture_title() -> str:
+    """Obtiene el título de una ventana visible del proceso real del juego.
+
+    Parámetros: ninguno.
+    Retorno: título exacto admitido por gdigrab o cadena vacía.
     """
     if sys.platform != "win32":
-        return None
+        return ""
 
     try:
-        hwnd = _find_game_window()
-
-        if hwnd:
-            area = _monitor_area_of_window(hwnd)
-
-            if area is not None:
-                return area
-
-        foreground = _user32.GetForegroundWindow()
-
-        if foreground:
-            area = _monitor_area_of_window(foreground)
-
-            if area is not None:
-                return area
-
-        width = _user32.GetSystemMetrics(SM_CXSCREEN)
-        height = _user32.GetSystemMetrics(SM_CYSCREEN)
-
-        if width > 0 and height > 0:
-            return (0, 0, width, height)
-    except Exception:  # noqa: BLE001 - la grabación no puede depender de Win32
-        return None
-
-    return None
+        window = find_game_window()
+        return window[2] if window else ""
+    except Exception:
+        _LOGGER.exception("No se pudo validar la ventana de League of Legends")
+        return ""
 
 
 # --------------------------------------------------------------------------
@@ -1013,72 +1120,26 @@ def build_ffmpeg_command(
     mic_device: str = "",
     system_audio_device: str = "",
     capture_window_title: str = "",
-    capture_desktop: bool = True,
+    capture_desktop: bool = False,
     capture_area: CaptureArea | None = None,
+    monitor_index: int = 0,
 ) -> list[str]:
-    """Construye la orden completa de ffmpeg para una grabación.
+    """Construye una orden DXGI de monitor y codificación H.264 por AMF.
 
-    - El vídeo sale de ``gdigrab`` (pantalla completa o una ventana concreta).
-      Con ``capture_area`` (x, y, ancho, alto) se limita a ese rectángulo del
-      escritorio virtual, que es como se graba únicamente el monitor donde
-      está el juego sin arrastrar el resto de pantallas.
-    - El sonido del juego sale de una fuente DirectShow (mezcla estéreo).
-    - Solo se capturan los dispositivos que llegan resueltos: los que decida
-      el modo de audio se eligen antes de llamar aquí (ver
-      ``RecordingService.start``), de modo que una orden con tres dispositivos
-      mezcla los tres con ``amix``.
+    Parámetros: rutas, calidad y fuentes de audio explícitamente elegidas.
+    Retorno: argumentos FFmpeg con un único monitor fijado para la sesión.
     """
-    window_title = capture_window_title.strip()
-    framerate = str(quality_fps(quality))
-
-    if window_title and not capture_desktop:
-        input_args = [
-            "-f",
-            "gdigrab",
-            "-framerate",
-            framerate,
-            "-i",
-            f"title={window_title}",
-        ]
-    else:
-        area = None
-
-        if capture_area is not None:
-            try:
-                area = (
-                    int(capture_area[0]),
-                    int(capture_area[1]),
-                    max(1, int(capture_area[2])),
-                    max(1, int(capture_area[3])),
-                )
-            except (TypeError, ValueError, IndexError):
-                area = None
-
-        if area is not None:
-            input_args = [
-                "-f",
-                "gdigrab",
-                "-framerate",
-                framerate,
-                "-offset_x",
-                str(area[0]),
-                "-offset_y",
-                str(area[1]),
-                "-video_size",
-                f"{area[2]}x{area[3]}",
-                "-i",
-                "desktop",
-            ]
-        else:
-            input_args = [
-                "-f",
-                "gdigrab",
-                "-framerate",
-                framerate,
-                "-i",
-                "desktop",
-            ]
-
+    if sys.platform != "win32":
+        raise ValueError("La captura DXGI solo está disponible en Windows.")
+    height = quality_height(quality)
+    fps = quality_fps(quality)
+    bitrate = normalize_bitrate(video_bitrate)
+    input_args = [
+        "-f",
+        "lavfi",
+        "-i",
+        f"ddagrab=output_idx={max(0, int(monitor_index))}:framerate={fps}:draw_mouse=0",
+    ]
     command = [
         ffmpeg_path,
         "-hide_banner",
@@ -1119,7 +1180,9 @@ def build_ffmpeg_command(
         )
 
     height = quality_height(quality)
-    chains = [f"[0:v]scale=-2:{height}:flags=bicubic,format=yuv420p[v]"]
+    chains = [
+        f"[0:v]hwdownload,format=bgra,scale=-2:{height}:flags=bicubic,format=nv12[v]"
+    ]
     maps = ["-map", "[v]"]
 
     if audio_devices:
@@ -1149,11 +1212,13 @@ def build_ffmpeg_command(
     command.extend(
         [
             "-c:v",
-            "libx264",
-            "-threads:v",
-            str(RECORDING_ENCODER_THREADS),
-            "-preset",
-            "veryfast",
+            "h264_amf",
+            "-usage",
+            "lowlatency",
+            "-quality",
+            "speed",
+            "-rc",
+            "vbr_peak",
             "-profile:v",
             "high",
             "-b:v",
@@ -1165,7 +1230,7 @@ def build_ffmpeg_command(
             "-g",
             str(fps * 2),
             "-pix_fmt",
-            "yuv420p",
+            "nv12",
         ]
     )
 
@@ -1186,10 +1251,306 @@ def build_ffmpeg_command(
         command.append("-an")
 
     command.extend(
-        ["-movflags", "+faststart", "-f", "mp4", str(output_path)]
+        [
+            "-progress",
+            "pipe:1",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
+            str(output_path),
+        ]
     )
 
     return command
+
+
+def run_recording_diagnostic(
+    config: RecordingConfig,
+    ffmpeg_path: str,
+    *,
+    duration_seconds: int = 4,
+) -> dict[str, Any]:
+    """Graba y valida un clip breve del monitor seleccionado.
+
+    Parámetros: configuración activa, ruta de FFmpeg y duración acotada.
+    Retorno: diagnóstico independiente de vídeo, audio y salida final.
+    """
+    diagnostico: dict[str, Any] = {
+        "backend": "FFmpeg DXGI Desktop Duplication",
+        "video_ok": False,
+        "audio_ok": False,
+        "audio_state": "No solicitado",
+        "message": "",
+    }
+    _LOGGER.info("[Recording] Prueba solicitada; duración=%s s", duration_seconds)
+
+    if not ffmpeg_path or not Path(ffmpeg_path).is_file():
+        diagnostico["stage"] = "ffmpeg"
+        diagnostico["message"] = "No se encontró un ejecutable FFmpeg válido."
+        _LOGGER.error("[Recording] Prueba fallida: binario FFmpeg no disponible")
+        return diagnostico
+
+    mode = normalize_audio_mode(config.audio_mode)
+    audio_error = ""
+    if audio_mode_uses_game(mode):
+        audio_error = (
+            "El backend actual no ofrece loopback por proceso; "
+            "no se puede validar el audio de League of Legends."
+        )
+        diagnostico["audio_state"] = audio_error
+        _LOGGER.error("[Recording] Prueba de audio fallida: %s", audio_error)
+    elif mode == "none":
+        diagnostico["audio_state"] = "Sin audio solicitado."
+    else:
+        diagnostico["audio_state"] = (
+            "No se pudo comprobar audio sin la ventana del juego."
+        )
+
+    window = find_game_window()
+    capture_area = _monitor_area_of_window(window[0]) if window else None
+    monitor_index = _monitor_index_of_window(window[0]) if window else 0
+    if window:
+        hwnd, pid, title = window
+        diagnostico.update({"hwnd": int(hwnd), "window": title, "pid": pid})
+        _LOGGER.info(
+            "[Recording] Monitor de prueba asociado al juego: pid=%s hwnd=%s index=%s",
+            pid,
+            hwnd,
+            monitor_index,
+        )
+    else:
+        diagnostico["message"] = (
+            "League of Legends no está activo; se probará el monitor principal "
+            "y no se validará gameplay."
+        )
+        _LOGGER.warning("[Recording] Prueba de monitor: League no detectado")
+
+    audio_devices: dict[str, str] = {"mic_device": "", "system_audio_device": ""}
+    if audio_mode_uses_mic(mode):
+        audio_devices["mic_device"] = config.mic_device
+    if audio_mode_uses_system(mode):
+        audio_devices["system_audio_device"] = config.effective_system_audio_device
+
+    library = RecordingLibrary(config.output_dir)
+    try:
+        directory = library.ensure_directory()
+        with tempfile.NamedTemporaryFile(
+            prefix="solralol-prueba-", suffix=".mp4", dir=directory, delete=False
+        ) as temporal:
+            output = Path(temporal.name)
+    except OSError as error:
+        diagnostico["stage"] = "salida"
+        diagnostico["message"] = (
+            f"No se puede preparar la carpeta de grabaciones: {error}"
+        )
+        _LOGGER.exception("[Recording] Prueba fallida al preparar salida")
+        return diagnostico
+
+    try:
+        command = build_ffmpeg_command(
+            ffmpeg_path=ffmpeg_path,
+            output_path=output,
+            quality=config.quality,
+            video_bitrate=config.video_bitrate,
+            capture_area=capture_area,
+            monitor_index=monitor_index,
+            capture_desktop=True,
+            game_audio_device="",
+            mic_device=audio_devices["mic_device"],
+            system_audio_device=audio_devices["system_audio_device"],
+        )
+        command[command.index("-loglevel") + 1] = "info"
+        output_index = len(command) - 1
+        command[output_index:output_index] = [
+            "-t",
+            str(max(2, min(10, int(duration_seconds)))),
+            "-stats",
+        ]
+        diagnostico["stage"] = "captura"
+        diagnostico["encoder"] = "AMD AMF H.264 (hardware)"
+        _LOGGER.info(
+            "[Recording] Prueba DXGI del monitor %s con AMF H.264",
+            monitor_index,
+        )
+        resultado = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(15, duration_seconds + 12),
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        diagnostico["returncode"] = resultado.returncode
+        detalle = (resultado.stderr or "").strip()
+        if detalle:
+            _LOGGER.info("[Recording] Salida técnica de FFmpeg: %s", detalle[-1200:])
+        archivo_valido = output.is_file() and output.stat().st_size > 2048
+        detalle_salida_ffmpeg = detalle.partition("Output #0")[2]
+        tiene_video = bool(re.search(r"Stream #\d+:\d+.*Video:", detalle_salida_ffmpeg))
+        cuadros = re.findall(
+            r"frame=\s*(\d+)",
+            f"{resultado.stdout or ''}\n{resultado.stderr or ''}",
+        )
+        cuadros_codificados = max((int(valor) for valor in cuadros), default=0)
+        decode = (
+            subprocess.run(
+                [
+                    ffmpeg_path,
+                    "-hide_banner",
+                    "-v",
+                    "info",
+                    "-i",
+                    str(output),
+                    "-map",
+                    "0:v:0",
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            if archivo_valido
+            else None
+        )
+        frames_decodificados = bool(decode and decode.returncode == 0)
+        detalle_salida = "\n".join(
+            parte for parte in (detalle, decode.stderr if decode else "") if parte
+        )
+        duracion_coincidencia = re.search(
+            r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", detalle_salida
+        )
+        duracion_s = 0.0
+        if duracion_coincidencia:
+            horas, minutos, segundos = duracion_coincidencia.groups()
+            duracion_s = int(horas) * 3600 + int(minutos) * 60 + float(segundos)
+        negro = False
+        if frames_decodificados:
+            analisis_negro = subprocess.run(
+                [
+                    ffmpeg_path,
+                    "-hide_banner",
+                    "-i",
+                    str(output),
+                    "-vf",
+                    "blackdetect=d=3:pix_th=0.02:pic_th=0.98",
+                    "-an",
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            duraciones_negras = re.findall(
+                r"black_duration:([0-9.]+)", analisis_negro.stderr or ""
+            )
+            negro = any(
+                float(valor) >= max(2, duration_seconds) - 0.25
+                for valor in duraciones_negras
+            )
+        diagnostico["video_ok"] = bool(
+            resultado.returncode == 0
+            and archivo_valido
+            and tiene_video
+            and duracion_s >= min(2.0, max(2, duration_seconds) * 0.75)
+            and cuadros_codificados > 0
+            and frames_decodificados
+            and not negro
+        )
+        diagnostico["frames"] = cuadros_codificados
+        diagnostico["duration_seconds"] = round(duracion_s, 2)
+        diagnostico["file_bytes"] = output.stat().st_size if output.exists() else 0
+        diagnostico["black"] = negro
+        diagnostico["audio_stream"] = bool(
+            re.search(r"Stream #\d+:\d+.*Audio:", detalle_salida_ffmpeg)
+        )
+        if diagnostico["audio_stream"] and not audio_error:
+            lectura_audio = subprocess.run(
+                [
+                    ffmpeg_path,
+                    "-hide_banner",
+                    "-i",
+                    str(output),
+                    "-map",
+                    "0:a:0",
+                    "-af",
+                    "volumedetect",
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+            )
+            volumen = re.search(
+                r"mean_volume:\s*(-?\d+(?:\.\d+)?)\s*dB",
+                lectura_audio.stderr or "",
+            )
+            diagnostico["audio_ok"] = bool(lectura_audio.returncode == 0 and volumen)
+            diagnostico["audio_state"] = (
+                f"Señal de audio detectada ({volumen.group(1)} dB)."
+                if diagnostico["audio_ok"] and volumen
+                else "Hay una pista, pero no se detectó señal de audio."
+            )
+        elif not audio_error and mode != "none":
+            diagnostico["audio_state"] = "No se detectó una pista de audio en el clip."
+        if diagnostico["video_ok"]:
+            diagnostico["stage"] = "completada"
+            diagnostico["message"] = (
+                "Vídeo del monitor donde está League grabado y decodificado."
+                if window
+                else "Monitor principal capturado; no se validó gameplay."
+            )
+            _LOGGER.info(
+                "[Recording] Prueba de vídeo validada: frames=%s, bytes=%s",
+                cuadros_codificados,
+                diagnostico["file_bytes"],
+            )
+        else:
+            diagnostico["stage"] = "validación de vídeo"
+            diagnostico["message"] = "La prueba no obtuvo vídeo de juego válido. " + (
+                "Se detectó imagen negra persistente." if negro else detalle[-500:]
+            )
+            _LOGGER.error(
+                "[Recording] Prueba fallida al validar vídeo: returncode=%s, "
+                "archivo=%s, stream=%s, frames=%s, decodificable=%s, negro=%s",
+                resultado.returncode,
+                archivo_valido,
+                tiene_video,
+                cuadros_codificados,
+                frames_decodificados,
+                negro,
+            )
+        if audio_error:
+            diagnostico["message"] += " " + audio_error
+        return diagnostico
+    except (OSError, subprocess.SubprocessError, ValueError) as error:
+        diagnostico["stage"] = diagnostico.get("stage", "captura")
+        diagnostico["message"] = f"Falló la prueba de captura: {error}"
+        _LOGGER.exception("[Recording] Excepción durante la prueba de captura")
+        return diagnostico
+    finally:
+        output.unlink(missing_ok=True)
 
 
 def format_duration(seconds: Any) -> str:
@@ -1296,6 +1657,7 @@ def normalise_marker_kind(kind: Any) -> str:
 
     return MARKER_ALIASES.get(text, text)
 
+
 EXACT_KILL_TYPES = ("kill_exact", "death_exact")
 
 
@@ -1325,8 +1687,7 @@ def build_markers(
     events = session.get("events") or []
     local_key = str(session.get("local_player_key") or "")
     exact = any(
-        isinstance(event, dict)
-        and str(event.get("type")) in EXACT_KILL_TYPES
+        isinstance(event, dict) and str(event.get("type")) in EXACT_KILL_TYPES
         for event in events
     )
 
@@ -1357,9 +1718,7 @@ def build_markers(
                     kind = event_type
 
         if not kind and event_type == "objective":
-            kind = str(
-                event.get("objective") or event.get("objective_label") or ""
-            )
+            kind = str(event.get("objective") or event.get("objective_label") or "")
 
         kind = normalise_marker_kind(kind)
 
@@ -1368,10 +1727,12 @@ def build_markers(
 
         markers.append(
             {
-                "time": round(
-                    _marker_time(event.get("time"), game_time_offset), 1
-                ),
+                "time": round(_marker_time(event.get("time"), game_time_offset), 1),
                 "kind": kind,
+                "category": kind,
+                "source_event_id": event.get("event_id"),
+                "source_type": event_type,
+                "player_key": local_key or None,
                 "label": MARKER_LABELS[kind],
                 "detail": str(
                     event.get("label")
@@ -1379,11 +1740,7 @@ def build_markers(
                     or MARKER_LABELS[kind]
                 ),
                 # El bando puede venir en el campo antiguo u objetivo resuelto.
-                "team": str(
-                    event.get("team")
-                    or event.get("objective_team")
-                    or ""
-                ),
+                "team": str(event.get("team") or event.get("objective_team") or ""),
                 "order": int(event.get("order") or order),
             }
         )
@@ -1429,6 +1786,7 @@ def markers_summary(markers: list[dict[str, Any]]) -> str:
 
     return " · ".join(parts)
 
+
 # --------------------------------------------------------------------------
 # Biblioteca local de grabaciones
 # --------------------------------------------------------------------------
@@ -1443,9 +1801,7 @@ class RecordingLibrary:
 
     def __init__(self, directory: str | Path | None = None) -> None:
         self.directory = (
-            Path(directory).expanduser()
-            if directory
-            else default_recordings_dir()
+            Path(directory).expanduser() if directory else default_recordings_dir()
         )
 
     def set_directory(self, directory: str | Path | None) -> None:
@@ -1473,9 +1829,7 @@ class RecordingLibrary:
 
         return data if isinstance(data, dict) else {}
 
-    def write_metadata(
-        self, video_path: str | Path, payload: dict[str, Any]
-    ) -> bool:
+    def write_metadata(self, video_path: str | Path, payload: dict[str, Any]) -> bool:
         sidecar = self.metadata_path(video_path)
 
         try:
@@ -1496,8 +1850,7 @@ class RecordingLibrary:
         videos = [
             path
             for path in files
-            if path.is_file()
-            and path.suffix.casefold() in VIDEO_SUFFIXES
+            if path.is_file() and path.suffix.casefold() in VIDEO_SUFFIXES
         ]
 
         def mtime(path: Path) -> float:
@@ -1580,8 +1933,6 @@ class RecordingLibrary:
                 time.sleep(pause)
 
         return False
-
-
 
     def _file_and_sidecar_size(self, video_path: Path) -> int:
         """Bytes del vídeo más los de su sidecar JSON (0 si no se pueden leer)."""
@@ -1697,9 +2048,7 @@ class RecordingLibrary:
         return entries
 
     @staticmethod
-    def title_for(
-        path: Path, metadata: dict[str, Any] | None = None
-    ) -> str:
+    def title_for(path: Path, metadata: dict[str, Any] | None = None) -> str:
         data = metadata if isinstance(metadata, dict) else {}
         champion = str(data.get("champion") or "").strip()
 
@@ -1777,6 +2126,7 @@ class RecordingService(QObject):
     finished = Signal(str)
     failed = Signal(str)
     state_changed = Signal(str)
+    audio_status = Signal(str)
 
     #: Espera a que ffmpeg cierre el MP4 tras pedirle "q".
     STOP_TIMEOUT_MS = 15000
@@ -1803,13 +2153,26 @@ class RecordingService(QObject):
         self.stop_reason: str = ""
         self.stop_requested: bool = False
         self.last_error: str = ""
+        self.first_video_frame_received: bool = False
+        self.process_output_buffer: str = ""
+        self.process_output_tail: str = ""
+        self.capture_start_error_reported: bool = False
+        self.active_monitor_index: int = -1
+        self.capture_start_timer = QTimer(self)
+        self.capture_start_timer.setSingleShot(True)
+        self.capture_start_timer.setInterval(15000)
+        self.capture_start_timer.timeout.connect(self._on_capture_start_timeout)
+        self.audio_status_text: str = (
+            "Captura por proceso no disponible en este backend"
+        )
         self.started_at = datetime.now(UTC)
 
     # -- estado ---------------------------------------------------------
 
     @property
     def is_recording(self) -> bool:
-        return self.process is not None
+        """Indica si FFmpeg ha producido al menos un fotograma codificado."""
+        return self.process is not None and self.first_video_frame_received
 
     @property
     def is_starting_or_recording(self) -> bool:
@@ -1854,24 +2217,28 @@ class RecordingService(QObject):
         champion: str = "",
         game_mode: str = "",
         session: dict[str, Any] | None = None,
+        recording_source: str = "automatic",
     ) -> bool:
-        """Inicia una captura usando el FFmpeg ya resuelto en segundo plano.
+        """Inicia una captura autom?tica o manual con el FFmpeg resuelto.
 
-        Parámetros:
-            config: Preferencias de salida, calidad y audio.
-            game_time: Segundos de partida al comenzar la captura.
-            champion: Campeón local asociado a la grabación.
-            game_mode: Modo de juego asociado a la grabación.
-            session: Telemetría inicial opcional.
-
-        Retorno:
-            True si se solicitó el arranque; False si se rechazó.
+        Par?metros: configuraci?n, contexto de partida y origen de la orden.
+        Retorno: True si se solicit? el arranque; False si se rechaz?.
         """
         if self.is_starting_or_recording:
             return False
 
-        if not config.enabled:
+        origen = "manual" if str(recording_source).lower() == "manual" else "automatic"
+        if not config.enabled and origen != "manual":
+            _LOGGER.info("[Recording] Inicio omitido: grabación desactivada")
             return False
+
+        self.last_error = ""
+        _LOGGER.info(
+            "[Recording] Solicitud de inicio: captura=%s, audio=%s, ffmpeg_disponible=%s",
+            normalize_capture_mode(config.capture_mode),
+            normalize_audio_mode(config.audio_mode),
+            bool(self.ffmpeg_available and self.ffmpeg_path),
+        )
 
         if not self.ffmpeg_available or not self.ffmpeg_path:
             self.last_error = self.ffmpeg_hint
@@ -1883,8 +2250,31 @@ class RecordingService(QObject):
                 )
 
             self.failed.emit(self.last_error)
+            _LOGGER.error(
+                "[Recording] Fallo en comprobación de FFmpeg: %s", self.last_error
+            )
 
             return False
+
+        mode = normalize_audio_mode(config.audio_mode)
+        if mode in {"game", "game_mic"}:
+            self.audio_status_text = (
+                "Error: no se está capturando el sonido del juego. "
+                "Este equipo no tiene un capturador de audio por proceso "
+                "conectado al grabador."
+            )
+            self.audio_status.emit(self.audio_status_text)
+            _LOGGER.error(
+                "[Recording] Audio no inicializado: modo=%s requiere "
+                "loopback de Windows por proceso; no se sustituirá por audio del sistema",
+                mode,
+            )
+        else:
+            self.audio_status_text = (
+                "Sin captura de audio solicitada"
+                if mode == "none"
+                else "Fuente de audio configurada; esperando muestras confirmadas"
+            )
 
         self.library.set_directory(config.output_dir)
 
@@ -1896,8 +2286,24 @@ class RecordingService(QObject):
                 f"({self.library.directory}): {error}"
             )
             self.failed.emit(self.last_error)
+            _LOGGER.exception("[Recording] Fallo al crear el directorio de salida")
 
             return False
+
+        _LOGGER.info("[Recording] Directorio de salida disponible: %s", directory)
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=".solralol-test-", dir=directory, delete=True
+            ):
+                pass
+        except OSError as error:
+            self.last_error = (
+                f"No se puede escribir en la carpeta de grabaciones: {error}"
+            )
+            _LOGGER.exception("[Recording] Fallo al validar escritura en salida")
+            self.failed.emit(self.last_error)
+            return False
+        _LOGGER.info("[Recording] Escritura en el destino validada")
 
         output = directory / suggest_recording_name(champion=champion)
         counter = 1
@@ -1908,8 +2314,29 @@ class RecordingService(QObject):
             )
             counter += 1
 
-            if counter > 99:
-                break
+        capture_title = ""
+        game_window = find_game_window()
+        capture_area = None
+        monitor_index = 0
+        if game_window:
+            hwnd, pid, capture_title = game_window
+            capture_area = _monitor_area_of_window(hwnd)
+            monitor_index = _monitor_index_of_window(hwnd)
+            _LOGGER.info(
+                "[Recording] Monitor seleccionado por juego: pid=%s hwnd=%s "
+                "índice_dxgi=%s área=%s",
+                pid,
+                hwnd,
+                monitor_index,
+                capture_area,
+            )
+        else:
+            monitor_index = max(0, normalize_monitor_index(config.monitor_index))
+            _LOGGER.warning(
+                "[Recording] No se detectó League; se usará el monitor DXGI configurado (%s)",
+                monitor_index,
+            )
+        self.active_monitor_index = monitor_index
 
         # Resolución de dispositivos según el modo de audio: el juego y el
         # micrófono se auto-detectan si no hay uno guardado; el modo «Todo»
@@ -1919,7 +2346,6 @@ class RecordingService(QObject):
         # Fallback: si el dispositivo guardado ya no existe (desconectado o
         # renombrado) se cae al mejor candidato disponible para no grabar
         # en silencio; si no hay ningún dispositivo, se sigue con vídeo.
-        mode = normalize_audio_mode(config.audio_mode)
         game_device = ""
         mic_device = ""
         system_device = ""
@@ -1944,18 +2370,10 @@ class RecordingService(QObject):
                 # falla y el watcher degradará a vídeo.
                 return name
 
-            if audio_mode_uses_game(mode):
-                game_device = _resolve(
-                    config.game_audio_device,
-                    pick_game_audio_device,
-                )
-
             if audio_mode_uses_mic(mode):
                 mic_device = _resolve(
                     config.mic_device,
-                    lambda devs: pick_microphone_device(
-                        devs, exclude={game_device}
-                    ),
+                    lambda devs: pick_microphone_device(devs, exclude={game_device}),
                 )
 
             if audio_mode_uses_system(mode):
@@ -1987,19 +2405,21 @@ class RecordingService(QObject):
             game_audio_device=game_device,
             mic_device=mic_device,
             system_audio_device=system_device,
-            capture_area=(
-                find_game_capture_area()
-                if config.capture_mode == "game"
-                else None
-            ),
+            capture_area=capture_area,
+            capture_window_title=capture_title,
+            capture_desktop=True,
+            monitor_index=monitor_index,
+        )
+        _LOGGER.info(
+            "[Recording] Backend de vídeo seleccionado: FFmpeg ddagrab (DXGI monitor %s), encoder=h264_amf hardware; audio=%s",
+            monitor_index,
+            "sin audio de juego" if mode in {"game", "game_mic"} else mode,
         )
 
         process = QProcess(self)
         process.setProgram(command[0])
         process.setArguments(command[1:])
-        process.setProcessChannelMode(
-            QProcess.ProcessChannelMode.MergedChannels
-        )
+        process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         workdir = Path(self.ffmpeg_path).parent
         environment = QProcessEnvironment.systemEnvironment()
         environment.insert(
@@ -2009,22 +2429,30 @@ class RecordingService(QObject):
         process.started.connect(self._on_process_started)
         process.errorOccurred.connect(self._on_process_error)
         process.finished.connect(self._on_process_finished)
+        process.readyReadStandardOutput.connect(self._on_process_output)
         self.pending_process = process
         self.output_path = output
         self.config = config
         self.game_time_offset = max(0.0, float(game_time or 0.0))
         self.champion = str(champion or "")
         self.game_mode = str(game_mode or "")
+        self.recording_source = origen
         self.session = session
         self.stop_reason = ""
         self.stop_requested = False
         self.last_error = ""
+        self.first_video_frame_received = False
+        self.process_output_buffer = ""
+        self.process_output_tail = ""
+        self.capture_start_error_reported = False
         self.started_at = datetime.now(UTC)
         process.start()
+        _LOGGER.info(
+            "[Recording] Solicitud enviada a QProcess; esperando confirmación de FFmpeg (salida=%s)",
+            output,
+        )
 
         return True
-
-
 
     # -- parada ---------------------------------------------------------
 
@@ -2052,6 +2480,7 @@ class RecordingService(QObject):
 
         self.stop_reason = str(reason or "game_end")
         self.stop_requested = True
+        self.state_changed.emit("stopping")
 
         if self.process is None:
             return True
@@ -2109,24 +2538,83 @@ class RecordingService(QObject):
 
         self.pending_process = None
         self.process = process
-        self.started_monotonic = time.monotonic()
-        self.state_changed.emit("recording")
+        self.capture_start_timer.start()
+        self.state_changed.emit("starting")
 
-        if self.output_path is not None:
-            self.started.emit(str(self.output_path))
-
-        _LOGGER.debug(
-            "Grabación FFmpeg activa: pid=%s, hilo_inicio=%s (%s), "
-            "hilos_codificador=%s, hilos_filtros=%s",
+        _LOGGER.info(
+            "[Recording] Proceso FFmpeg iniciado: pid=%s; aún no se validan fotogramas ni audio (codificador_hilos=%s, filtros_hilos=%s)",
             process.processId(),
-            threading.current_thread().name,
-            threading.get_ident(),
             RECORDING_ENCODER_THREADS,
             RECORDING_FILTER_THREADS,
         )
 
+        _LOGGER.warning(
+            "[Recording] FFmpeg abrió proceso; esperando el primer fotograma codificado"
+        )
+
         if self.stop_requested:
             self.stop(reason=self.stop_reason, session=self.session)
+
+    def _on_process_output(self) -> None:
+        """Lee el progreso de FFmpeg y confirma el primer fotograma codificado.
+
+        Parámetros: ninguno; consume la salida asíncrona del proceso activo.
+        Retorno: None; actualiza el estado al confirmarse un fotograma.
+        """
+        process = self.process
+        if process is None:
+            return
+        try:
+            recibido = bytes(process.readAllStandardOutput()).decode("utf-8", "replace")
+        except RuntimeError:
+            return
+        if not recibido:
+            return
+        self.process_output_tail = (self.process_output_tail + recibido)[-8000:]
+        self.process_output_buffer += recibido
+        lineas = self.process_output_buffer.splitlines(keepends=True)
+        self.process_output_buffer = ""
+        if lineas and not lineas[-1].endswith(("\n", "\r")):
+            self.process_output_buffer = lineas.pop()
+        for linea in lineas:
+            coincidencia = re.match(r"\s*frame=\s*(\d+)", linea)
+            if not coincidencia or int(coincidencia.group(1)) <= 0:
+                continue
+            if not self.first_video_frame_received:
+                self.first_video_frame_received = True
+                self.capture_start_timer.stop()
+                self.started_monotonic = time.monotonic()
+                self.state_changed.emit("recording")
+                _LOGGER.info(
+                    "[Recording] Primer fotograma de vídeo codificado: frame=%s",
+                    coincidencia.group(1),
+                )
+                if self.output_path is not None:
+                    self.started.emit(str(self.output_path))
+            return
+
+    def _on_capture_start_timeout(self) -> None:
+        """Detiene una captura que no produjo ningún fotograma inicial.
+
+        Parámetros: ninguno; usa el proceso y diagnóstico activos.
+        Retorno: None; notifica el fallo y cierra FFmpeg para evitar falsos
+        estados de grabación prolongados.
+        """
+        if self.process is None or self.first_video_frame_received:
+            return
+        self.last_error = (
+            "FFmpeg no recibió fotogramas de vídeo en 15 segundos. "
+            "Comprueba que la ventana de League siga visible y que la captura "
+            "de esa ventana sea compatible."
+        )
+        self.capture_start_error_reported = True
+        _LOGGER.error(
+            "[Recording] Fallo en primer fotograma: pid=%s, salida_ffmpeg=%s",
+            self.process.processId(),
+            self.process_output_tail[-1200:] or "sin salida del backend",
+        )
+        self.failed.emit(self.last_error)
+        self.process.kill()
 
     def _on_process_error(self, _error: Any) -> None:
         """Limpia una captura cuyo proceso terminó antes de forma inesperada.
@@ -2145,31 +2633,37 @@ class RecordingService(QObject):
         if process.state() != QProcess.NotRunning:
             return
 
+        if self.capture_start_error_reported:
+            self._reset()
+            return
+
+        self._on_process_output()
         try:
-            detail = (
-                bytes(process.readAllStandardError()).decode(
-                    "utf-8", "replace"
-                ).strip()
-            )
+            detail = self.process_output_tail + bytes(
+                process.readAllStandardOutput()
+            ).decode("utf-8", "replace")
         except RuntimeError:
             detail = ""
 
+        try:
+            detalle_qprocess = str(process.errorString())
+        except (AttributeError, RuntimeError):
+            detalle_qprocess = ""
         self.last_error = (
-            "ffmpeg se detuvo al arrancar. Revisa el dispositivo de "
-            "audio elegido en Ajustes → Grabaciones."
-        )
+            f"FFmpeg no pudo mantener la captura (error QProcess {_error}). "
+            f"{detalle_qprocess}"
+        ).strip()
 
         if detail:
             self.last_error += f" Detalle: {detail[-300:]}"
 
         finished_path = self.output_path
         self._reset()
+        _LOGGER.error("[Recording] Fallo al iniciar FFmpeg: %s", self.last_error)
         self.failed.emit(self.last_error)
         self._cleanup_empty_file(finished_path)
 
-    def _on_process_finished(
-        self, exit_code: int, _exit_status: Any
-    ) -> None:
+    def _on_process_finished(self, exit_code: int, _exit_status: Any) -> None:
         """Persiste metadatos al terminar el proceso de captura.
 
         Parámetros:
@@ -2186,19 +2680,72 @@ class RecordingService(QObject):
 
         output = self.output_path
         config = self.config
+        self._on_process_output()
         duration = self.elapsed_seconds()
+        try:
+            process_output = (
+                self.process_output_tail
+                + bytes(process.readAllStandardOutput())
+                .decode("utf-8", "replace")
+                .strip()
+            )
+        except RuntimeError:
+            process_output = ""
+        try:
+            file_valid = bool(
+                output is not None
+                and output.is_file()
+                and output.stat().st_size > 0
+                and validar_contenedor_mp4(output)
+            )
+        except OSError:
+            file_valid = False
+            _LOGGER.exception("[Recording] No se pudo comprobar el archivo de salida")
         stopped_cleanly = (
             self.stop_requested
+            and exit_code == 0
             and output is not None
-            and output.is_file()
-            and output.stat().st_size > 0
+            and file_valid
+            and self.first_video_frame_received
         )
-        _LOGGER.debug(
-            "Grabación FFmpeg terminada: código=%s, cierre_limpio=%s, "
-            "duración_s=%.1f",
+        _LOGGER.info(
+            "[Recording] FFmpeg finalizado: exit_code=%s, exit_status=%s, "
+            "parada_solicitada=%s, contenedor_finalizado=%s, duración_s=%.1f",
             exit_code,
-            stopped_cleanly,
+            _exit_status,
+            self.stop_requested,
+            file_valid,
             duration,
+        )
+
+        if not stopped_cleanly:
+            if self.capture_start_error_reported:
+                self._reset()
+                return
+            detail = process_output[-600:] if process_output else ""
+            reason = (
+                f"El proceso de grabación terminó inesperadamente "
+                f"(código {exit_code}; archivo válido: {file_valid})."
+            )
+            if output is not None and output.is_file() and not file_valid:
+                reason += " El MP4 no contiene una tabla moov finalizada."
+            self.last_error = f"{reason} {detail}".strip()
+            _LOGGER.error(
+                "[Recording] Fallo al finalizar: exit_code=%s, exit_status=%s, "
+                "archivo=%s, primer_fotograma=%s, salida_ffmpeg=%s",
+                exit_code,
+                _exit_status,
+                output,
+                self.first_video_frame_received,
+                detail or "sin detalle de FFmpeg",
+            )
+            self._reset()
+            self.failed.emit(self.last_error)
+            return
+
+        _LOGGER.info(
+            "[Recording] Salida finalizada correctamente: %s",
+            output,
         )
         self._reset()
 
@@ -2211,16 +2758,13 @@ class RecordingService(QObject):
                 self.game_time_offset,
             )
             session_dict = self.session
-            session_dict = (
-                session_dict if isinstance(session_dict, dict) else {}
-            )
+            session_dict = session_dict if isinstance(session_dict, dict) else {}
             game_duration = 0.0
 
             try:
                 game_duration = max(
                     0.0,
-                    float(session_dict.get("duration", 0))
-                    - self.game_time_offset,
+                    float(session_dict.get("duration", 0)) - self.game_time_offset,
                 )
             except (TypeError, ValueError):
                 pass
@@ -2235,10 +2779,10 @@ class RecordingService(QObject):
                 "game_time_offset": round(self.game_time_offset, 1),
                 "champion": self.champion,
                 "game_mode": self.game_mode,
+                "recording_source": self.recording_source,
+                "audio_capture_status": self.audio_status_text,
                 "quality": config.quality if config else DEFAULT_QUALITY,
-                "video_bitrate": (
-                    config.video_bitrate if config else DEFAULT_BITRATE
-                ),
+                "video_bitrate": (config.video_bitrate if config else DEFAULT_BITRATE),
                 "mic": bool(config.mic_enabled) if config else False,
                 "stop_reason": self.stop_reason or "game_end",
                 "complete": True,
@@ -2246,9 +2790,7 @@ class RecordingService(QObject):
                 # Enlace con la sesión de telemetría guardada: la ventana
                 # de repaso abre el desglose de esta misma partida.
                 "session_id": str(session_dict.get("session_id") or ""),
-                "local_player_key": str(
-                    session_dict.get("local_player_key") or ""
-                ),
+                "local_player_key": str(session_dict.get("local_player_key") or ""),
             }
             library = self.library
 
@@ -2274,10 +2816,14 @@ class RecordingService(QObject):
             None.
         """
         process = self.process or self.pending_process
+        self.capture_start_timer.stop()
         self.process = None
         self.pending_process = None
         self.output_path = None
         self.stop_requested = False
+        self.first_video_frame_received = False
+        self.process_output_buffer = ""
+        self.process_output_tail = ""
 
         if process is not None:
             try:

@@ -415,7 +415,26 @@ Devuelve entre 3 y 5 next_game_priorities, cada una con título, gravedad, evide
 
         return self.FALLBACK_MODELS
 
-    def _call_gemini_api(self, prompt: str, api_key: str) -> tuple[str, str]:
+    def _call_gemini_api(
+        self,
+        prompt: str,
+        api_key: str,
+        schema: dict[str, Any] | None = None,
+        system_instruction: str = "",
+        max_output_tokens: int = 8192,
+    ) -> tuple[str, str]:
+        """Solicita JSON estructurado al cliente Gemini ya configurado.
+
+        Args:
+            prompt: Contenido concreto de la consulta.
+            api_key: Clave Gemini configurada en Solralol.
+            schema: Esquema opcional de salida estructurada.
+            system_instruction: Instrucción separada de los datos enviados.
+            max_output_tokens: Presupuesto de salida para informes extensos.
+
+        Returns:
+            Texto JSON y modelo que respondió.
+        """
         models = self._get_available_models(api_key)
         last_error = ""
 
@@ -423,15 +442,17 @@ Devuelve entre 3 y 5 next_game_priorities, cada una con título, gravedad, evide
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 8192,
+                "maxOutputTokens": max(1024, min(int(max_output_tokens), 16384)),
                 "responseFormat": {
                     "text": {
                         "mimeType": "APPLICATION_JSON",
-                        "schema": ESQUEMA_ANALISIS_GEMINI,
+                        "schema": schema or ESQUEMA_ANALISIS_GEMINI,
                     }
                 },
             },
         }
+        if system_instruction:
+            payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
 
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"

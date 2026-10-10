@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from app.services.champion_scraper_service import ChampionScraperService
 from app.services.preparador_datos_campeon import PreparadorDatosCampeon
@@ -300,8 +300,13 @@ def test_ui_muestra_conteo_general_build_y_habilidades(
     assert dialogo.summoners_row.count() == 2
     assert dialogo.starters_row.count() == 2
     assert dialogo.build_grid.count() >= 3
-    etapa_cuatro = dialogo.build_grid.itemAtPosition(1, 1).widget()
-    assert etapa_cuatro is not None and etapa_cuatro.layout().count() == 3
+    _, objetos_tardios = dialogo._build_slots(perfil)
+    for columna, nombre in enumerate(objetos_tardios):
+        etapa = dialogo.build_grid.itemAtPosition(1, columna).widget()
+        assert etapa is not None
+        filas = etapa.findChildren(QWidget, "localItemRow")
+        assert len(filas) == 1
+        assert nombre in [etiqueta.text() for etiqueta in filas[0].findChildren(QLabel)]
     assert dialogo.core_title.text() == "NÚCLEO DE LA BUILD"
     assert "11 partidas" in dialogo.core_title.toolTip()
     assert dialogo.champion_sample_badge.isHidden()

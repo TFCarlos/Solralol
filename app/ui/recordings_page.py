@@ -9,28 +9,46 @@ indicadores de la partida: asesinatos, muertes, asistencias y objetivos
 
 from __future__ import annotations
 
+import logging
+import math
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QImage,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QSlider,
     QStyle,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -49,6 +67,8 @@ from app.ui.tema import (
 )
 
 SEEK_SECONDS = 10
+KEYBOARD_SEEK_MS = 5_000
+logger = logging.getLogger(__name__)
 
 #: Ancho común para los botones de acción de cada fila de grabación.
 RECORDING_ROW_BUTTON_WIDTH = 100
@@ -105,21 +125,6 @@ def chip_above(kind: str) -> bool:
     return str(kind or "").casefold() in TOP_ROW_KINDS
 
 
-#: Tipos de marcador que cuentan como objetivo en la tarjeta ESTADÍSTICAS
-#: (asesinatos, muertes y asistencias van aparte).
-OBJECTIVE_MARKER_KINDS = frozenset(
-    {
-        "dragon",
-        "baron",
-        "herald",
-        "tower",
-        "inhibitor",
-        "horde",
-        "objective",
-    }
-)
-
-
 class MarkerSlider(QSlider):
     """Barra de progreso con los indicadores de la partida dibujados.
 
@@ -140,7 +145,7 @@ class MarkerSlider(QSlider):
         self._scrubbing: bool = False
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(48)
+        self.setMinimumHeight(38)
 
     # -- datos ----------------------------------------------------------
 
@@ -151,9 +156,7 @@ class MarkerSlider(QSlider):
 
     # -- datos ----------------------------------------------------------
 
-    def set_markers(
-        self, markers: list[dict[str, Any]], duration_ms: int
-    ) -> None:
+    def set_markers(self, markers: list[dict[str, Any]], duration_ms: int) -> None:
         cleaned = []
 
         for marker in markers or []:
@@ -171,9 +174,7 @@ class MarkerSlider(QSlider):
                     "kind": str(marker.get("kind") or ""),
                     "label": str(marker.get("label") or "Evento"),
                     "detail": str(
-                        marker.get("detail")
-                        or marker.get("label")
-                        or "Evento"
+                        marker.get("detail") or marker.get("label") or "Evento"
                     ),
                     "glyph": str(
                         marker.get("glyph")
@@ -226,9 +227,7 @@ class MarkerSlider(QSlider):
             x = self._x_for_seconds(marker["time"])
 
             if x is not None:
-                plotted.append(
-                    (float(x), marker, marker_style(marker["kind"]))
-                )
+                plotted.append((float(x), marker, marker_style(marker["kind"])))
 
         # Línea-guía vertical bajo el chip apuntado por el ratón: conecta el
         # icono con su momento exacto de la barra.
@@ -270,11 +269,11 @@ class MarkerSlider(QSlider):
             else:
                 pin_color = QColor(style["color"])
 
-            hovered = (
-                self._hover_x is not None and abs(x - self._hover_x) <= 0.6
-            )
+            hovered = self._hover_x is not None and abs(x - self._hover_x) <= 0.6
             radius = pin_radius + (2.0 if hovered else 0.0)
-            ring = QColor(PALETA["oro_suave"]) if hovered else QColor(PALETA["superficie"])
+            ring = (
+                QColor(PALETA["oro_suave"]) if hovered else QColor(PALETA["superficie"])
+            )
             painter.setPen(QPen(ring, 1.6))
             painter.setBrush(QBrush(pin_color))
             painter.drawEllipse(QPointF(x, center_y), radius, radius)
@@ -307,9 +306,7 @@ class MarkerSlider(QSlider):
                 style = cluster["style"]
                 glyph = str(marker.get("glyph") or style["glyph"])
                 color = QColor(style["color"])
-                hovered = (
-                    self._hover_x is not None and abs(x - self._hover_x) <= 0.6
-                )
+                hovered = self._hover_x is not None and abs(x - self._hover_x) <= 0.6
                 if above:
                     rect = QRectF(x - 10.0, 1.0, 20.0, chip_height)
                     # Conector del borde inferior del chip al punto de la barra.
@@ -324,9 +321,7 @@ class MarkerSlider(QSlider):
                     )
                     # Conector del borde superior del chip al punto de la barra.
                     stem_from = QPointF(x, rect.top())
-                    stem_to = QPointF(
-                        x, min(groove_bottom + 1.0, rect.top())
-                    )
+                    stem_to = QPointF(x, min(groove_bottom + 1.0, rect.top()))
                 stem_pen = QPen(color)
                 stem_pen.setWidth(2 if hovered else 1)
                 stem_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -401,9 +396,7 @@ class MarkerSlider(QSlider):
 
                 continue
 
-            clusters.append(
-                {"x": x, "marker": marker, "style": style, "count": 1}
-            )
+            clusters.append({"x": x, "marker": marker, "style": style, "count": 1})
 
         return clusters
 
@@ -460,10 +453,7 @@ class MarkerSlider(QSlider):
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - firma de Qt
-        if (
-            event.button() == Qt.MouseButton.LeftButton
-            and self._scrubbing
-        ):
+        if event.button() == Qt.MouseButton.LeftButton and self._scrubbing:
             self._scrubbing = False
             seconds = self._seconds_at(int(event.position().x()))
             self.seek_requested.emit(int(seconds * 1000))
@@ -518,9 +508,7 @@ class MarkerSlider(QSlider):
         self.setToolTip(tooltip)
         super().mouseMoveEvent(event)
 
-    def _markers_at(
-        self, seconds: float, tolerance: float
-    ) -> list[dict[str, Any]]:
+    def _markers_at(self, seconds: float, tolerance: float) -> list[dict[str, Any]]:
         """Todos los sucesos cercanos (tolerancia en segundos), por orden."""
         hits = [
             marker
@@ -535,6 +523,7 @@ class RecordingsPage(QWidget):
     """Pestaña completa: cabecera, lista de vídeos y reproductor."""
 
     open_folder_requested = Signal(str)
+    start_recording_requested = Signal()
     #: El usuario pulsa «Detener grabación»: la ventana cierra la sesión.
     stop_recording_requested = Signal()
     #: El usuario quiere ver la grabación en la ventana de repaso aparte.
@@ -550,10 +539,75 @@ class RecordingsPage(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("recordingsPage")
+        self.setStyleSheet("""
+            QFrame#heroCard, QFrame#recordingPlayerCard { background:#10151e; border:1px solid #34302a; border-radius:14px; }
+            QLabel#recordingsStatus { color:#afa99c; background:#151b23; border:1px solid #292f37; border-radius:7px; padding:6px 10px; }
+            QLabel#recordingsStatus[state="live"] { color:#d0bb7b; border-color:#75633d; }
+            QFrame#recordingStorageCard { background:#151b23; border:1px solid #373329; border-radius:10px; min-width:220px; }
+            QLabel#recordingStorageValue { color:#e1dab2; font-size:18px; font-weight:700; }
+            QProgressBar#recordingStorageBar { background:#242a32; border:0; border-radius:2px; }
+            QProgressBar#recordingStorageBar::chunk { background:#b69a50; border-radius:2px; }
+            QProgressBar#recordingStorageBar[state="warning"]::chunk { background:#d0a453; }
+            QProgressBar#recordingStorageBar[state="full"]::chunk { background:#c46c61; }
+            QFrame#recordingRow { background:#111720; border:1px solid #292f37; border-left:3px solid #4c535b; border-radius:11px; }
+            QFrame#recordingRow[state="victory"] { border-left-color:#79af99; background:#131b1b; }
+            QFrame#recordingRow[state="defeat"] { border-left-color:#ca8580; background:#1a171b; }
+            QFrame#recordingRow[selected="true"] { border:1px solid #b69a50; border-left-width:3px; background:#1a1d22; }
+            QFrame#recordingRow[state="victory"][selected="true"] { border-left-color:#79af99; }
+            QFrame#recordingRow[state="defeat"][selected="true"] { border-left-color:#ca8580; }
+            QFrame#recordingRow:hover { background:#1b222a; border-color:#75633d; }
+            QLabel#recordingTitle { color:#eee8d8; font-size:16px; font-weight:700; }
+            QLabel#recordingPerformanceLine { color:#d0bb7b; font-weight:600; }
+            QLabel#recordingMatchIdentity { color:#d0bb7b; font-size:12px; }
+            QLabel#recordingResult { font-weight:800; font-size:11px; padding:4px 8px; border-radius:6px; }
+            QLabel#recordingResult[state="victory"] { color:#9bceb6; background:#1c302b; }
+            QLabel#recordingResult[state="defeat"] { color:#dfa19b; background:#352326; }
+            QLabel#recordingResult[state="unknown"] { color:#afa99c; background:#242a31; }
+            QFrame#recordingScore { background:#201d18; border:1px solid #51452d; border-radius:8px; }
+            QLabel#recordingScoreValue { color:#e1dab2; font-size:17px; font-weight:800; }
+            QLabel#recordingScoreLabel { color:#afa99c; font-size:9px; font-weight:700; }
+            QLabel#recordingKda { color:#eee8d8; font-size:15px; font-weight:700; }
+            QLabel#recordingTeamLabel { color:#7faaa8; font-size:9px; font-weight:700; }
+            QLabel#recordingTeamLabel[side="enemy"] { color:#bd8581; }
+            QLabel#recordingVs { color:#d0bb7b; font-size:10px; font-weight:800; }
+            QLabel#recordingTeamIcon { background:#172329; border:1px solid #416665; border-radius:5px; }
+            QLabel#recordingTeamIcon[side="enemy"] { background:#281d20; border-color:#704b4b; }
+            QLabel#recordingTeamIcon[own="true"] { border:2px solid #d0bb7b; }
+            QPushButton#recordingAction { min-height:24px; padding:2px 9px; border-radius:6px; background:#202630; border:1px solid #343a42; color:#e1dab2; }
+            QPushButton#recordingAction:hover { background:#292f37; border-color:#75633d; }
+            QPushButton#recordingAction[kind="danger"] { color:#dfa19b; }
+            QLabel#recordingMeta { color:#898f98; font-size:10px; }
+            QLabel#recordingMatchDetail { color:#afa99c; font-size:10px; }
+            QLabel#recordingKdaCaption { color:#898f98; font-size:9px; font-weight:700; }
+            QWidget#recordingIdentity, QWidget#recordingPerformance, QWidget#recordingTeams { background:transparent; }
+            QFrame#recordingPortraitFrame { background:#111720; border:1px solid #75633d; border-radius:9px; }
+            QFrame#recordingRow[state="victory"] QFrame#recordingPortraitFrame { border-color:#456d5e; }
+            QFrame#recordingRow[state="defeat"] QFrame#recordingPortraitFrame { border-color:#714746; }
+            QFrame#recordingRow[selected="true"] QFrame#recordingPortraitFrame { border-color:#d0bb7b; }
+            QFrame#recordingPlaybackStrip { background:#111720; border:1px solid #292f37; border-radius:10px; }
+            QFrame#recordingEventLegend { background:#151b23; border:1px solid #292f37; border-radius:8px; }
+            QFrame#recordingEventChip { background:#1b222b; border:1px solid #303640; border-radius:6px; }
+            QLabel#recordingEventGlyph { font-size:12px; font-weight:700; }
+            QLabel#recordingEventName { color:#b9b4a8; font-size:10px; }
+            QListWidget#recordingMarkerList { background:#0d1219; border:1px solid #292f37; border-radius:8px; padding:4px; outline:0; }
+            QListWidget#recordingMarkerList::item { color:#d8d2c3; padding:6px 8px; border-radius:5px; border-bottom:1px solid #20262e; }
+            QListWidget#recordingMarkerList::item:hover { background:#1a222a; color:#eee8d8; }
+            QListWidget#recordingMarkerList::item:selected { background:#29251e; color:#e1dab2; border:1px solid #544326; }
+            QSlider#recordingSlider::groove:horizontal { height:6px; background:#252b33; border-radius:3px; margin:17px 8px; }
+            QSlider#recordingSlider::sub-page:horizontal { background:#b69a50; border-radius:3px; }
+            QSlider#recordingSlider::handle:horizontal { width:14px; height:14px; margin:-5px 0; background:#e1dab2; border:2px solid #b69a50; border-radius:7px; }
+            QSlider#recordingSlider::handle:horizontal:hover { background:#ffffff; border-color:#d0bb7b; }
+            QPushButton#recordingPlayButton { background:#1b222b; border:1px solid #343a42; border-radius:7px; color:#e1dab2; padding:5px 10px; min-height:25px; }
+            QPushButton#recordingPlayButton:hover { background:#29251e; border-color:#75633d; }
+            QPushButton#recordingPlayButton:disabled { color:#78818e; }
+            QLineEdit, QComboBox { background:#10151e; border:1px solid #343a42; border-radius:8px; padding:7px; color:#eee8d8; }
+        """)
         self.library = library
         self.service = service
         self.entries: list[dict[str, Any]] = []
+        self._recording_cards: dict[str, QFrame] = {}
         self.current_path: Path | None = None
+        self.current_saved_match: dict[str, Any] = {}
         self.pending_seek_ms: int = 0
         #: Lectura de la carpeta en curso (worker) y refresco pedido mientras
         #: tanto: la lista se lee en segundo plano y se pinta al llegar.
@@ -565,6 +619,7 @@ class RecordingsPage(QWidget):
 
         self._build_layout()
         self._build_player()
+        self._install_playback_shortcuts()
         self._wire_service()
 
     # -- construcción ---------------------------------------------------
@@ -573,30 +628,32 @@ class RecordingsPage(QWidget):
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(12)
 
         layout.addWidget(self._build_header())
 
-        self.status_label = QLabel("Cargando grabaciones…")
+        self.status_label = QLabel("Cargando biblioteca…")
         self.status_label.setObjectName("recordingsStatus")
+        self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
         body = QHBoxLayout()
-        body.setSpacing(14)
+        body.setSpacing(12)
 
-        body.addWidget(self._build_list_column(), 1)
-        body.addWidget(self._build_player_card(), 2)
+        body.addWidget(self._build_list_column(), 5)
+        body.addWidget(self._build_player_card(), 8)
 
         layout.addLayout(body, 1)
-        self.reflujo = Reflujo(self, [body], 1050)
+        self.reflujo = Reflujo(self, [body], 930)
 
     def _build_header(self) -> QWidget:
+        """Construye cabecera, controles y resumen de almacenamiento."""
         header = QFrame()
         header.setObjectName("heroCard")
 
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(24, 20, 24, 20)
-        header_layout.setSpacing(14)
+        header_layout.setContentsMargins(20, 14, 20, 14)
+        header_layout.setSpacing(18)
 
         text_layout = QVBoxLayout()
         text_layout.setSpacing(4)
@@ -610,9 +667,7 @@ class RecordingsPage(QWidget):
         text_layout.addWidget(title)
 
         description = QLabel(
-            "Cada partida se graba sola de principio a fin: vídeo de la "
-            "pantalla con el sonido del juego (el micrófono es opcional). "
-            "Pulsa un marcador para saltar a ese momento."
+            "Tus partidas, momentos clave y repeticiones en un solo lugar."
         )
         description.setObjectName("heroText")
         description.setWordWrap(True)
@@ -620,8 +675,39 @@ class RecordingsPage(QWidget):
 
         header_layout.addLayout(text_layout, 1)
 
+        storage = QFrame()
+        storage.setObjectName("recordingStorageCard")
+        storage_layout = QVBoxLayout(storage)
+        storage_layout.setContentsMargins(14, 10, 14, 10)
+        storage_layout.setSpacing(4)
+        self.storage_title = QLabel("ALMACENAMIENTO")
+        self.storage_title.setObjectName("eyebrow")
+        storage_layout.addWidget(self.storage_title)
+        self.storage_value = QLabel("Calculando…")
+        self.storage_value.setObjectName("recordingStorageValue")
+        storage_layout.addWidget(self.storage_value)
+        self.storage_detail = QLabel("")
+        self.storage_detail.setObjectName("recordingDetail")
+        storage_layout.addWidget(self.storage_detail)
+        self.storage_bar = QProgressBar()
+        self.storage_bar.setObjectName("recordingStorageBar")
+        self.storage_bar.setTextVisible(False)
+        self.storage_bar.setFixedHeight(5)
+        storage_layout.addWidget(self.storage_bar)
+        header_layout.addWidget(storage, 0)
+
         buttons = QVBoxLayout()
-        buttons.setSpacing(8)
+        buttons.setSpacing(6)
+
+        self.start_button = QPushButton("▶ Iniciar grabación")
+        self.start_button.setObjectName("primaryButton")
+        self.start_button.setToolTip(
+            "Inicia una grabación de la ventana de League of Legends."
+        )
+        self.start_button.clicked.connect(
+            lambda _checked=False: self.start_recording_requested.emit()
+        )
+        buttons.addWidget(self.start_button)
 
         self.stop_button = QPushButton("⏹ Detener grabación")
         self.stop_button.setObjectName("dangerButton")
@@ -634,7 +720,7 @@ class RecordingsPage(QWidget):
         )
         buttons.addWidget(self.stop_button)
 
-        self.refresh_button = QPushButton("Actualizar lista")
+        self.refresh_button = QPushButton("↻ Actualizar")
         self.refresh_button.setObjectName("secondaryButton")
         self.refresh_button.clicked.connect(self.refresh)
         buttons.addWidget(self.refresh_button)
@@ -644,19 +730,60 @@ class RecordingsPage(QWidget):
         self.folder_button.clicked.connect(self.open_folder)
         buttons.addWidget(self.folder_button)
 
+        self.settings_button = QPushButton("⚙ Ajustes")
+        self.settings_button.setObjectName("secondaryButton")
+        self.settings_button.clicked.connect(lambda: self._open_recording_settings())
+        buttons.addWidget(self.settings_button)
         header_layout.addLayout(buttons)
 
         return header
 
     def _build_list_column(self) -> QWidget:
+        """Construye la biblioteca con búsqueda, filtros y lista desplazable."""
         container = QWidget()
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(8)
 
-        caption = QLabel("VÍDEOS GUARDADOS")
+        caption = QLabel("BIBLIOTECA DE PARTIDAS")
         caption.setObjectName("eyebrow")
         container_layout.addWidget(caption)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Buscar campeón o modo…")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.textChanged.connect(self._rebuild_rows)
+        container_layout.addWidget(self.search_input)
+        filters = QHBoxLayout()
+        self.result_filter = QComboBox()
+        self.result_filter.addItems(["Todos los resultados", "Victoria", "Derrota"])
+        self.sort_filter = QComboBox()
+        self.sort_filter.addItems(
+            [
+                "Más recientes",
+                "Más antiguas",
+                "Mayor BattleScore",
+                "Partidas largas",
+                "Archivos grandes",
+            ]
+        )
+        self.metadata_filter = QComboBox()
+        self.metadata_filter.addItems(["Todas", "Con BattleScore", "Con eventos"])
+        self.date_filter = QComboBox()
+        self.date_filter.addItems(
+            ["Cualquier fecha", "Últimos 7 días", "Últimos 30 días"]
+        )
+        self.result_filter.currentIndexChanged.connect(self._rebuild_rows)
+        self.sort_filter.currentIndexChanged.connect(self._rebuild_rows)
+        self.metadata_filter.currentIndexChanged.connect(self._rebuild_rows)
+        self.date_filter.currentIndexChanged.connect(self._rebuild_rows)
+        filters.addWidget(self.result_filter, 1)
+        filters.addWidget(self.sort_filter, 1)
+        container_layout.addLayout(filters)
+        filtros_secundarios = QHBoxLayout()
+        filtros_secundarios.addWidget(self.metadata_filter, 1)
+        filtros_secundarios.addWidget(self.date_filter, 1)
+        container_layout.addLayout(filtros_secundarios)
 
         scroll = QScrollArea()
         scroll.setObjectName("recordingsScroll")
@@ -667,7 +794,7 @@ class RecordingsPage(QWidget):
         self.list_content.setObjectName("recordingsContent")
         self.list_layout = QVBoxLayout(self.list_content)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
-        self.list_layout.setSpacing(12)
+        self.list_layout.setSpacing(8)
 
         scroll.setWidget(self.list_content)
         container_layout.addWidget(scroll, 1)
@@ -675,16 +802,14 @@ class RecordingsPage(QWidget):
         return container
 
     def _build_player_card(self) -> QWidget:
+        """Construye el reproductor, sus controles y la navegación por eventos."""
         card = QFrame()
         card.setObjectName("recordingPlayerCard")
 
         layout = QVBoxLayout(card)
         layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
 
-        # Título y ESTADÍSTICAS comparten fila: antes la tarjeta de
-        # estadísticas tenía una fila propia (robaba altura al vídeo y, sin
-        # marcadores, quedaba como una caja vacía encima del reproductor).
         title_row = QHBoxLayout()
         title_row.setSpacing(10)
 
@@ -692,11 +817,21 @@ class RecordingsPage(QWidget):
         self.player_title.setObjectName("recordingPlayerTitle")
         self.player_title.setWordWrap(True)
         title_row.addWidget(self.player_title, 1)
-        title_row.addWidget(self._build_kda_card())
+        self.player_result = QLabel("SIN PARTIDA")
+        self.player_result.setObjectName("recordingResult")
+        self.player_result.setProperty("state", "unknown")
+        title_row.addWidget(self.player_result)
+        self.player_date = QLabel("")
+        self.player_date.setObjectName("recordingMeta")
+        title_row.addWidget(self.player_date)
+        self.player_score = QLabel("")
+        self.player_score.setObjectName("recordingMatchIdentity")
+        title_row.addWidget(self.player_score)
         layout.addLayout(title_row)
 
         self.video_widget = QVideoWidget()
         self.video_widget.setObjectName("recordingVideo")
+        self.video_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Un mínimo alto (320) impedía que la tarjeta cupiera en pantallas
         # de poca altura (1600x900: la página no cabía y el reproductor se
         # salía de su hueco). El vídeo crece con el stretch: solo necesita
@@ -710,39 +845,37 @@ class RecordingsPage(QWidget):
         self.position_slider = MarkerSlider()
         self.position_slider.setRange(0, 0)
         self.position_slider.seek_requested.connect(self.seek_to_ms)
-        layout.addWidget(self.position_slider)
+        playback_strip = QFrame()
+        playback_strip.setObjectName("recordingPlaybackStrip")
+        playback_layout = QVBoxLayout(playback_strip)
+        playback_layout.setContentsMargins(10, 3, 10, 8)
+        playback_layout.setSpacing(3)
+        playback_layout.addWidget(self.position_slider)
 
-        time_row = QHBoxLayout()
-        time_row.setSpacing(10)
+        controls = QHBoxLayout()
+        controls.setSpacing(6)
 
         self.position_label = QLabel("00:00 / 00:00")
         self.position_label.setObjectName("recordingPlayerTime")
-        time_row.addWidget(self.position_label)
-        time_row.addStretch(1)
-
-        self.marker_count_label = QLabel("")
-        self.marker_count_label.setObjectName("recordingMarkerLegend")
-        self.marker_count_label.setWordWrap(True)
-        time_row.addWidget(self.marker_count_label)
-
-        layout.addLayout(time_row)
-
-        controls = QHBoxLayout()
-        controls.setSpacing(8)
+        controls.addWidget(self.position_label)
+        controls.addSpacing(8)
 
         self.back_button = QPushButton(f"⏪ {SEEK_SECONDS}s")
         self.back_button.setObjectName("recordingPlayButton")
+        self.back_button.setToolTip("Retroceder 10 segundos · ← retrocede 5 segundos")
         self.back_button.clicked.connect(self.seek_backward)
         controls.addWidget(self.back_button)
 
         self.play_button = QPushButton("▶ Reproducir")
         self.play_button.setObjectName("recordingPlayButton")
+        self.play_button.setToolTip("Reproducir / pausar · Espacio")
         self.play_button.setEnabled(False)
         self.play_button.clicked.connect(self.toggle_play)
         controls.addWidget(self.play_button)
 
         self.forward_button = QPushButton(f"{SEEK_SECONDS}s ⏩")
         self.forward_button.setObjectName("recordingPlayButton")
+        self.forward_button.setToolTip("Avanzar 10 segundos · → avanza 5 segundos")
         self.forward_button.clicked.connect(self.seek_forward)
         controls.addWidget(self.forward_button)
 
@@ -760,88 +893,67 @@ class RecordingsPage(QWidget):
         self.volume_slider.valueChanged.connect(self._apply_volume)
         controls.addWidget(self.volume_slider)
 
-        layout.addLayout(controls)
+        self.marker_count_label = QLabel("")
+        self.marker_count_label.setObjectName("recordingMarkerLegend")
+        self.marker_count_label.setWordWrap(False)
+        controls.addSpacing(10)
+        controls.addWidget(self.marker_count_label)
 
-        legend = QLabel(
-            "⚔ asesinato · ✖ muerte · ✚ asistencia · 🐉 dragón · "
-            "👁 heraldo · 👑 barón · 🗼 torre · 💠 inhibidor"
-        )
-        legend.setObjectName("recordingMarkerLegend")
-        legend.setWordWrap(True)
+        playback_layout.addLayout(controls)
+        layout.addWidget(playback_strip)
+
+        legend = QFrame()
+        legend.setObjectName("recordingEventLegend")
+        legend_layout = QHBoxLayout(legend)
+        legend_layout.setContentsMargins(8, 5, 8, 5)
+        legend_layout.setSpacing(6)
+        event_names = {
+            "kill": "Baja",
+            "death": "Muerte",
+            "assist": "Asistencia",
+            "dragon": "Dragón",
+            "herald": "Heraldo",
+            "baron": "Barón",
+            "tower": "Torre",
+            "inhibitor": "Inhibidor",
+        }
+        for kind, name in event_names.items():
+            style = marker_style(kind)
+            chip = QFrame()
+            chip.setObjectName("recordingEventChip")
+            chip_layout = QHBoxLayout(chip)
+            chip_layout.setContentsMargins(5, 2, 6, 2)
+            chip_layout.setSpacing(4)
+            glyph = QLabel(style["glyph"])
+            glyph.setObjectName("recordingEventGlyph")
+            glyph.setStyleSheet(f"color:{style['color']};")
+            label = QLabel(name)
+            label.setObjectName("recordingEventName")
+            chip_layout.addWidget(glyph)
+            chip_layout.addWidget(label)
+            legend_layout.addWidget(chip)
+        legend_layout.addStretch(1)
         layout.addWidget(legend)
+
+        event_heading = QHBoxLayout()
+        heading = QLabel("MOMENTOS CLAVE")
+        heading.setObjectName("eyebrow")
+        event_heading.addWidget(heading)
+        event_heading.addStretch(1)
+        hint = QLabel("Selecciona un evento para saltar a ese instante")
+        hint.setObjectName("recordingMeta")
+        event_heading.addWidget(hint)
+        layout.addLayout(event_heading)
 
         self.marker_list = QListWidget()
         self.marker_list.setObjectName("recordingMarkerList")
-        self.marker_list.setMaximumHeight(150)
+        self.marker_list.setMaximumHeight(118)
+        self.marker_list.setSpacing(2)
+        self.marker_list.setUniformItemSizes(True)
         self.marker_list.itemClicked.connect(self._jump_to_marker_item)
         layout.addWidget(self.marker_list)
 
         return card
-
-    def _build_kda_card(self) -> QWidget:
-        card = QFrame()
-        card.setObjectName("recordingKdaCard")
-        card.setFixedWidth(120)
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(2)
-
-        title = QLabel("ESTADÍSTICAS")
-        title.setObjectName("recordingKdaEyebrow")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-
-        self.kda_value = QLabel("—")
-        self.kda_value.setObjectName("recordingKdaValue")
-        self.kda_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.kda_value.setWordWrap(False)
-        self.kda_value.setToolTip(
-            "Asesinatos · muertes · asistencias de la partida grabada"
-        )
-        layout.addWidget(self.kda_value)
-
-        self.kda_objectives = QLabel("")
-        self.kda_objectives.setObjectName("recordingKdaObjectives")
-        self.kda_objectives.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.kda_objectives.setToolTip(
-            "Objetivos de la partida (torres, dragones, heraldos, barones…)"
-        )
-        layout.addWidget(self.kda_objectives)
-
-        return card
-
-    def _update_kda_card(self) -> None:
-        kills = deaths = assists = objectives = 0
-        markers = (
-            self.position_slider.markers
-            if hasattr(self, "position_slider")
-            else []
-        )
-        for marker in markers or []:
-            if not isinstance(marker, dict):
-                continue
-            kind = str(marker.get("kind") or "")
-            if kind == "kill":
-                kills += 1
-            elif kind == "death":
-                deaths += 1
-            elif kind == "assist":
-                assists += 1
-            elif kind in OBJECTIVE_MARKER_KINDS:
-                objectives += 1
-
-        # Un guion en vez de texto vacío: sin marcadores la tarjeta seguía
-        # pareciendo rota («ESTADÍSTICAS no muestra nada»).
-        if kills or deaths or assists:
-            self.kda_value.setText(f"⚔ {kills}  ✖ {deaths}  ✚ {assists}")
-        else:
-            self.kda_value.setText("—")
-
-        self.kda_objectives.setText(
-            f"🎯 {objectives}" if objectives else ""
-        )
-        self.kda_objectives.setVisible(objectives > 0)
 
     def _build_player(self) -> None:
         self.player = QMediaPlayer(self)
@@ -858,6 +970,69 @@ class RecordingsPage(QWidget):
         self.recording_tick = QTimer(self)
         self.recording_tick.setInterval(1000)
         self.recording_tick.timeout.connect(self._sync_recording_status)
+
+    def _install_playback_shortcuts(self) -> None:
+        """Instala atajos limitados a la página de grabaciones.
+
+        Returns:
+            None.
+        """
+        acciones: tuple[tuple[str, Callable[[], None]], ...] = (
+            ("Space", self.toggle_play),
+            ("Left", lambda: self.seek_by_ms(-KEYBOARD_SEEK_MS)),
+            ("Right", lambda: self.seek_by_ms(KEYBOARD_SEEK_MS)),
+        )
+        self._playback_shortcuts: list[QShortcut] = []
+        shortcut_parent = self.video_widget.parentWidget() or self
+
+        for sequence, action in acciones:
+            shortcut = QShortcut(QKeySequence(sequence), shortcut_parent)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(
+                lambda accion=action: self._run_playback_shortcut(accion)
+            )
+            self._playback_shortcuts.append(shortcut)
+
+    def _run_playback_shortcut(self, action: Callable[[], None]) -> None:
+        """Evita que los atajos de vídeo interfieran con campos editables.
+
+        Args:
+            action: Acción de reproducción que se ejecutará.
+
+        Returns:
+            None.
+        """
+        focused = QApplication.focusWidget()
+
+        if isinstance(
+            focused, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox)
+        ):
+            return
+
+        if isinstance(focused, QComboBox) and focused.isEditable():
+            return
+
+        action()
+
+    def seek_by_ms(self, offset_ms: int) -> None:
+        """Busca un desplazamiento relativo y lo limita al vídeo conocido.
+
+        Args:
+            offset_ms: Desplazamiento solicitado en milisegundos.
+
+        Returns:
+            None.
+        """
+        if self.current_path is None:
+            return
+
+        duration = int(self.player.duration())
+        target = max(0, int(self.player.position()) + int(offset_ms))
+
+        if duration > 0:
+            target = min(target, duration)
+
+        self.seek_to_ms(target)
 
     def _wire_service(self) -> None:
         self.service.started.connect(self._on_service_started)
@@ -903,11 +1078,10 @@ class RecordingsPage(QWidget):
 
         if error:
             # Sin lista nueva la interfaz sigue usable: solo se informa.
-            self.status_label.setText(
-                f"No se pudieron leer las grabaciones: {error}"
-            )
+            self.status_label.setText(f"No se pudieron leer las grabaciones: {error}")
         else:
             self.entries = list(entries or [])
+            self._attach_saved_match_data()
             # La carpeta puede haber cambiado: el peso mostrado se relee.
             self._folder_size_cache = None
             self._rebuild_rows()
@@ -916,8 +1090,97 @@ class RecordingsPage(QWidget):
             self._scan_pending = False
             self.refresh()
 
+    def _attach_saved_match_data(self) -> None:
+        """Enriquece grabaciones solo mediante el session_id exacto del sidecar."""
+        window = self.window()
+        sessions = getattr(window, "saved_live_sessions", [])
+        by_id = {
+            str(session.get("session_id")): session
+            for session in sessions
+            if isinstance(session, dict) and session.get("session_id")
+        }
+        for entry in self.entries:
+            metadata = (
+                entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            )
+            session_id = str(metadata.get("session_id") or "")
+            session = by_id.get(session_id)
+            if not session:
+                continue
+            players = (
+                session.get("players")
+                if isinstance(session.get("players"), dict)
+                else {}
+            )
+            local_key = str(session.get("local_player_key") or "")
+            local = players.get(local_key) if local_key else None
+            final = (
+                session.get("final_scoreboard")
+                if isinstance(session.get("final_scoreboard"), dict)
+                else {}
+            )
+            stats = final.get(local_key) if local_key else None
+            stats = stats if isinstance(stats, dict) else {}
+            score = None
+            saved_score = session.get("performance_scoring")
+            if (
+                isinstance(saved_score, dict)
+                and saved_score.get("state") == "POSTGAME_FINAL"
+            ):
+                score = next(
+                    (
+                        item.get("total")
+                        for item in saved_score.get("players", [])
+                        if isinstance(item, dict)
+                        and str(item.get("participant_id") or "") == local_key
+                    ),
+                    None,
+                )
+            role_order = {"TOP": 0, "JUNGLE": 1, "MIDDLE": 2, "BOTTOM": 3, "UTILITY": 4}
+            compositions: dict[str, list[dict[str, Any]]] = {"ally": [], "enemy": []}
+            for player_key, player in players.items():
+                if (
+                    not isinstance(player, dict)
+                    or player.get("side") not in compositions
+                    or not player.get("champion_name")
+                ):
+                    continue
+                compositions[str(player["side"])].append(
+                    {
+                        "champion": str(player["champion_name"]),
+                        "name": str(
+                            player.get("riot_id") or player.get("summoner_name") or ""
+                        ),
+                        "role": str(player.get("role") or ""),
+                        "own": bool(
+                            player.get("is_local_player")
+                            or str(player_key) == local_key
+                        ),
+                    }
+                )
+            for team in compositions.values():
+                team.sort(key=lambda player: role_order.get(player["role"], 5))
+            entry["saved_match"] = {
+                "win": stats.get(
+                    "win", local.get("win") if isinstance(local, dict) else None
+                ),
+                "role": local.get("role") if isinstance(local, dict) else None,
+                "riot_id": local.get("riot_id")
+                if isinstance(local, dict)
+                else session.get("player_riot_id"),
+                "kda": [stats.get("kills"), stats.get("deaths"), stats.get("assists")]
+                if all(
+                    isinstance(stats.get(key), (int, float))
+                    for key in ("kills", "deaths", "assists")
+                )
+                else None,
+                "battle_score": score,
+                "composition": compositions if any(compositions.values()) else None,
+            }
+
     def _rebuild_rows(self) -> None:
         """Reconstruye las filas sin tocar lo que se esté reproduciendo."""
+        self._recording_cards.clear()
         while self.list_layout.count():
             item = self.list_layout.takeAt(0)
             widget = item.widget()
@@ -925,20 +1188,18 @@ class RecordingsPage(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        if not self.entries:
+        entries = self._filtered_entries()
+        if not entries:
             empty = QLabel(
-                "Aún no hay grabaciones. Juega una partida con SolraLoL "
-                "abierto y aparecerá aquí sola al terminar."
+                "No hay partidas que coincidan. Prueba a cambiar la búsqueda o los filtros."
             )
             empty.setObjectName("recordingsEmpty")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty.setWordWrap(True)
             self.list_layout.addWidget(empty)
         else:
-            for entry in self.entries:
-                self.list_layout.addWidget(
-                    self._build_entry_row(entry)
-                )
+            for entry in entries:
+                self.list_layout.addWidget(self._build_entry_row(entry))
 
         self.list_layout.addStretch(1)
         self._sync_recording_status()
@@ -949,102 +1210,512 @@ class RecordingsPage(QWidget):
         self.recordings_changed.emit()
 
     def _build_entry_row(self, entry: dict[str, Any]) -> QWidget:
+        """Construye una tarjeta horizontal compacta con datos disponibles.
+
+        Parámetros: entry contiene metadatos de grabación y partida.
+        Retorno: tarjeta Qt con selección, reproducción y acciones existentes.
+        """
         path = entry.get("path")
         row = QFrame()
         row.setObjectName("recordingRow")
-        row.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        row.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        match = (
+            entry.get("saved_match")
+            if isinstance(entry.get("saved_match"), dict)
+            else {}
         )
+        result_state = (
+            "victory"
+            if match.get("win") is True
+            else "defeat"
+            if match.get("win") is False
+            else "unknown"
+        )
+        row.setProperty("state", result_state)
+        row.setProperty("selected", str(self.current_path == Path(path)).lower())
+        self._recording_cards[str(path)] = row
 
         layout = QVBoxLayout(row)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(4)
+        main_row = QHBoxLayout()
+        main_row.setContentsMargins(0, 0, 0, 0)
+        main_row.setSpacing(8)
 
-        title_row = QHBoxLayout()
-        title_row.setSpacing(8)
+        identity = QWidget()
+        identity.setObjectName("recordingIdentity")
+        identity_layout = QHBoxLayout(identity)
+        identity_layout.setContentsMargins(0, 0, 0, 0)
+        identity_layout.setSpacing(7)
 
-        title = QLabel(str(entry.get("title") or "Grabación"))
+        portrait_frame = QFrame()
+        portrait_frame.setObjectName("recordingPortraitFrame")
+        portrait_frame.setFixedSize(50, 50)
+        portrait_layout = QVBoxLayout(portrait_frame)
+        portrait_layout.setContentsMargins(2, 2, 2, 2)
+        portrait = QLabel("◈")
+        portrait.setObjectName("recordingChampionPortrait")
+        portrait.setFixedSize(44, 44)
+        portrait.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        portrait.setStyleSheet(
+            "background:#1a2029; border-radius:6px; color:#b69a50; font-size:20px;"
+        )
+        portrait_layout.addWidget(portrait)
+        identity_layout.addWidget(portrait_frame)
+
+        title = QLabel(
+            str(
+                entry.get("champion") or entry.get("title") or "Partida grabada"
+            ).upper()
+        )
         title.setTextFormat(Qt.TextFormat.PlainText)
         title.setObjectName("recordingTitle")
-        title_row.addWidget(title, 1)
+        title.setWordWrap(False)
+        identity_text = QVBoxLayout()
+        identity_text.setContentsMargins(0, 0, 0, 0)
+        identity_text.setSpacing(1)
+        identity_text.addWidget(title)
 
-        badge = QLabel()
-        badge.setObjectName("recordingBadge")
-        badge.setProperty("state", self._badge_state(entry, path))
-        badge.setText(self._badge_text(entry, path))
-        title_row.addWidget(badge)
+        player_name = str(match.get("riot_id") or "")
+        if player_name:
+            player = QLabel(player_name)
+            player.setObjectName("recordingMeta")
+            player.setWordWrap(False)
+            identity_text.addWidget(player)
+        else:
+            player = QLabel("Jugador")
+            player.setObjectName("recordingMeta")
+            identity_text.addWidget(player)
+        identity_layout.addLayout(identity_text)
+        main_row.addWidget(identity, 2)
 
-        layout.addLayout(title_row)
+        performance = QVBoxLayout()
+        performance.setContentsMargins(0, 0, 0, 0)
+        performance.setSpacing(1)
+        kda = match.get("kda")
+        kda_label = QLabel()
+        kda_label.setObjectName("recordingKda")
+        if isinstance(kda, (list, tuple)) and len(kda) == 3:
+            kda_label.setText(
+                f"{kda[0]}  /  <span style='color:#ca8580'>{kda[1]}</span>  /  {kda[2]}"
+            )
+            kda_label.setTextFormat(Qt.TextFormat.RichText)
+            kda_label.setToolTip("Asesinatos / Muertes / Asistencias")
+        else:
+            kda_label.setText("KDA —")
+        performance.addWidget(kda_label)
+        score = self._battle_score(match)
+        score_line = QLabel(
+            f"<span style='color:#898f98;font-size:9px'>BATTLESCORE</span>  "
+            f"<span style='color:#e1dab2;font-weight:800'>{score if isinstance(score, (int, float)) else '—'}</span>"
+        )
+        score_line.setTextFormat(Qt.TextFormat.RichText)
+        score_line.setToolTip("Puntuación final guardada por Solralol")
+        performance.addWidget(score_line)
+        main_row.addLayout(performance, 1)
 
+        match_column = QVBoxLayout()
+        match_column.setContentsMargins(0, 0, 0, 0)
+        match_column.setSpacing(2)
+        role = str(match.get("role") or "")
         detail = QLabel(
-            f"{entry.get('date_label', '')} · "
-            f"{entry.get('duration_label', '')} · "
-            f"{entry.get('size_label', '')}"
+            f"{role + '  ·  ' if role else ''}{entry.get('game_mode') or 'Modo no disponible'}  ·  {entry.get('duration_label', '')}"
         )
-        detail.setObjectName("recordingDetail")
-        detail.setWordWrap(True)
-        layout.addWidget(detail)
+        detail.setObjectName("recordingMatchDetail")
+        detail.setWordWrap(False)
+        match_column.addWidget(detail)
+        badge = QLabel(
+            "VICTORIA"
+            if match.get("win") is True
+            else "DERROTA"
+            if match.get("win") is False
+            else "SIN RESULTADO"
+        )
+        badge.setObjectName("recordingResult")
+        badge.setProperty("state", result_state)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        champion = str(entry.get("champion") or "")
+        if champion:
+            run_async(
+                lambda name=champion: self._champion_icon_bytes(name),
+                token=(portrait, 44),
+                on_finished=self._apply_champion_icon,
+            )
 
-        subtitle = str(entry.get("subtitle") or "")
+        comp = match.get("composition")
+        if isinstance(comp, dict) and (comp.get("ally") or comp.get("enemy")):
+            matchup = QWidget()
+            matchup.setObjectName("recordingMatchup")
+            matchup.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+            teams = QHBoxLayout(matchup)
+            teams.setContentsMargins(0, 0, 0, 0)
+            teams.setSpacing(2)
+            for side in ("ally", "enemy"):
+                team = comp.get(side) if isinstance(comp.get(side), list) else []
+                for index in range(5):
+                    participant = team[index] if index < len(team) else None
+                    icon = QLabel("·")
+                    icon.setObjectName("recordingTeamIcon")
+                    icon.setProperty("side", side)
+                    icon.setProperty(
+                        "own", str(bool(participant and participant.get("own"))).lower()
+                    )
+                    icon.setFixedSize(20, 20)
+                    icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    if participant:
+                        champion_name = str(participant.get("champion") or "")
+                        tooltip = champion_name
+                        if participant.get("name"):
+                            tooltip += f" · {participant['name']}"
+                        icon.setToolTip(tooltip)
+                        if champion_name:
+                            run_async(
+                                lambda name=champion_name: self._champion_icon_bytes(
+                                    name
+                                ),
+                                token=(icon, 20),
+                                on_finished=self._apply_champion_icon,
+                            )
+                    if side == "enemy" and index == 0:
+                        teams.addSpacing(4)
+                    teams.addWidget(icon)
+                if side == "ally":
+                    vs = QLabel("VS")
+                    vs.setObjectName("recordingVs")
+                    vs.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    teams.addWidget(vs)
+                    teams.addSpacing(2)
+            match_column.addWidget(matchup, 0, Qt.AlignmentFlag.AlignHCenter)
+        else:
+            unavailable = QLabel("Composición no disponible")
+            unavailable.setObjectName("recordingMeta")
+            match_column.addWidget(unavailable)
+        main_row.addLayout(match_column, 5)
+        main_row.addWidget(badge, 0, Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(main_row)
 
-        if subtitle:
-            extra = QLabel(subtitle)
-            extra.setObjectName("recordingDetail")
-            extra.setWordWrap(True)
-            layout.addWidget(extra)
-
+        subtitle = f"{entry.get('date_label', '')}  ·  {entry.get('size_label', '')}"
         summary = str(entry.get("summary") or "")
-
-        if summary:
-            moments = QLabel(f"Momentos: {summary}")
-            moments.setObjectName("recordingDetail")
-            moments.setWordWrap(True)
-            layout.addWidget(moments)
-
         actions = QHBoxLayout()
-        actions.setSpacing(8)
-
-        play = QPushButton("▶ Ver")
-        play.setObjectName("secondaryButton")
-        play.setFixedWidth(RECORDING_ROW_BUTTON_WIDTH)
-        play.clicked.connect(
-            lambda _checked=False, value=path: self.play_entry(value)
-        )
-        actions.addWidget(play)
-
-        window_button = QPushButton("🗔 Ventana")
-        window_button.setObjectName("secondaryButton")
-        window_button.setFixedWidth(RECORDING_ROW_BUTTON_WIDTH)
-        window_button.setToolTip(
-            "Abrir la partida en la ventana de repaso (vídeo + desglose)"
-        )
-        window_button.clicked.connect(
+        footer = QLabel(subtitle)
+        footer.setObjectName("recordingMeta")
+        if summary:
+            footer.setToolTip(f"Momentos detectados: {summary}")
+        actions.addWidget(footer, 1)
+        ver = QPushButton("▶ Ver")
+        ver.setObjectName("recordingAction")
+        ver.setProperty("class", "secondaryButton")
+        ver.clicked.connect(lambda _checked=False, value=path: self.play_entry(value))
+        ventana = QPushButton("↗ Repaso")
+        ventana.setObjectName("recordingAction")
+        ventana.setToolTip("Abrir esta partida en la ventana de repaso")
+        ventana.clicked.connect(
             lambda _checked=False, value=path: self.open_window_requested.emit(
                 str(value)
             )
         )
-        actions.addWidget(window_button)
-
-        remove = QPushButton("Eliminar")
-        remove.setObjectName("dangerButton")
-        remove.setFixedWidth(RECORDING_ROW_BUTTON_WIDTH)
-        remove.clicked.connect(
+        eliminar = QPushButton("Eliminar")
+        eliminar.setObjectName("recordingAction")
+        eliminar.setProperty("kind", "danger")
+        eliminar.clicked.connect(
             lambda _checked=False, value=path: self.delete_entry(value)
         )
-        actions.addWidget(remove)
-        actions.addStretch(1)
-
+        actions.addWidget(ver)
+        actions.addWidget(ventana)
+        actions.addWidget(eliminar)
         layout.addLayout(actions)
 
+        row.setCursor(Qt.CursorShape.PointingHandCursor)
+        row.mousePressEvent = lambda event, value=path: self.play_entry(value)
+
         return row
+
+    @staticmethod
+    def _champion_icon_bytes(champion: str) -> bytes:
+        """Lee desde caché local el icono Data Dragon del campeón."""
+        from data_dragon import get_champion_icon_path
+
+        path = get_champion_icon_path(champion, "", download=False)
+        return path.read_bytes() if path and path.is_file() else b""
+
+    @staticmethod
+    def _apply_champion_icon(token: Any, content: bytes, error: str | None) -> None:
+        """Presenta un retrato recibido del worker si la tarjeta sigue viva."""
+        if error or not content:
+            return
+        label, size = token if isinstance(token, tuple) else (token, 64)
+        try:
+            image = QImage.fromData(content)
+            if not image.isNull():
+                label.setText("")
+                label.setPixmap(
+                    QPixmap.fromImage(image).scaled(
+                        size,
+                        size,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+        except RuntimeError:
+            return
+
+    @staticmethod
+    def _battle_score(saved_match: Any) -> int | None:
+        """Normaliza el BattleScore canónico y distingue ausencia de cero."""
+        if not isinstance(saved_match, dict):
+            if saved_match is not None:
+                logger.warning(
+                    "Metadatos saved_match no válidos al leer BattleScore: %s",
+                    type(saved_match).__name__,
+                )
+            return None
+        raw_score = saved_match.get("battle_score")
+        if raw_score is None or raw_score == "":
+            return None
+        try:
+            if isinstance(raw_score, bool):
+                raise ValueError("booleano no válido como BattleScore")
+            if isinstance(raw_score, int):
+                score = raw_score
+            elif (
+                isinstance(raw_score, float)
+                and math.isfinite(raw_score)
+                and raw_score.is_integer()
+            ):
+                score = int(raw_score)
+            elif isinstance(raw_score, str):
+                score = int(raw_score.strip())
+            else:
+                raise ValueError("tipo de BattleScore no válido")
+        except (TypeError, ValueError, OverflowError) as error:
+            logger.warning("BattleScore no válido (%r): %s", raw_score, error)
+            return None
+        if score < 0:
+            logger.warning("BattleScore negativo descartado: %r", raw_score)
+            return None
+        return score
+
+    @staticmethod
+    def _sort_timestamp(entry: dict[str, Any]) -> float | None:
+        """Devuelve una fecha numérica válida para ordenar una grabación."""
+        raw_value = entry.get("created_at")
+        if isinstance(raw_value, bool) or raw_value is None:
+            return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return value if math.isfinite(value) else None
+
+    @staticmethod
+    def _sort_number(entry: dict[str, Any], field: str) -> float | None:
+        """Normaliza duración o tamaño sin propagar datos mal formados."""
+        raw_value = entry.get(field)
+        if isinstance(raw_value, bool) or raw_value is None:
+            return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return value if math.isfinite(value) and value >= 0 else None
+
+    @classmethod
+    def _sort_recording_entries(
+        cls, entries: list[dict[str, Any]], mode: int
+    ) -> list[dict[str, Any]]:
+        """Ordena de forma estable y mantiene al final los valores ausentes."""
+        ordered = list(entries)
+
+        def name_key(entry: dict[str, Any]) -> tuple[str, str]:
+            """Crea un desempate estable por nombre y ruta de archivo."""
+            name = str(entry.get("name") or entry.get("title") or "").casefold()
+            path = str(entry.get("path") or "").casefold()
+            return name, path
+
+        def fecha_reciente(entry: dict[str, Any]) -> tuple[bool, float, str, str]:
+            """Ordena fechas recientes primero y deja fechas ausentes al final."""
+            timestamp = cls._sort_timestamp(entry)
+            name, path = name_key(entry)
+            return timestamp is None, -(timestamp or 0.0), name, path
+
+        def score_key(
+            entry: dict[str, Any],
+        ) -> tuple[bool, int, bool, float, str, str]:
+            """Ordena scores válidos y después fecha y nombre de grabación."""
+            saved_match = entry.get("saved_match")
+            score = cls._battle_score(saved_match)
+            timestamp = cls._sort_timestamp(entry)
+            name, path = name_key(entry)
+            return (
+                score is None,
+                -(score if score is not None else 0),
+                timestamp is None,
+                -(timestamp or 0.0),
+                name,
+                path,
+            )
+
+        def numero_key(
+            entry: dict[str, Any], field: str
+        ) -> tuple[bool, float, bool, float, str, str]:
+            """Ordena un valor numérico y conserva un desempate reproducible."""
+            value = cls._sort_number(entry, field)
+            timestamp = cls._sort_timestamp(entry)
+            name, path = name_key(entry)
+            return (
+                value is None,
+                -(value if value is not None else 0.0),
+                timestamp is None,
+                -(timestamp or 0.0),
+                name,
+                path,
+            )
+
+        try:
+            if mode == 1:
+                ordered.sort(
+                    key=lambda entry: (
+                        cls._sort_timestamp(entry) is None,
+                        cls._sort_timestamp(entry) or 0.0,
+                        *name_key(entry),
+                    )
+                )
+            elif mode == 2:
+                ordered.sort(key=score_key)
+            elif mode == 3:
+                ordered.sort(key=lambda entry: numero_key(entry, "duration"))
+            elif mode == 4:
+                ordered.sort(key=lambda entry: numero_key(entry, "size_bytes"))
+            else:
+                ordered.sort(key=fecha_reciente)
+        except Exception:
+            logger.exception(
+                "Falló la ordenación de grabaciones (modo %s); se usará fecha reciente",
+                mode,
+            )
+            try:
+                ordered.sort(key=fecha_reciente)
+            except Exception:
+                logger.exception(
+                    "Falló también el orden seguro; se conserva el orden recibido"
+                )
+                return list(entries)
+        return ordered
+
+    def _filtered_entries(self) -> list[dict[str, Any]]:
+        """Filtra y ordena la biblioteca con metadatos ya cargados."""
+        entries = list(self.entries)
+        needle = (
+            self.search_input.text().strip().casefold()
+            if hasattr(self, "search_input")
+            else ""
+        )
+        if needle:
+            entries = [
+                entry
+                for entry in entries
+                if needle
+                in " ".join(
+                    (
+                        str(entry.get("title", "")),
+                        str(entry.get("champion", "")),
+                        str(entry.get("game_mode", "")),
+                        str(entry.get("summary", "")),
+                    )
+                ).casefold()
+            ]
+        result = (
+            self.result_filter.currentIndex() if hasattr(self, "result_filter") else 0
+        )
+        if result in (1, 2):
+            wanted = result == 1
+            entries = [
+                entry
+                for entry in entries
+                if (
+                    entry.get("saved_match", {}).get("win")
+                    if isinstance(entry.get("saved_match"), dict)
+                    else None
+                )
+                is wanted
+            ]
+        metadata_filter = (
+            self.metadata_filter.currentIndex()
+            if hasattr(self, "metadata_filter")
+            else 0
+        )
+        if metadata_filter == 1:
+            entries = [
+                entry
+                for entry in entries
+                if self._battle_score(entry.get("saved_match")) is not None
+            ]
+        elif metadata_filter == 2:
+            entries = [entry for entry in entries if bool(entry.get("markers"))]
+        date_filter = (
+            self.date_filter.currentIndex() if hasattr(self, "date_filter") else 0
+        )
+        if date_filter in (1, 2):
+            cutoff = time.time() - (7 if date_filter == 1 else 30) * 86400
+            entries = [
+                entry
+                for entry in entries
+                if (self._sort_timestamp(entry) or 0.0) >= cutoff
+            ]
+        sort = self.sort_filter.currentIndex() if hasattr(self, "sort_filter") else 0
+        return self._sort_recording_entries(entries, sort)
+
+    def _open_recording_settings(self) -> None:
+        """Abre la sección de ajustes de grabación de la ventana principal."""
+        window = self.window()
+        if hasattr(window, "settings_button"):
+            window.settings_button.click()
+            tabs = window.findChild(QWidget, "settingsTabs")
+            if tabs is not None:
+                tabs.setCurrentIndex(2)
+
+    def _update_storage_overview(self, total: int) -> None:
+        """Actualiza ocupación y capacidad configurada de las grabaciones."""
+        from app.services.recording_service import format_size
+
+        settings = getattr(self.window(), "settings", {})
+        limit = (
+            settings.get("recording_size_limit_gb")
+            if isinstance(settings, dict)
+            else None
+        )
+        try:
+            limit_gb = float(limit)
+        except (TypeError, ValueError):
+            limit_gb = None
+        if limit_gb is None or limit_gb <= 0:
+            self.storage_value.setText(f"{format_size(total)} / Límite no disponible")
+            self.storage_detail.setText(
+                f"{len(self.entries)} grabaciones · configuración no disponible"
+            )
+            self.storage_bar.setRange(0, 0)
+            return
+        capacity = int(limit_gb * 1024**3)
+        percent = min(100, round(total * 100 / capacity)) if capacity else 0
+        remaining = max(0, capacity - total)
+        self.storage_value.setText(f"{format_size(total)} / {limit_gb:g} GB")
+        self.storage_detail.setText(
+            f"{len(self.entries)} partidas · {percent}% usado · {format_size(remaining)} disponibles"
+        )
+        self.storage_bar.setRange(0, 100)
+        self.storage_bar.setValue(percent)
+        self.storage_bar.setProperty(
+            "state",
+            "full" if total >= capacity else "warning" if percent >= 80 else "normal",
+        )
+        self.storage_bar.style().unpolish(self.storage_bar)
+        self.storage_bar.style().polish(self.storage_bar)
 
     def _badge_state(self, entry: dict[str, Any], path: Any) -> str:
         if self._is_live_entry(path):
             return "live"
 
-        if not bool(entry.get("complete", True)) and not self._has_video(
-            path
-        ):
+        if not bool(entry.get("complete", True)) and not self._has_video(path):
             return "pending"
 
         return "ready"
@@ -1053,9 +1724,7 @@ class RecordingsPage(QWidget):
         if self._is_live_entry(path):
             return "● REC"
 
-        if not bool(entry.get("complete", True)) and not self._has_video(
-            path
-        ):
+        if not bool(entry.get("complete", True)) and not self._has_video(path):
             return "Procesando"
 
         return "Lista"
@@ -1066,11 +1735,7 @@ class RecordingsPage(QWidget):
 
         current = self.service.output_path
 
-        return (
-            current is not None
-            and path is not None
-            and Path(path) == Path(current)
-        )
+        return current is not None and path is not None and Path(path) == Path(current)
 
     @staticmethod
     def _has_video(path: Any) -> bool:
@@ -1078,7 +1743,6 @@ class RecordingsPage(QWidget):
             return Path(path).is_file()
         except (OSError, TypeError):
             return False
-
 
     def delete_entry(self, path: Any) -> None:
         if path is None:
@@ -1090,8 +1754,7 @@ class RecordingsPage(QWidget):
             QMessageBox.information(
                 self,
                 "Grabando ahora mismo",
-                "Esa partida se está grabando: podrás eliminarla al "
-                "terminar.",
+                "Esa partida se está grabando: podrás eliminarla al terminar.",
             )
 
             return
@@ -1134,11 +1797,15 @@ class RecordingsPage(QWidget):
         self.current_path = None
         self.pending_seek_ms = 0
         self.player_title.setText("Elige una grabación de la lista")
+        self.player_result.setText("SIN PARTIDA")
+        self.player_result.setProperty("state", "unknown")
+        self.player_date.setText("")
+        self.player_score.setText("")
+        self.current_saved_match = {}
         self.play_button.setEnabled(False)
-        actualizar_texto_boton(self.play_button, '▶ Reproducir')
+        actualizar_texto_boton(self.play_button, "▶ Reproducir")
         self.position_slider.setRange(0, 0)
         self.position_slider.set_markers([], 0)
-        self._update_kda_card()
         self.marker_list.clear()
         QApplication.processEvents()
 
@@ -1156,7 +1823,6 @@ class RecordingsPage(QWidget):
             return False
 
         return True
-
 
     # -- reproducción ---------------------------------------------------
 
@@ -1188,6 +1854,15 @@ class RecordingsPage(QWidget):
 
         self.current_path = video
         metadata = self.library.load_metadata(video)
+        selected = next(
+            (entry for entry in self.entries if Path(entry.get("path")) == video), {}
+        )
+        saved_match = (
+            selected.get("saved_match")
+            if isinstance(selected.get("saved_match"), dict)
+            else {}
+        )
+        self.current_saved_match = saved_match
         markers = metadata.get("markers")
 
         if not isinstance(markers, list):
@@ -1197,14 +1872,44 @@ class RecordingsPage(QWidget):
         self.position_slider.set_markers(markers, 0)
         self.position_slider.setRange(0, 0)
         self._rebuild_marker_list(markers)
-        self._update_kda_card()
-
         champion = str(metadata.get("champion") or video.stem)
-        self.player_title.setText(f"▶ {champion} — {video.name}")
+        self.player_title.setText(
+            f"{champion} · {metadata.get('game_mode') or 'Partida grabada'}"
+        )
+        result = (
+            "VICTORIA"
+            if saved_match.get("win") is True
+            else "DERROTA"
+            if saved_match.get("win") is False
+            else "RESULTADO NO DISPONIBLE"
+        )
+        result_state = (
+            "victory"
+            if saved_match.get("win") is True
+            else "defeat"
+            if saved_match.get("win") is False
+            else "unknown"
+        )
+        self.player_result.setText(result)
+        self.player_result.setProperty("state", result_state)
+        self.player_result.style().unpolish(self.player_result)
+        self.player_result.style().polish(self.player_result)
+        self.player_date.setText(str(selected.get("date_label") or ""))
+        score = self._battle_score(saved_match)
+        self.player_score.setText(
+            f"BATTLESCORE  {score}"
+            if isinstance(score, (int, float))
+            else "BATTLESCORE  —"
+        )
+        for recording_path, card in self._recording_cards.items():
+            card.setProperty("selected", str(recording_path == str(video)).lower())
+            card.style().unpolish(card)
+            card.style().polish(card)
         self.play_button.setEnabled(True)
-        actualizar_texto_boton(self.play_button, '⏸ Pausar')
+        actualizar_texto_boton(self.play_button, "⏸ Pausar")
         self.player.setSource(QUrl.fromLocalFile(str(video)))
         self.player.play()
+        self.video_widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def toggle_play(self) -> None:
         if self.current_path is None:
@@ -1218,12 +1923,34 @@ class RecordingsPage(QWidget):
             self.player.play()
 
     def seek_to_ms(self, position_ms: int) -> None:
-        if self.current_path is None or self.player.duration() <= 0:
+        """Busca una posición y conserva solicitudes durante la carga.
+
+        Args:
+            position_ms: Posición solicitada en milisegundos.
+
+        Returns:
+            None.
+        """
+        if self.current_path is None:
+            return
+
+        duration = int(self.player.duration())
+
+        if duration <= 0:
             self.pending_seek_ms = max(0, int(position_ms))
 
             return
 
-        self.player.setPosition(max(0, int(position_ms)))
+        self.player.setPosition(max(0, min(int(position_ms), duration)))
+
+    def pause_for_replay(self) -> None:
+        """Pausa el vídeo visible sin cambiar su posición.
+
+        Returns:
+            None.
+        """
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
 
     def seek_backward(self) -> None:
         self.seek_to_ms(self.player.position() - SEEK_SECONDS * 1000)
@@ -1237,14 +1964,14 @@ class RecordingsPage(QWidget):
     def _sync_play_button(self, state: QMediaPlayer.PlaybackState) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         if self.current_path is None:
-            actualizar_texto_boton(self.play_button, '▶ Reproducir')
+            actualizar_texto_boton(self.play_button, "▶ Reproducir")
 
             return
 
         if state == QMediaPlayer.PlaybackState.PlayingState:
-            actualizar_texto_boton(self.play_button, '⏸ Pausar')
+            actualizar_texto_boton(self.play_button, "⏸ Pausar")
         else:
-            actualizar_texto_boton(self.play_button, '▶ Reproducir')
+            actualizar_texto_boton(self.play_button, "▶ Reproducir")
 
     def _on_position_changed(self, position_ms: int) -> None:
         duration = self.player.duration()
@@ -1271,11 +1998,7 @@ class RecordingsPage(QWidget):
 
             if isinstance(markers, list):
                 self.position_slider.set_markers(markers, duration_ms)
-                self._update_kda_card()
-
-                total = sum(
-                    isinstance(item, dict) for item in markers
-                )
+                total = sum(isinstance(item, dict) for item in markers)
                 self.marker_count_label.setText(
                     f"{total} momento(s) marcado(s)"
                     if total
@@ -1286,16 +2009,12 @@ class RecordingsPage(QWidget):
             pending, self.pending_seek_ms = self.pending_seek_ms, 0
             self.player.setPosition(pending)
 
-    def _on_media_status(
-        self, status: QMediaPlayer.MediaStatus
-    ) -> None:
+    def _on_media_status(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
             self.player.setPosition(0)
             self.player.pause()
 
-    def _on_player_error(
-        self, error: QMediaPlayer.Error, message: str
-    ) -> None:
+    def _on_player_error(self, error: QMediaPlayer.Error, message: str) -> None:
         if error == QMediaPlayer.Error.NoError:
             return
 
@@ -1303,10 +2022,8 @@ class RecordingsPage(QWidget):
             return
 
         self.player_title.setText(
-            "No se pudo reproducir ese vídeo "
-            f"({message or 'formato no soportado'})."
+            f"No se pudo reproducir ese vídeo ({message or 'formato no soportado'})."
         )
-
 
     # -- lista de momentos ----------------------------------------------
 
@@ -1326,12 +2043,11 @@ class RecordingsPage(QWidget):
             label = str(marker.get("label") or "Evento")
             detail = str(marker.get("detail") or label)
             item = QListWidgetItem(
-                f"{style['glyph']} {format_duration(seconds)} · "
-                f"{label} — {detail}"
+                f"{style['glyph']}   {format_duration(seconds):>5}   {label} · {detail}"
             )
-            item.setData(
-                Qt.ItemDataRole.UserRole, int(seconds * 1000)
-            )
+            item.setData(Qt.ItemDataRole.UserRole, int(seconds * 1000))
+            item.setToolTip(f"{format_duration(seconds)} · {label} — {detail}")
+            item.setForeground(QColor(style["color"]))
             self.marker_list.addItem(item)
 
     def _jump_to_marker_item(self, item: QListWidgetItem) -> None:
@@ -1388,23 +2104,38 @@ class RecordingsPage(QWidget):
 
         total = self.folder_size_cached()
         count = len(self.entries)
+        self._update_storage_overview(total)
         base = f"{count} grabación(es) · {format_size(total)} en disco"
 
-        self.stop_button.setEnabled(self.service.is_recording)
+        activo = self.service.is_starting_or_recording
+        parando = bool(self.service.stop_requested)
+        self.start_button.setEnabled(not activo)
+        self.stop_button.setEnabled(activo and not parando)
 
-        if self.service.is_recording:
+        if parando:
+            self.status_label.setText(f"Finalizando grabación… · {base}")
+            self.status_label.setProperty("state", "idle")
+            self.recording_tick.stop()
+        elif self.service.is_recording:
             elapsed = format_duration(self.service.elapsed_seconds())
+            audio = self.service.audio_status_text
+            detalle_audio = f"\n{audio}" if audio.startswith("Error:") else ""
             self.status_label.setText(
-                f"● Grabando partida ({elapsed}) · {base}"
+                f"● Grabando partida ({elapsed}) · {base}{detalle_audio}"
             )
             self.status_label.setProperty("state", "live")
 
             if not self.recording_tick.isActive():
                 self.recording_tick.start()
+        elif self.service.is_starting_or_recording:
+            self.status_label.setText(f"Iniciando grabación… · {base}")
+            self.status_label.setProperty("state", "idle")
+            self.recording_tick.stop()
         else:
-            self.status_label.setText(
-                f"{notice} · {base}" if notice else base
-            )
+            diagnostico = self.service.audio_status_text
+            aviso_audio = f"\n{diagnostico}" if diagnostico.startswith("Error:") else ""
+            detalle = f"{notice} · {base}" if notice else base
+            self.status_label.setText(f"{detalle}{aviso_audio}")
             self.status_label.setProperty("state", "idle")
             self.recording_tick.stop()
 

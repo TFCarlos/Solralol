@@ -142,46 +142,20 @@ def test_aatrox_soloq_no_recibe_objetos_de_evento_y_conserva_alternativas() -> N
     ids = {item["item_id"] for item in resultado["situational_item_candidates"]}
     categorias = resultado["situational_items"]
 
-    assert len(resultado["situational_item_candidates"]) >= 30
-    assert all(categorias.values())
-    assert {"6333", "3156", "3071"}.issubset(ids)
+    assert len(resultado["situational_item_candidates"]) <= 20
+    assert all(2 <= len(valores) <= 5 for valores in categorias.values())
     assert not {"667101", "667112", "6693", "6701", "2530", "322530"} & ids
     assert "3085" not in ids
     assert "6675" not in ids
-    assert "3222" in ids
-    assert "3036" in ids
-    assert "3072" in ids
-    assert "3153" in ids
-    mikael = next(
-        item
-        for item in resultado["situational_item_candidates"]
-        if item["item_id"] == "3222"
+    assert all(
+        preparado.catalogo.validar_elegibilidad(
+            item_id,
+            preparado.catalogo.catalogo[item_id],
+            "Aatrox",
+            MODO_SOLOQ,
+        ).elegible
+        for item_id in ids
     )
-    assert mikael["compatibility_label"] == "Experimental"
-    assert "prioriza proteger a un aliado" in " ".join(mikael["compatibility_reasons"])
-    assert (
-        next(
-            item
-            for item in resultado["situational_item_candidates"]
-            if item["item_id"] == "3072"
-        )["compatibility_label"]
-        == "Experimental"
-    )
-    assert (
-        next(
-            item
-            for item in resultado["situational_item_candidates"]
-            if item["item_id"] == "3153"
-        )["compatibility_label"]
-        == "Experimental"
-    )
-    dominik = next(
-        item
-        for item in resultado["situational_item_candidates"]
-        if item["item_id"] == "3036"
-    )
-    assert dominik["compatibility_label"] == "Experimental"
-    assert "crítico" in " ".join(dominik["compatibility_reasons"]).casefold()
     assert resultado["recommendation_mode"] == MODO_SOLOQ
     assert resultado["recommendation_catalog_version"] == "16.20.1"
     assert (

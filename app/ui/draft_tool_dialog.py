@@ -2241,12 +2241,18 @@ class DraftToolDialog(QDialog):
             """Importa runas y build al cliente con los datos capturados; devuelve éxito y mensaje."""
             exito_runas, mensaje_runas = lcu.import_rune_page(
                 name=f"{campeon} Página {indice}",
-                primary_tree=str(pagina.get("primary_tree") or "Precision"),
-                secondary_tree=str(pagina.get("secondary_tree") or "Resolve"),
+                primary_tree=pagina.get("primary_tree_id")
+                or str(pagina.get("primary_tree") or ""),
+                secondary_tree=pagina.get("secondary_tree_id")
+                or str(pagina.get("secondary_tree") or ""),
                 keystone_name=str(pagina.get("keystone") or ""),
                 slots=list(pagina.get("slots") or []),
                 secondary_slots=list(pagina.get("secondary_slots") or []),
                 shards=list(pagina.get("shards") or []),
+                keystone_id=pagina.get("keystone_id"),
+                slot_ids=pagina.get("slot_ids"),
+                secondary_slot_ids=pagina.get("secondary_slot_ids"),
+                shard_ids=pagina.get("shard_ids"),
             )
             exito_build, mensaje_build = lcu.import_item_set(
                 champion_id=int(build.get("champion_id") or 0),

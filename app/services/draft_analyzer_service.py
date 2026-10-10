@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from _paths import DATA_DIR
+from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
+from app.services.champion_variant_service import ChampionVariantService
+from app.services.curador_recomendaciones_build import CuradorRecomendacionesBuild
 from app.services.repositorio_campeones import RepositorioCampeones
+from app.services.synergy_recommendation_service import SynergyRecommendationService
 
 
 class DraftAnalyzerService:
@@ -36,7 +40,11 @@ class DraftAnalyzerService:
         ruta_campeones: Path | None = None,
         perfiles: Iterable[dict[str, Any]] | None = None,
     ) -> None:
-        """Inicializa datos desde la ruta y perfiles opcionales; no devuelve valor."""
+        """Inicializa perfiles y catálogos locales.
+
+        Parámetros: raíz de campeones opcional y perfiles de prueba opcionales.
+        Retorno: None; prepara índices, variantes y curador sin acceso remoto.
+        """
         self.path = ruta_campeones or DATA_DIR / "champion_data"
         self.champions: dict[str, dict[str, Any]] = {}
         self.champ_by_id: dict[int, str] = {}
@@ -57,6 +65,29 @@ class DraftAnalyzerService:
             self.version = str(raw_items.get("version") or self.version)
         except (OSError, ValueError):
             self.items = {}
+        try:
+            objetos_estrictos = json.loads(
+                (self.path.parent / "legendary_items_strict.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, ValueError):
+            objetos_estrictos = []
+        self.variantes = ChampionVariantService(self.path)
+        catalogo = CatalogoAnalisisLocal(
+            self.items,
+            objetos_estrictos,
+            SynergyRecommendationService.ITEM_NAME_ALIASES,
+            self.version,
+        )
+        self.curador = CuradorRecomendacionesBuild(
+            catalogo,
+            {
+                str(objeto.get("id")): objeto
+                for objeto in objetos_estrictos
+                if isinstance(objeto, dict) and objeto.get("id")
+            },
+        )
         self.item_names = {}
         for item_id, item in self.items.items():
             if item.get("maps", {}).get("11", True) and not item.get("requiredAlly"):
@@ -445,15 +476,16 @@ class DraftAnalyzerService:
         }
 
     def get_situational_items(self, champion_name: str) -> list[dict[str, Any]]:
-        """Opciones situacionales del campeón por categoría, ya resueltas a objetos.
+        """Devuelve alternativas curadas para la l?nea principal disponible.
 
-        Devuelve la misma información que la tarjeta SITUACIONALES del analizador
-        local: las cuatro categorías conocidas en orden, y dentro de cada una los
-        objetos comprables del campeón. Se omiten botas y nombres sin resolver en
-        el catálogo para no inventar compras.
+        Par?metros: nombre can?nico o visible del campe?n.
+        Retorno: grupos con hasta tres objetos locales y elegibles por categor?a.
         """
         prof = self.get_champion_profile(champion_name) or {}
-        situational = prof.get("situational_items", {})
+        variante = self._variante_recomendaciones_curada(champion_name, prof)
+        situational = variante.get(
+            "situational_items", prof.get("situational_items", {})
+        )
         if not isinstance(situational, dict):
             return []
         groups: list[dict[str, Any]] = []
@@ -463,7 +495,7 @@ class DraftAnalyzerService:
                 continue
             items: list[dict[str, str]] = []
             seen: set[str] = set()
-            for name in names:
+            for name in names[:3]:
                 item_id = self.item_names.get(str(name).strip().casefold(), "")
                 item = self.items.get(item_id, {})
                 if not item or item_id in seen or "Boots" in item.get("tags", []):
@@ -474,16 +506,74 @@ class DraftAnalyzerService:
                 groups.append({"key": cat_key, "label": cat_label, "items": items})
         return groups
 
+    def _variante_recomendaciones_curada(
+        self, champion_name: str, perfil: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Carga y cura la variante local de rango y línea más representativos.
+
+        Parámetros: campeón solicitado y perfil global del repositorio.
+        Retorno: variante curada o diccionario vacío si no hay datos locales.
+        """
+        rangos = self.variantes.available_ranks(champion_name)
+        if not rangos:
+            return {}
+        rango = "emerald_plus" if "emerald_plus" in rangos else rangos[0]
+        lineas = self.variantes.available_lanes(champion_name, rango)
+        if not lineas:
+            return {}
+        lineas_por_rol = {
+            "top": "top",
+            "jungle": "jungle",
+            "mid": "mid",
+            "bot": "adc",
+            "support": "support",
+        }
+        roles = self.get_likely_roles(champion_name)
+        linea_preferida = next(
+            (
+                lineas_por_rol.get(rol.casefold(), "")
+                for rol in roles
+                if lineas_por_rol.get(rol.casefold(), "") in lineas
+            ),
+            lineas[0],
+        )
+        variante = self.variantes.get(champion_name, linea_preferida, rango) or {}
+        candidatos = (
+            variante.get("item_candidates")
+            or variante.get("recommendations")
+            or variante.get("situational_item_candidates", [])
+        )
+        if not isinstance(candidatos, list):
+            candidatos = []
+        return self.curador.curar(variante, perfil, candidatos)
+
     def get_champion_build(
         self, champion_name: str, enemies: list[str]
     ) -> dict[str, Any]:
-        """Seis compras principales y botas aparte; la sexta puede ser alternativa tardía."""
+        """Devuelve la progresión curada de seis objetos y las botas seleccionadas.
+
+        Parámetros: campeón propio y nombres de enemigos conocidos.
+        Retorno: build, botas, motivos defensivos y objetos situacionales.
+        """
         prof = self.get_champion_profile(champion_name) or {}
         core = []
         boots_id = ""
         unresolved = []
-        for name in prof.get("most_played_build", []):
+        variante = self._variante_recomendaciones_curada(champion_name, prof)
+        recomendada = variante.get("recommended_build", [])
+        secuencia = (
+            [
+                str(item.get("name", ""))
+                for item in recomendada
+                if isinstance(item, dict)
+            ]
+            if recomendada
+            else prof.get("most_played_build", [])
+        )
+        for name in secuencia:
             item_id = self.item_names.get(str(name).strip().casefold(), "")
+            if not item_id and str(name).isdigit() and str(name) in self.items:
+                item_id = str(name)
             item = self.items.get(item_id, {})
             if not item:
                 unresolved.append(str(name))
@@ -492,13 +582,8 @@ class DraftAnalyzerService:
             elif item_id not in core:
                 core.append(item_id)
         main_count = len(core)
-        # Alternativas situacionales del campeón, sin objetos inventados: se usan
         # para completar el núcleo y además viajan a la build importada.
         situational = self.get_situational_items(champion_name)
-        for group in situational:
-            for item in group["items"]:
-                if item["id"] not in core:
-                    core.append(item["id"])
         known_enemies = [e for e in enemies if self.get_champion_profile(e)]
         damage = self.calculate_team_damage_breakdown(known_enemies)
         if not known_enemies:

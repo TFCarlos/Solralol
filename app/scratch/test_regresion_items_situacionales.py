@@ -238,7 +238,11 @@ def test_recomendaciones_se_persisten_y_se_recargan_sin_danar_otro_campeon(
     assert lectura.datos["source_situational_items"]["corta_curas"] == [
         "Recordatorio letal"
     ]
-    assert len(lectura.datos["situational_item_candidates"]) > 10
+    assert len(lectura.datos["situational_item_candidates"]) <= 20
+    assert all(
+        2 <= len(valores) <= 5
+        for valores in lectura.datos["situational_items"].values()
+    )
     assert len(lectura.datos["item_candidates"]) > 30
     assert lectura.datos["recommended_build"]
     assert lectura.datos["situational_item_pipeline"]["persisted"] == 4
@@ -258,12 +262,13 @@ def test_pool_contextual_completo_botas_validas_y_cuatro_categorias() -> None:
     categorias = datos["situational_items"]
 
     assert len(datos["item_candidates"]) > 30
-    assert len(datos["situational_item_candidates"]) > 10
+    assert len(datos["situational_item_candidates"]) <= 20
+    assert all(2 <= len(valores) <= 5 for valores in categorias.values())
     assert all(
-        categorias[key]
-        for key in ("corta_curas", "tanque", "asesino", "utilidad_y_defensa")
+        preparado.curador._categoria(str(entrada["item_id"])) == "corta_curas"
+        for entrada in datos["situational_item_candidates"]
+        if entrada["category"] == "corta_curas"
     )
-    assert "Recordatorio letal" in categorias["corta_curas"]
     assert datos["recommendation_diagnostics"]["affinity_candidate_count"] == len(
         datos["item_candidates"]
     )
@@ -315,7 +320,7 @@ def test_build_local_inserta_una_bota_valida_despues_del_primer_objeto() -> None
 
     assert len(botas) == 1
     assert build[0]["name"] == "Eclipse"
-    assert build[1]["item_id"] == botas[0]["item_id"]
+    assert build[2]["item_id"] == botas[0]["item_id"]
     assert botas[0]["origin"] == "SOLRALOL"
 
 
@@ -453,9 +458,10 @@ def test_build_ui_separa_botas_y_no_repite_el_nucleo(
     assert dialogo.core_title.text() == "NÚCLEO DE LA BUILD"
     panel_botas = dialogo.build_grid.itemAtPosition(1, 0).widget()
     assert panel_botas is not None
-    assert "BOTAS RECOMENDADAS" in [
-        label.text() for label in panel_botas.findChildren(QLabel)
-    ]
+    assert any(
+        label.text().startswith("4.") for label in panel_botas.findChildren(QLabel)
+    )
+    assert len(panel_botas.findChildren(QWidget, "localItemRow")) == 1
     dialogo.close()
     app.processEvents()
 
@@ -500,7 +506,7 @@ def test_ui_pinta_ventajas_favorables_del_registro(
     app.processEvents()
 
 
-def test_listas_situacionales_muestran_cuatro_filas_completas_en_resoluciones_de_escritorio(
+def test_listas_situacionales_se_limitan_a_tres_filas_en_resoluciones_de_escritorio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Comprueba el alto visible de cada categoría sin limitar sus recomendaciones."""
@@ -551,7 +557,7 @@ def test_listas_situacionales_muestran_cuatro_filas_completas_en_resoluciones_de
                 if not cantidad:
                     continue
                 filas = scroll.widget().findChildren(QWidget, "localItemRow")
-                assert len(filas) == cantidad
+                assert len(filas) == min(5, cantidad)
                 viewport = scroll.viewport()
                 visibles = [
                     fila
@@ -560,30 +566,23 @@ def test_listas_situacionales_muestran_cuatro_filas_completas_en_resoluciones_de
                     and fila.mapTo(viewport, QPoint(0, 0)).y() + fila.height()
                     <= viewport.height()
                 ]
-                assert len(visibles) >= min(4, cantidad)
-                assert all(fila in visibles for fila in filas[: min(4, cantidad)])
+                assert len(visibles) >= min(3, cantidad)
+                assert all(fila in visibles for fila in filas[: min(3, cantidad)])
                 assert (
                     viewport.height()
-                    >= sum(fila.height() for fila in filas[: min(4, cantidad)])
-                    + max(0, min(4, cantidad) - 1) * 4
+                    >= sum(fila.height() for fila in filas[: min(3, cantidad)])
+                    + max(0, min(3, cantidad) - 1) * 4
                 )
                 assert all(
                     etiqueta.wordWrap()
                     for fila in filas
                     for etiqueta in fila.findChildren(QLabel, "localItemName")
                 )
-                if cantidad > 4:
-                    assert scroll.verticalScrollBar().maximum() > 0
-                    scroll.verticalScrollBar().setValue(
-                        scroll.verticalScrollBar().maximum()
-                    )
-                    app.processEvents()
-                    assert (
-                        len(scroll.widget().findChildren(QWidget, "localItemRow"))
-                        == cantidad
-                    )
+                assert len(visibles) == min(3, cantidad)
+                if cantidad <= 3:
+                    assert scroll.verticalScrollBar().maximum() == 0
                 else:
-                    assert len(visibles) == cantidad
+                    assert scroll.verticalScrollBar().maximum() > 0
     dialogo.close()
     app.processEvents()
 

@@ -4,6 +4,12 @@ import os
 import sys
 import traceback
 
+from app.utils.configuracion_multimedia_qt import (
+    excluir_codificadores_media_foundation,
+)
+
+excluir_codificadores_media_foundation()
+
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication

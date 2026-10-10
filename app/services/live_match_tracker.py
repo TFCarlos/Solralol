@@ -282,6 +282,32 @@ class LiveMatchTracker:
             return
         raise KeyError("No existe una partida guardada con ese identificador.")
 
+    def guardar_revision_ia(self, session_id: str, registro: dict[str, Any]) -> None:
+        """Guarda el informe IA de repaso dentro de la partida canónica.
+
+        Args:
+            session_id: Identificador local estable de la partida guardada.
+            registro: Informe validado y metadatos de generación.
+
+        Returns:
+            None.
+        """
+        if (
+            not session_id
+            or not isinstance(registro, dict)
+            or registro.get("saved_match_id") != session_id
+            or not isinstance(registro.get("analysis"), dict)
+            or int(registro.get("schema_version") or 0) not in {1, 2}
+        ):
+            raise ValueError("El informe IA no corresponde a una partida válida.")
+        sesiones = deepcopy(self.load_saved_sessions())
+        for sesion in sesiones:
+            if str(sesion.get("session_id") or "") == session_id:
+                sesion["ai_match_review"] = deepcopy(registro)
+                self._save_sessions(sesiones)
+                return
+        raise KeyError("No existe una partida guardada con ese identificador.")
+
     def _index_players(self, snapshot: dict[str, Any]) -> None:
         if self.session is None:
             return

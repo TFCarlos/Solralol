@@ -20,6 +20,7 @@ from PySide6.QtGui import (
     QCloseEvent,
     QColor,
     QDesktopServices,
+    QGuiApplication,
     QPainter,
     QPainterPath,
     QResizeEvent,
@@ -93,11 +94,11 @@ from app.services.recording_service import (
     format_size,
     list_audio_devices,
     normalize_audio_mode,
-    pick_game_audio_device,
     pick_microphone_device,
     pick_system_audio_device,
     quality_label,
     recording_settings_defaults,
+    run_recording_diagnostic,
 )
 from app.services.resumen_rendimiento_historial import (
     asegurar_puntuacion_guardada,
@@ -453,18 +454,24 @@ class MainWindow(QMainWindow):
             self.recording_library,
             self,
         )
+        self._close_after_recording_finalizes = False
         # La búsqueda de ffmpeg recorre el PATH y comprueba candidatos en
         # disco, y el sondeo de dispositivos de audio lanza ffmpeg: ambos se
         # hacen en workers para que la ventana aparezca sin esperar.
         self._ffmpeg_ready = False
         self._refresh_ffmpeg_task: AsyncTask | None = None
         self._pending_recording_snapshot: dict[str, Any] | None = None
+        self._recording_test_task: AsyncTask | None = None
         self._devices_task: AsyncTask | None = None
         self._system_devices_task: AsyncTask | None = None
         self._start_background_ffmpeg_check()
         self.recording_service.failed.connect(self._on_recording_failed)
+        self.recording_service.audio_status.connect(self._on_recording_audio_status)
         self.recording_service.finished.connect(self._on_recording_finished)
         self.recording_service.state_changed.connect(self._sync_overlay_recording)
+        self.recording_service.state_changed.connect(
+            self._close_after_recording_state_change
+        )
         self.recording_system_audio_combo = None
         self.recording_system_audio_button = None
         self.recording_mic_capture_enabled = False
@@ -570,6 +577,9 @@ class MainWindow(QMainWindow):
             self,
         )
         self.recordings_page.open_folder_requested.connect(self.open_recordings_folder)
+        self.recordings_page.start_recording_requested.connect(
+            self.start_recording_manually
+        )
         self.recordings_page.stop_recording_requested.connect(
             self.stop_recording_manually
         )
@@ -2298,9 +2308,10 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(
             self._settings_description(
                 "Cada partida se graba sola: la grabación empieza cuando "
-                "empieza la partida y termina al acabarla. Guarda el vídeo "
-                "de la pantalla con el sonido del juego; el micrófono es "
-                "opcional. Los cambios se aplican a la próxima grabación."
+                "empieza la partida y termina al acabarla. Captura el monitor "
+                "donde está League; también puedes elegir otro monitor si el "
+                "juego no se detecta. El modo de audio se configura aparte. "
+                "Los cambios se aplican a la próxima grabación."
             )
         )
 
@@ -2312,6 +2323,31 @@ class MainWindow(QMainWindow):
         )
         self.recording_auto_checkbox.toggled.connect(self._on_recording_auto_toggled)
         card_layout.addWidget(self.recording_auto_checkbox)
+
+        monitor_row = QHBoxLayout()
+        monitor_row.setSpacing(10)
+        monitor_caption = QLabel("Monitor de grabación")
+        monitor_caption.setObjectName("settingsLabel")
+        monitor_caption.setMinimumWidth(150)
+        monitor_row.addWidget(monitor_caption)
+        self.recording_monitor_combo = QComboBox()
+        self.recording_monitor_combo.setObjectName("analysisCombo")
+        self.recording_monitor_combo.addItem("Automático (monitor de League)", -1)
+        for indice, pantalla in enumerate(QGuiApplication.screens()):
+            geometria = pantalla.geometry()
+            etiqueta = (
+                f"Monitor {indice + 1} · {geometria.width()}×{geometria.height()}"
+            )
+            self.recording_monitor_combo.addItem(etiqueta, indice)
+        self.set_combo_value(
+            self.recording_monitor_combo,
+            RecordingConfig.from_settings(self.settings).monitor_index,
+        )
+        self.recording_monitor_combo.currentIndexChanged.connect(
+            self._on_recording_monitor_changed
+        )
+        monitor_row.addWidget(self.recording_monitor_combo, 1)
+        card_layout.addLayout(monitor_row)
 
         quality_row = QHBoxLayout()
         quality_row.setSpacing(10)
@@ -2570,6 +2606,10 @@ class MainWindow(QMainWindow):
         self.recording_status = QLabel()
         self.recording_status.setObjectName("apiKeyStatus")
         self.recording_status.setWordWrap(True)
+        self.recording_test_button = QPushButton("Probar grabación")
+        self.recording_test_button.setObjectName("secondaryButton")
+        self.recording_test_button.clicked.connect(self.test_recording_configuration)
+        card_layout.addWidget(self.recording_test_button)
         card_layout.addWidget(self.recording_status)
 
         self.refresh_recording_devices(silent=True)
@@ -2588,6 +2628,17 @@ class MainWindow(QMainWindow):
         self.settings["recording_auto"] = bool(checked)
         self._save_recording_settings()
         self.sync_recording_controls()
+
+    def _on_recording_monitor_changed(self, _index: int) -> None:
+        """Guarda el monitor elegido para capturas sin League detectable.
+
+        Parámetros: índice nuevo del desplegable.
+        Retorno: ninguno.
+        """
+        valor = self.recording_monitor_combo.currentData()
+        if valor is not None:
+            self.settings["recording_monitor_index"] = int(valor)
+            self._save_recording_settings()
 
     def _on_recording_quality_changed(self, _index: int) -> None:
         value = self.recording_quality_combo.currentData()
@@ -2907,14 +2958,7 @@ class MainWindow(QMainWindow):
 
             return
 
-        saved_game = str(self.settings.get("recording_game_audio_device") or "")
         saved_mic = str(self.settings.get("recording_mic_device") or "")
-
-        if not saved_game:
-            saved_game = pick_game_audio_device(devices)
-
-            if saved_game:
-                self.settings["recording_game_audio_device"] = saved_game
 
         if not saved_mic:
             saved_mic = pick_microphone_device(devices)
@@ -2922,15 +2966,16 @@ class MainWindow(QMainWindow):
             if saved_mic:
                 self.settings["recording_mic_device"] = saved_mic
 
-        for combo in combos:
-            combo.setEnabled(True)
-
-        self._fill_audio_combo(
-            self.recording_game_audio_combo,
-            devices,
-            saved_game,
-            "Automático (mejor capturador disponible)",
+        self.recording_game_audio_combo.blockSignals(True)
+        self.recording_game_audio_combo.clear()
+        self.recording_game_audio_combo.addItem("Captura por proceso no disponible", "")
+        self.recording_game_audio_combo.setEnabled(False)
+        self.recording_game_audio_combo.setToolTip(
+            "La captura exclusiva de audio del juego requiere loopback "
+            "de Windows por proceso."
         )
+        self.recording_game_audio_combo.blockSignals(False)
+        self.recording_mic_combo.setEnabled(True)
         self._fill_audio_combo(
             self.recording_mic_combo,
             devices,
@@ -2992,7 +3037,15 @@ class MainWindow(QMainWindow):
     # -- ventana independiente de repaso --------------------------------
 
     def open_replay_window_for_video(self, video_path: str) -> None:
-        """Abre la ventana de repaso para una grabación concreta."""
+        """Pausa la biblioteca y abre el repaso de una grabación.
+
+        Args:
+            video_path: Ruta del vídeo que se abrirá en el repaso.
+
+        Returns:
+            None.
+        """
+        self.recordings_page.pause_for_replay()
         self.open_replay_window(video_path=video_path)
 
     def open_replay_window(
@@ -3060,6 +3113,7 @@ class MainWindow(QMainWindow):
         window.show()
         window.raise_()
         window.activateWindow()
+        window.video_widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def clear_replay_window(self) -> None:
         """Suelta la referencia al cerrarse la ventana de repaso."""
@@ -3103,6 +3157,7 @@ class MainWindow(QMainWindow):
 
         widgets = (
             self.recording_auto_checkbox,
+            self.recording_monitor_combo,
             self.recording_quality_combo,
             self.recording_bitrate_combo,
             self.recording_audio_mode_combo,
@@ -3117,6 +3172,7 @@ class MainWindow(QMainWindow):
             widget.blockSignals(True)
 
         self.recording_auto_checkbox.setChecked(config.enabled)
+        self.set_combo_value(self.recording_monitor_combo, config.monitor_index)
         self.set_combo_value(self.recording_quality_combo, config.quality)
         self.set_combo_value(self.recording_bitrate_combo, config.video_bitrate)
         self.set_combo_value(self.recording_audio_mode_combo, config.audio_mode)
@@ -3174,7 +3230,19 @@ class MainWindow(QMainWindow):
         else:
             pieces.append(service.ffmpeg_hint or "ffmpeg no encontrado")
 
+        if service.active_monitor_index >= 0:
+            pieces.append(
+                f"Captura DXGI · AMD AMF H.264 · Monitor "
+                f"{service.active_monitor_index + 1}"
+            )
+
         pieces.append(audio_mode_label(config.audio_mode))
+
+        if mode != "none":
+            pieces.append(
+                service.audio_status_text
+                or "Esperando confirmación de la fuente de audio"
+            )
 
         if audio_mode_uses_game(mode) and config.game_audio_device:
             pieces.append(f"Juego: {config.game_audio_device}")
@@ -3195,6 +3263,8 @@ class MainWindow(QMainWindow):
             elapsed = service.elapsed_seconds()
             minutes, seconds = divmod(int(elapsed), 60)
             pieces.append(f"● Grabando ({minutes:02d}:{seconds:02d})")
+        elif service.is_starting_or_recording:
+            pieces.append("Iniciando captura de vídeo…")
 
         self.recording_status.setText(" · ".join(pieces))
 
@@ -3205,6 +3275,32 @@ class MainWindow(QMainWindow):
             self.recordings_page.sync_recording_state()
 
     # -- grabación automática de la partida -----------------------------
+
+    def start_recording_manually(self) -> None:
+        """Inicia una sesiÃ³n manual con el controlador compartido.
+
+        Retorno: None; asocia la partida viva solo con un identificador fiable.
+        """
+        if self.recording_service.is_starting_or_recording:
+            return
+
+        session = self.live_match_tracker.get_live_session()
+        sesion_valida = (
+            session if isinstance(session, dict) and session.get("session_id") else None
+        )
+        try:
+            game_time = float((sesion_valida or {}).get("duration", 0.0))
+        except (TypeError, ValueError):
+            game_time = 0.0
+        self.recording_service.start(
+            self.recording_config,
+            game_time=game_time,
+            champion=str((sesion_valida or {}).get("champion_name", "")),
+            game_mode=str((sesion_valida or {}).get("game_mode", "")),
+            session=sesion_valida,
+            recording_source="manual",
+        )
+        self.sync_recording_controls()
 
     def start_match_recording(self, snapshot: dict[str, Any]) -> None:
         """Arranca la grabación al empezar la partida si está activada.
@@ -3233,23 +3329,32 @@ class MainWindow(QMainWindow):
 
         champion = str(local_player.get("championName", "Desconocido"))
         game_mode = str(snapshot.get("game_mode", "UNKNOWN"))
+        logger.info("[Recording] Partida detectada; preparando inicio automático")
 
         try:
             game_time = float(snapshot.get("game_time", 0))
         except (TypeError, ValueError):
             game_time = 0.0
 
-        self.recording_service.start(
+        iniciado = self.recording_service.start(
             self.recording_config,
             game_time=game_time,
             champion=champion,
             game_mode=game_mode,
+            recording_source="automatic",
         )
         self.sync_recording_controls()
+        if iniciado:
+            logger.info("[Recording] Inicio solicitado al servicio de grabación")
+        elif self.recording_service.last_error and hasattr(self, "recording_status"):
+            self.recording_status.setText(
+                f"{self.recording_service.last_error} "
+                f"{self.recording_status.text()}".strip()
+            )
 
     def stop_match_recording(self, reason: str, session: dict | None = None) -> None:
         """Para la grabación al terminar la partida."""
-        if not self.recording_service.is_recording:
+        if not self.recording_service.is_starting_or_recording:
             return
 
         self.recording_service.stop(reason=reason, session=session)
@@ -3262,7 +3367,7 @@ class MainWindow(QMainWindow):
         datos de la partida sigan acumulándose. La sesión se pasa al motor
         para que los marcadores queden guardados en la grabación.
         """
-        if not self.recording_service.is_recording:
+        if not self.recording_service.is_starting_or_recording:
             return
 
         session = self.live_match_tracker.get_live_session()
@@ -3278,6 +3383,77 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, "recordings_page"):
             self.recordings_page.refresh()
+
+    def _on_recording_audio_status(self, message: str) -> None:
+        """Muestra el diagnóstico vigente de la captura de audio.
+
+        Parámetros: message es el estado técnico expresado para el usuario.
+        Retorno: None.
+        """
+        self.recording_service.audio_status_text = str(message or "")
+        self.sync_recording_controls()
+
+    def test_recording_configuration(self) -> None:
+        """Ejecuta la prueba breve de captura fuera del hilo gráfico.
+
+        Parámetros: ninguno.
+        Retorno: None; publica el diagnóstico al completar el worker.
+        """
+        if self._recording_test_task is not None:
+            return
+        if not self.recording_service.ffmpeg_available:
+            self.recording_status.setText(
+                self.recording_service.ffmpeg_hint or "FFmpeg todavía no está listo."
+            )
+            return
+
+        config = self.recording_config
+        ruta_ffmpeg = self.recording_service.ffmpeg_path
+        self.recording_test_button.setEnabled(False)
+        self.recording_status.setText(
+            "Probando la ventana de League of Legends y la salida de vídeo…"
+        )
+        logger.info("[Recording] Prueba breve solicitada desde Ajustes")
+        self._recording_test_task = run_async(
+            lambda: run_recording_diagnostic(config, ruta_ffmpeg),
+            on_finished=self._on_recording_test_finished,
+        )
+
+    def _on_recording_test_finished(
+        self, _token: Any, resultado: Any, error: str | None
+    ) -> None:
+        """Presenta el resultado real de la prueba de grabación.
+
+        Parámetros: token del worker, resultado estructurado y error general.
+        Retorno: None; actualiza el estado visible y libera el botón.
+        """
+        self._recording_test_task = None
+        self.recording_test_button.setEnabled(True)
+        if error or not isinstance(resultado, dict):
+            mensaje = f"Falló la prueba de grabación: {error or 'resultado inválido'}"
+            logger.error("[Recording] Worker de prueba fallido: %s", error)
+            self.recording_status.setText(mensaje)
+            return
+
+        video = (
+            f"Vídeo validado: {resultado.get('frames', 0)} fotogramas decodificados."
+            if resultado.get("video_ok")
+            else (
+                f"Fallo en {resultado.get('stage', 'captura')}: "
+                f"{resultado.get('message') or 'No se validó vídeo de juego.'}"
+            )
+        )
+        audio = str(resultado.get("audio_state") or "Audio no comprobado.")
+        self.recording_status.setText(f"{video} Audio: {audio}")
+        logger.info(
+            "[Recording] Resultado de prueba: stage=%s, vídeo=%s, audio=%s, "
+            "frames=%s, retorno=%s",
+            resultado.get("stage"),
+            resultado.get("video_ok"),
+            resultado.get("audio_ok"),
+            resultado.get("frames"),
+            resultado.get("returncode"),
+        )
 
     def _on_recording_finished(self, _path: str) -> None:
         # Hay un vídeo nuevo en la carpeta: las cachés de sidecars y del
@@ -3296,6 +3472,7 @@ class MainWindow(QMainWindow):
         active = self.recording_service.is_recording
         elapsed = self.recording_service.elapsed_seconds() if active else 0.0
         self.overlay.set_recording(active, elapsed)
+        self.sync_recording_controls()
 
     def _settings_overlay_card(self) -> QWidget:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -4887,6 +5064,17 @@ class MainWindow(QMainWindow):
         if hasattr(self, "live_button"):
             self.live_button.setChecked(True)
 
+    def _close_after_recording_state_change(self, state: str) -> None:
+        """Retoma el cierre cuando FFmpeg ya finalizó la grabación.
+
+        Parámetros: estado emitido por el servicio de grabación.
+        Retorno: None; programa el cierre al alcanzar el estado inactivo.
+        """
+        if not self._close_after_recording_finalizes or state != "idle":
+            return
+        self._close_after_recording_finalizes = False
+        QTimer.singleShot(0, self.close)
+
     def closeEvent(self, event: QCloseEvent) -> None:
         """Detiene workers y cierra de forma segura la grabación activa.
 
@@ -4896,30 +5084,26 @@ class MainWindow(QMainWindow):
         Retorno:
             None.
         """
-        self.poll_timer.stop()
-        self.tab_hotkey.stop()
-        self.overlay.close()
-
         if (
             self.recording_service.is_recording
             or self.recording_service.is_starting_or_recording
         ):
+            if self._close_after_recording_finalizes:
+                event.ignore()
+                return
             self._pending_recording_snapshot = None
+            live_session = self.live_match_tracker.get_live_session()
+            self._close_after_recording_finalizes = True
+            self.recording_service.stop(
+                reason="app_close",
+                session=live_session,
+            )
+            event.ignore()
+            return
 
-            if self.recording_service.pending_process is not None:
-                self.recording_service.abort()
-                self.recording_service.wait_for_stop(3000)
-            else:
-                live_session = self.live_match_tracker.get_live_session()
-                self.recording_service.stop(
-                    reason="app_close",
-                    session=live_session,
-                )
-                self.recording_service.wait_for_stop(4000)
-
-                if self.recording_service.is_recording:
-                    self.recording_service.abort()
-                    self.recording_service.wait_for_stop(3000)
+        self.poll_timer.stop()
+        self.tab_hotkey.stop()
+        self.overlay.close()
 
         if (
             hasattr(self, "champ_select_worker")

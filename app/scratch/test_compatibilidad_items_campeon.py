@@ -42,8 +42,10 @@ def test_aatrox_penaliza_critico_velocidad_y_on_hit_sin_perder_alternativas() ->
     nombres = {valor["name"] for valor in preparado["situational_item_candidates"]}
     assert "Huracán de Runaan" not in nombres
     assert "Filofugaz de Navori" not in nombres
-    assert len(preparado["situational_item_candidates"]) >= 30
-    assert all(preparado["situational_items"].values())
+    assert len(preparado["situational_item_candidates"]) <= 20
+    assert all(
+        2 <= len(valores) <= 5 for valores in preparado["situational_items"].values()
+    )
     assert "Mecanoespada punki" in preparado["situational_items"]["corta_curas"]
     assert (
         "Mecanoespada punki" not in preparado["situational_items"]["utilidad_y_defensa"]
