@@ -99,7 +99,7 @@ class DraftAnalyzerService:
 
     def _load_data(self) -> None:
         """Carga perfiles del repositorio y correspondencias de Data Dragon; retorna None."""
-        for entry in RepositorioCampeones(self.path).perfiles():
+        for entry in RepositorioCampeones(self.path).perfiles_globales():
             name = entry.get("character")
             if name:
                 self.champions[name.casefold()] = entry
@@ -113,8 +113,8 @@ class DraftAnalyzerService:
                     c_name = c_info.get("name")
                     if key_str and c_name:
                         self.champ_by_id[int(key_str)] = c_name
-            except Exception:
-                pass
+            except (TypeError, ValueError):
+                self.champ_by_id.clear()
 
     def get_champion_name_by_id(self, champ_id: int) -> str:
         return self.champ_by_id.get(champ_id, "")
@@ -507,7 +507,11 @@ class DraftAnalyzerService:
         return groups
 
     def _variante_recomendaciones_curada(
-        self, champion_name: str, perfil: dict[str, Any]
+        self,
+        champion_name: str,
+        perfil: dict[str, Any],
+        pagina_runas: dict[str, Any] | None = None,
+        rol: str | None = None,
     ) -> dict[str, Any]:
         """Carga y cura la variante local de rango y línea más representativos.
 
@@ -528,7 +532,7 @@ class DraftAnalyzerService:
             "bot": "adc",
             "support": "support",
         }
-        roles = self.get_likely_roles(champion_name)
+        roles = [rol] if rol else self.get_likely_roles(champion_name)
         linea_preferida = next(
             (
                 lineas_por_rol.get(rol.casefold(), "")
@@ -545,7 +549,7 @@ class DraftAnalyzerService:
         )
         if not isinstance(candidatos, list):
             candidatos = []
-        return self.curador.curar(variante, perfil, candidatos)
+        return self.curador.curar(variante, perfil, candidatos, pagina_runas)
 
     def get_champion_build(
         self, champion_name: str, enemies: list[str]

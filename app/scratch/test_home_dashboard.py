@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -13,7 +15,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 
-from app.ui.home_dashboard import HomeDashboard
+from app.ui.home_dashboard import GraficoProgresionClasificatoria, HomeDashboard
+from app.ui.main_window import Backdrop
 
 
 def test_home_dashboard_handles_empty_data_and_responsive_widths() -> None:
@@ -43,7 +46,144 @@ def test_home_dashboard_handles_empty_data_and_responsive_widths() -> None:
         assert dashboard.width() == width
         assert dashboard.history_status.text().startswith("0 partidas")
         assert dashboard.history_card.height() <= dashboard.history_card.maximumHeight()
+        if width >= 1180:
+            fila_superior = [dashboard.summary_grid.itemAtPosition(0, indice).widget() for indice in range(4)]
+            assert fila_superior == [
+                dashboard.profile,
+                dashboard.recent_card,
+                dashboard.winrate_card,
+                dashboard.champions_card,
+            ]
+            assert len({tarjeta.geometry().top() for tarjeta in fila_superior}) == 1
 
+    dashboard.close()
+
+
+def test_global_backdrop_loads_champion_art_once_and_caches_resize() -> None:
+    """Carga una sola solicitud por campeón y acepta el resultado vigente."""
+    app = QApplication.instance() or QApplication([])
+    backdrop = Backdrop()
+    ruta = Path("data/champion_splashes/Blitzcrank_0.jpg")
+    if not ruta.is_file():
+        backdrop.close()
+        return
+    with patch("app.ui.main_window.run_async") as cargar:
+        backdrop.establecer_campeon_mas_jugado("Briar")
+        assert cargar.call_count == 0
+        backdrop.establecer_modo_home(True)
+        token_anterior = cargar.call_args.kwargs["token"]
+        callback = cargar.call_args.kwargs["on_finished"]
+        backdrop.establecer_campeon_mas_jugado("Kayn")
+        token_actual = cargar.call_args.kwargs["token"]
+        backdrop.establecer_campeon_mas_jugado("Kayn")
+        assert cargar.call_count == 2
+        callback(token_anterior, ruta.read_bytes(), None)
+        assert backdrop._imagen_splash.isNull()
+        callback(token_actual, ruta.read_bytes(), None)
+    app.processEvents()
+    assert not backdrop._imagen_splash.isNull()
+    backdrop.resize(1600, 900)
+    backdrop.show()
+    app.processEvents()
+    fondo_inicio = backdrop.grab().toImage()
+    assert not fondo_inicio.isNull()
+    solicitudes = cargar.call_count
+    backdrop.establecer_modo_home(False)
+    app.processEvents()
+    fondo_estatico = backdrop.grab().toImage()
+    assert fondo_estatico.pixelColor(1400, 160) != fondo_inicio.pixelColor(1400, 160)
+    backdrop.establecer_modo_home(True)
+    app.processEvents()
+    assert cargar.call_count == solicitudes
+    assert not backdrop._imagen_splash.isNull()
+    backdrop.establecer_campeon_mas_jugado(None)
+    assert backdrop._imagen_splash.isNull()
+    backdrop.close()
+
+
+def test_ranked_progression_prefers_real_deltas_and_ignores_other_queues() -> None:
+    """Usa solo partidas clasificatorias y prefiere variaciones LP registradas.
+
+    Parámetros: ninguno.
+    Retorno: None; falla si se mezclan colas o se altera el orden temporal.
+    """
+    graph = GraficoProgresionClasificatoria()
+    graph.establecer_partidas(
+        [
+            {
+                "queue_id": 420,
+                "started_at": "2026-01-02T00:00:00+00:00",
+                "result": "defeat",
+                "lp_delta": -20,
+            },
+            {
+                "queue_id": 450,
+                "started_at": "2026-01-03T00:00:00+00:00",
+                "result": "victory",
+                "lp_delta": 25,
+            },
+            {
+                "queue_id": 420,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "result": "victory",
+                "lp_delta": 15,
+            },
+        ]
+    )
+    assert graph.valores == [15.0, -5.0]
+    assert graph.fuente == "Variación LP registrada"
+    graph.establecer_partidas(
+        [
+            {"queue_id": 420, "started_at": "1", "result": "victory"},
+            {"queue_id": 420, "started_at": "2", "result": "defeat"},
+        ]
+    )
+    assert graph.valores == [1.0, 0.0]
+    assert "proxy" in graph.fuente
+    graph.resize(360, 130)
+    assert not graph.grab().isNull()
+    graph.establecer_partidas([{"queue_id": 420, "result": "victory"}])
+    assert graph.valores == []
+
+
+def test_ranked_winrate_donut_uses_current_soloq_record() -> None:
+    """Prefiere el registro de SoloQ del cliente sobre el historial local.
+
+    Parámetros: ninguno.
+    Retorno: None; verifica fuente, proporción y conteos de la dona.
+    """
+    app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    dashboard.set_dashboard_data(
+        None,
+        {
+            "matches": [
+                {"stable_match_id": "a", "result": "victory", "champion_name": "Briar"},
+                {"stable_match_id": "b", "result": "defeat", "champion_name": "Briar"},
+            ]
+        },
+        {"wins": 1, "played": 2, "champions": [("Briar", 2)]},
+        "Local",
+        collection={},
+    )
+    assert dashboard.winrate_chart.victorias == 1
+    assert dashboard.winrate_chart.derrotas == 1
+    assert dashboard.winrate_title.text() == "Win rate registrado"
+    assert dashboard.champions_card.findChild(
+        QLabel, "homeChampionsSource"
+    ).text().startswith("Según partidas registradas localmente")
+    dashboard.set_dashboard_data(
+        {"ranked": [{"queue": "RANKED_SOLO_5x5", "tier": "GOLD", "division": "II", "league_points": 42, "wins": 8, "losses": 4}]},
+        {"matches": []},
+        {"wins": 0, "played": 0, "champions": []},
+        "Local",
+        collection={},
+    )
+    assert dashboard.winrate_chart.victorias == 8
+    assert dashboard.winrate_chart.derrotas == 4
+    assert dashboard.winrate_source.text() == "Registro actual de SoloQ"
+    assert dashboard.rank_value.text() == "GOLD II"
+    assert dashboard.rank_lp.text() == "42 LP"
     dashboard.close()
 
 
@@ -131,7 +271,7 @@ def test_history_consumes_viewport_height_without_pushing_bottom_cards() -> None
     viewport.resize(1600, 1100)
     app.processEvents()
 
-    assert dashboard.history_card.height() > altura_compacta + 100
+    assert dashboard.history_card.height() > altura_compacta + 50
     assert dashboard.teammates_card.geometry().bottom() <= dashboard.height()
     assert compact_bottom <= dashboard.height()
     assert dashboard.history_scroll.verticalScrollBar().maximum() > 0
@@ -264,8 +404,8 @@ def test_history_shows_exact_probable_ambiguous_team_and_unavailable_states() ->
     dashboard.close()
 
 
-def test_collection_panel_keeps_progression_metrics_structured() -> None:
-    """Presenta colección LCU como métricas, progreso y título activo."""
+def test_collection_panel_keeps_remaining_categories_without_champion_ownership() -> None:
+    """Conserva maestrías, skins, desafíos y título sin el bloque de propiedad."""
     _app = QApplication.instance() or QApplication([])
     dashboard = HomeDashboard()
     dashboard.set_dashboard_data(
@@ -282,14 +422,17 @@ def test_collection_panel_keeps_progression_metrics_structured() -> None:
         },
     )
 
-    progress = dashboard.collection_card.findChild(
-        QProgressBar, "homeCollectionProgress"
-    )
-    assert progress.value() == 249
-    assert progress.maximum() == 251
-    assert "262" in " ".join(
-        label.text() for label in dashboard.collection_card.findChildren(QLabel)
-    )
+    labels = dashboard.collection_card.findChildren(QLabel)
+    texts = [label.text() for label in labels]
+    assert "MAESTRÍAS DESTACADAS" in texts
+    assert "SKINS EN PROPIEDAD" in texts
+    assert "DESAFÍOS" in texts
+    assert "TÍTULO ACTIVO" in texts
+    assert "189k" in texts
+    assert "262" in texts
+    assert not any("CAMPEONES EN PROPIEDAD" in text for text in texts)
+    assert not any("249 de 251" in text or "% de la colección" in text for text in texts)
+    assert dashboard.collection_card.findChild(QProgressBar, "homeCollectionProgress") is None
     assert dashboard.collection_card.findChild(QLabel, "homeChallengeTier").text() == (
         "PLATINUM"
     )
@@ -396,8 +539,8 @@ def test_async_matchup_data_replaces_initial_empty_grid_without_resize() -> None
     viewport.close()
 
 
-def test_collection_ownership_labels_and_unavailable_state() -> None:
-    """Explica propiedad, porcentaje, colección completa y falta de consulta."""
+def test_collection_ownership_data_is_ignored_without_leaving_placeholders() -> None:
+    """Ignora datos antiguos de propiedad sin reservar espacio en el panel."""
     _app = QApplication.instance() or QApplication([])
     dashboard = HomeDashboard()
     dashboard.set_dashboard_data(
@@ -407,32 +550,58 @@ def test_collection_ownership_labels_and_unavailable_state() -> None:
         "Local",
         {"champions": {"owned_count": 250, "total_count": 251}},
     )
-    textos = [label.text() for label in dashboard.collection_card.findChildren(QLabel)]
-    assert "CAMPEONES EN PROPIEDAD" in textos
-    assert "250 de 251 campeones" in textos
-    assert "99,6% de la colección" in textos
-    assert "Te falta 1 campeón para completar la colección." in textos
-    dashboard.set_dashboard_data(
-        None,
-        {"matches": []},
-        {"total": 0, "teammates": [], "matchups": []},
-        "Local",
-        {"champions": {"owned_count": 251, "total_count": 251}},
-    )
-    assert "Colección completa" in [
-        label.text() for label in dashboard.collection_card.findChildren(QLabel)
-    ]
-    dashboard.set_dashboard_data(
-        None,
-        {"matches": []},
-        {"total": 0, "teammates": [], "matchups": []},
-        "Local",
-        {"champions": None},
-    )
-    assert "No se pudo consultar la colección de campeones" in [
-        label.text() for label in dashboard.collection_card.findChildren(QLabel)
-    ]
+    texts = [label.text() for label in dashboard.collection_card.findChildren(QLabel)]
+    assert not any("CAMPEONES EN PROPIEDAD" in text for text in texts)
+    assert not any("campeones" in text.lower() for text in texts)
+    assert dashboard.collection_card.findChild(QProgressBar, "homeCollectionProgress") is None
     dashboard.close()
+
+
+def test_collection_panel_remains_compact_when_resized() -> None:
+    """Mantiene las cuatro secciones y separadores al variar el ancho."""
+    app = QApplication.instance() or QApplication([])
+    dashboard = HomeDashboard()
+    dashboard.set_dashboard_data(
+        None,
+        {"matches": []},
+        {"total": 0, "teammates": [], "matchups": []},
+        "Local",
+        {
+            "masteries": [{"champion_id": 233, "points": 189432}],
+            "skins": {"owned_count": 262},
+            "challenges": {"tier": "PLATINUM", "points": 12860, "count": 5},
+            "titles": {"selected": "Absolute Unit"},
+        },
+    )
+    viewport = QScrollArea()
+    viewport.setWidgetResizable(True)
+    viewport.setWidget(dashboard)
+
+    for width in (1100, 1600, 2200):
+        viewport.resize(width, 900)
+        viewport.show()
+        app.processEvents()
+        texts = [
+            label.text()
+            for label in dashboard.collection_card.findChildren(QLabel)
+        ]
+        assert all(
+            section in texts
+            for section in (
+                "MAESTRÍAS DESTACADAS",
+                "SKINS EN PROPIEDAD",
+                "DESAFÍOS",
+                "TÍTULO ACTIVO",
+            )
+        )
+        separators = dashboard.collection_card.findChildren(
+            QFrame, "homeCollectionSeparator"
+        )
+        assert len(separators) == 3
+        assert all(separator.height() > 0 for separator in separators)
+
+    dashboard.close()
+    viewport.close()
 
 
 def test_home_dashboard_renders_history_in_bounded_batches() -> None:

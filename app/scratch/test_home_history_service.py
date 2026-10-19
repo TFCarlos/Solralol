@@ -841,6 +841,30 @@ def test_home_analytics_does_not_invent_winrate_without_result() -> None:
     )
 
 
+def test_home_analytics_deduplicates_matches_and_breaks_champion_ties_stably() -> None:
+    """Cuenta IDs únicos y elige el mismo campeón ante empates de orden."""
+    result = analyze_home_history(
+        [
+            {"game_id": "match-1", "champion_name": "Kayn", "result": "victory"},
+            {"game_id": "match-1", "champion_name": "Briar", "result": "defeat"},
+            {"game_id": "match-2", "champion_name": "Briar", "result": "defeat"},
+        ]
+    )
+    assert result["total"] == 2
+    assert result["played"] == 2
+    assert result["top_champion"] == "Briar"
+    assert result["champions"] == [("Briar", 1), ("Kayn", 1)]
+    usage = analyze_home_history(
+        [
+            {"game_id": "one", "champion_name": "Kayn", "result": "unknown"},
+            {"game_id": "two", "champion_name": "Briar", "result": "victory"},
+            {"game_id": "three", "champion_name": "Kayn", "result": "defeat"},
+        ]
+    )
+    assert usage["top_champion"] == "Kayn"
+    assert usage["champions"] == [("Kayn", 2), ("Briar", 1)]
+
+
 def test_teammates_use_stable_identity_and_winrate_without_teammate() -> None:
     """Verifica identidad estable, WR compartido y comparación sin aliado."""
     matches = [
@@ -883,24 +907,13 @@ def test_teammates_use_stable_identity_and_winrate_without_teammate() -> None:
     assert teammate["winrate_delta"] == 100
 
 
-def test_collection_normalization_keeps_optional_categories_independent() -> None:
-    """Valida los campos fiables que se presentan de maestría y propiedad."""
+def test_collection_normalization_keeps_mastery_data() -> None:
+    """Valida los campos fiables que se presentan de maestría."""
     mastery = LCUHomeProvider._normalize_collection(
         "masteries",
         [{"championId": 233, "championPoints": 12345, "championLevel": 7}],
     )
-    owned_champions = LCUHomeProvider._normalize_collection(
-        "champions",
-        [
-            {"id": 233, "ownership": {"owned": True}},
-            {"id": 1, "ownership": {"owned": False}},
-            {"id": 233, "ownership": {"owned": True}},
-        ],
-    )
-
     assert mastery == [{"champion_id": 233, "points": 12345, "level": 7}]
-    assert owned_champions == {"owned_count": 1, "total_count": 2}
-    assert LCUHomeProvider._normalize_collection("champions", [{"id": 233}]) is None
 
 
 def test_collection_normalization_uses_challenge_summary_and_confirmed_skins() -> None:
@@ -939,15 +952,15 @@ def test_collection_loading_keeps_successful_categories_when_one_route_fails() -
     def get(endpoint: str) -> object:
         if "champion-mastery" in endpoint:
             return [{"championId": 233, "championPoints": 9000}]
-        if "owned-champions" in endpoint:
-            return [{"id": 233, "ownership": {"owned": True}}]
+        assert "playable-count" not in endpoint
+        assert "owned-champions" not in endpoint
         raise RuntimeError("Ruta opcional no disponible")
 
     provider._get = get
     result = provider._load_collection({"summonerId": "55"})
 
     assert result["masteries"][0]["points"] == 9000
-    assert result["champions"]["owned_count"] == 1
+    assert "champions" not in result
     assert result["skins"] is None
     assert result["challenges"] is None
 
@@ -974,7 +987,6 @@ def test_collection_sync_refreshes_lcu_and_preserves_cached_categories(
     provider = LCUHomeProvider(ClienteLocal())
     provider._load_collection = lambda _profile: {
         "masteries": None,
-        "champions": None,
         "skins": None,
         "challenges": None,
         "titles": None,
@@ -984,7 +996,7 @@ def test_collection_sync_refreshes_lcu_and_preserves_cached_categories(
 
     assert result["masteries"] == [{"champion_id": 233, "points": 1000}]
     assert result["skins"] == {"owned_count": 12, "total_count": None}
-    assert result["champions"] is None
+    assert "champions" not in result
 
 
 def test_cross_reference_uses_exact_id_and_rejects_champion_only_match() -> None:

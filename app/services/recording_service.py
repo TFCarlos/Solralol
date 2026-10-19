@@ -1214,7 +1214,14 @@ def build_ffmpeg_command(
             "-c:v",
             "h264_amf",
             "-usage",
-            "lowlatency",
+            # AMF's lowlatency usage on the tested driver ignores the GOP
+            # interval and emits an infinite GOP (only the first IDR). That
+            # makes random seeks decode from the beginning of long MP4s.
+            # Transcoding usage honors -g; the explicit low-latency switch
+            # retains prompt capture without disabling periodic IDR frames.
+            "transcoding",
+            "-latency",
+            "1",
             "-quality",
             "speed",
             "-rc",
@@ -1818,6 +1825,54 @@ class RecordingLibrary:
     def metadata_path(self, video_path: str | Path) -> Path:
         return Path(video_path).with_suffix(".json")
 
+    def optimized_playback_path(self, video_path: str | Path) -> Path:
+        """Devuelve el proxy con GOP corto asociado a una grabación, si existe.
+
+        El original siempre se conserva. La clave de caché cambia si el vídeo
+        original cambia de tamaño o fecha de modificación.
+        """
+        source = Path(video_path)
+        try:
+            stat = source.stat()
+        except OSError:
+            return source
+        cache = self.directory / ".seek_cache"
+        candidate = cache / (
+            f"{source.name}.{stat.st_size:x}.{stat.st_mtime_ns:x}.seek.mp4"
+        )
+        return candidate if candidate.is_file() else source
+
+    def seek_cache_path(self, video_path: str | Path) -> Path:
+        """Ruta de caché determinista para crear el proxy de una grabación."""
+        source = Path(video_path)
+        stat = source.stat()
+        return self.directory / ".seek_cache" / (
+            f"{source.name}.{stat.st_size:x}.{stat.st_mtime_ns:x}.seek.mp4"
+        )
+
+    def _delete_seek_cache(self, video_path: str | Path) -> bool:
+        source = Path(video_path)
+        cache = self.directory / ".seek_cache"
+        try:
+            matches = (
+                entry
+                for entry in cache.iterdir()
+                if entry.is_file()
+                and entry.name.startswith(f"{source.name}.")
+                and entry.name.endswith(".seek.mp4")
+            ) if cache.exists() else ()
+            success = True
+            for match in matches:
+                success = self._unlink_with_retry(match) and success
+            if not success:
+                return False
+            if cache.exists() and not any(cache.iterdir()):
+                cache.rmdir()
+            return True
+        except OSError:
+            _LOGGER.exception("No se pudo limpiar la caché de reproducción de %s", source.name)
+            return False
+
     def load_metadata(self, video_path: str | Path) -> dict[str, Any]:
         sidecar = self.metadata_path(video_path)
 
@@ -1884,6 +1939,16 @@ class RecordingLibrary:
                 except OSError:
                     continue
 
+        cache = self.directory / ".seek_cache"
+        try:
+            total += sum(
+                entry.stat().st_size
+                for entry in cache.iterdir()
+                if entry.is_file() and entry.suffix.casefold() == ".mp4"
+            )
+        except OSError:
+            pass
+
         return total
 
     #: Windows suelta los handles de fichero con retraso (reproductor,
@@ -1899,6 +1964,8 @@ class RecordingLibrary:
         reproduciendo— se reintenta antes de rendirse.
         """
         path = Path(video_path)
+        if not self._delete_seek_cache(path):
+            return False
         ok = True
 
         for target in (path, self.metadata_path(path)):

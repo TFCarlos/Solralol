@@ -45,6 +45,7 @@ class DataDragonAssetService(QObject):
         self.pending: dict[str, QNetworkReply] = {}
         self.champions: dict[str, str] = {}
         self.items: dict[int, str] = {}
+        self.abilities: dict[tuple[str, str], str | None] = {}
         self._load_catalogs()
 
     def _load_catalogs(self) -> None:
@@ -181,6 +182,44 @@ class DataDragonAssetService(QObject):
             f"{self.version}/img/item/{int(item_id)}.png"
         )
 
+    def champion_ability_url(self, champion_name: str, ability_slot: str) -> str | None:
+        """Resuelve el icono Data Dragon local de una pasiva o habilidad.
+
+        Parámetros: campeón canónico o visible y ranura passive/Q/W/E/R.
+        Retorno: URL de Data Dragon o None cuando falta el catálogo.
+        """
+        champion_id = self.resolve_champion_id(champion_name)
+        ranura = str(ability_slot or "").casefold()
+        if not champion_id or ranura not in {"passive", "q", "w", "e", "r"}:
+            return None
+        clave = (champion_id.casefold(), ranura)
+        if clave in self.abilities:
+            return self.abilities[clave]
+        documento = self._load_json(
+            DATA_DIR / "champion_abilities" / f"{champion_id}.json"
+        )
+        campeon = documento.get("data", {}).get(champion_id, {})
+        if ranura == "passive":
+            imagen = campeon.get("passive", {}).get("image", {})
+            grupo = "passive"
+        else:
+            indice = "qwer".index(ranura)
+            habilidades = campeon.get("spells", [])
+            imagen = (
+                habilidades[indice].get("image", {})
+                if isinstance(habilidades, list) and len(habilidades) > indice
+                else {}
+            )
+            grupo = "spell"
+        archivo = str(imagen.get("full") or "").strip()
+        url = (
+            f"https://ddragon.leagueoflegends.com/cdn/{self.version}/img/{grupo}/{quote(archivo)}"
+            if archivo
+            else None
+        )
+        self.abilities[clave] = url
+        return url
+
     def profile_icon_url(self, icon_id: int) -> str:
         return (
             f"https://ddragon.leagueoflegends.com/cdn/"
@@ -193,6 +232,8 @@ class DataDragonAssetService(QObject):
             category = "profileicons"
         elif "/item/" in url:
             category = "items"
+        elif "/passive/" in url or "/spell/" in url:
+            category = "abilities"
         else:
             category = "champions"
         return self.cache_dir / category / filename
@@ -235,9 +276,11 @@ class DataDragonAssetService(QObject):
         key: str,
         size: int,
         mode: Qt.AspectRatioMode = (Qt.AspectRatioMode.KeepAspectRatioByExpanding),
+        height: int | None = None,
     ) -> None:
         label.setProperty("asset_key", key)
         label.setProperty("asset_size", size)
+        label.setProperty("asset_height", height or size)
         label.setProperty("asset_mode", mode)
 
         label_ref = weakref.ref(label)
@@ -276,7 +319,7 @@ class DataDragonAssetService(QObject):
             label.setPixmap(
                 pixmap.scaled(
                     size,
-                    size,
+                    height or size,
                     mode,
                     Qt.TransformationMode.SmoothTransformation,
                 )
@@ -293,6 +336,7 @@ class DataDragonAssetService(QObject):
                 return
 
             size = int(label.property("asset_size") or 32)
+            height = int(label.property("asset_height") or size)
 
             mode = label.property("asset_mode")
 
@@ -305,7 +349,7 @@ class DataDragonAssetService(QObject):
             label.setPixmap(
                 pixmap.scaled(
                     size,
-                    size,
+                    height,
                     mode,
                     Qt.TransformationMode.SmoothTransformation,
                 )

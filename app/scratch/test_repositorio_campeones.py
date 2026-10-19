@@ -75,6 +75,16 @@ def test_guardado_lectura_consulta(tmp_path: Path, documento: dict) -> None:
         identificador_campeon("...")
 
 
+def test_perfiles_globales_sin_matriz(tmp_path: Path, documento: dict) -> None:
+    """Draft can load validated global profiles without normalizing rank matrices."""
+    repo = RepositorioCampeones(tmp_path)
+    repo.ruta("Ahri").write_text(json.dumps(documento), encoding="utf-8")
+
+    perfiles = repo.perfiles_globales()
+
+    assert perfiles == [documento["profile"]]
+
+
 def test_reemplazo_cache_externa(tmp_path: Path, documento: dict) -> None:
     """Verifica reemplazo completo e invalidación entre instancias."""
     repo = RepositorioCampeones(tmp_path)

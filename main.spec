@@ -22,6 +22,7 @@ hiddenimports = [
     # Módulos de Qt que se usan pero que PyInstaller a veces no captura.
     'PySide6.QtMultimedia',
     'PySide6.QtMultimediaWidgets',
+    'PySide6.QtSvg',
     # shiboken6 se usa en app/ui/draft_icon_cache.py para isValid().
     'shiboken6',
     # El paquete completo de PySide6.QtWebEngine* se incluye de forma explícita

@@ -26,6 +26,7 @@ POR_CLAVE = {rango.clave: rango for rango in RANGOS_COMPATIBLES}
 CLAVES_RANGOS = frozenset(POR_CLAVE)
 OPCIONES_RANGO = tuple((rango.clave, rango.etiqueta) for rango in RANGOS_COMPATIBLES)
 RANGO_PREDETERMINADO = "emerald_plus"
+RANGO_ANALISIS_LOCAL = "emerald_plus"
 
 
 def normalizar_rango(valor: str) -> str | None:

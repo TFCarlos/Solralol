@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-labelledby="title desc">
+<title id="title">Crossed golden swords</title>
+<desc id="desc">Two fully detailed crossed swords with sharp blades, decorated crossguards, wrapped handles and jewel pommels.</desc>
+<defs>
+ <linearGradient id="bladeFront" x1="54" y1="35" x2="75" y2="50" gradientUnits="userSpaceOnUse"><stop stop-color="#E6B85B"/><stop offset=".30" stop-color="#FFF3C2"/><stop offset=".57" stop-color="#E9BE66"/><stop offset="1" stop-color="#A66A2B"/></linearGradient>
+ <linearGradient id="bladeBack" x1="55" y1="40" x2="73" y2="57" gradientUnits="userSpaceOnUse"><stop stop-color="#C18C3A"/><stop offset=".36" stop-color="#F6D987"/><stop offset="1" stop-color="#905B25"/></linearGradient>
+ <linearGradient id="goldGuard" x1="42" y1="75" x2="86" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#9D631F"/><stop offset=".22" stop-color="#D6A54C"/><stop offset=".52" stop-color="#FFE7A0"/><stop offset=".78" stop-color="#DAA84C"/><stop offset="1" stop-color="#92591D"/></linearGradient>
+ <linearGradient id="goldGuardBack" x1="43" y1="73" x2="85" y2="85" gradientUnits="userSpaceOnUse"><stop stop-color="#86521A"/><stop offset=".5" stop-color="#E0B75E"/><stop offset="1" stop-color="#835019"/></linearGradient>
+ <linearGradient id="grip" x1="60" x2="68" y1="90" y2="91" gradientUnits="userSpaceOnUse"><stop stop-color="#412D23"/><stop offset=".5" stop-color="#81552F"/><stop offset="1" stop-color="#34261F"/></linearGradient>
+</defs>
+<!-- Back sword and front sword are separated to preserve realistic overlap -->
+<g transform="rotate(45 64 64)" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Continuous tapered, two-edged blade -->
+  <path d="M64 8 L71.4 31.5 73 60.8 69 75.7 64 85.3 59 75.7 55 60.8 56.6 31.5 Z" fill="url(#bladeBack)" stroke="#42321E" stroke-width="2.5"/>
+  <path d="M64 12 L64 82" fill="none" stroke="#FFF4CC" stroke-opacity=".83" stroke-width="1.9"/>
+  <path d="M64 15 L58 35 L57.5 60.2 60.8 73.3" fill="none" stroke="#FFF1AF" stroke-opacity=".75" stroke-width="1.35"/>
+  <path d="M65 15 L70 35 L71 59.5 67.6 73.1" fill="none" stroke="#714A1B" stroke-opacity=".7" stroke-width="1.5"/>
+  <path d="M56.3 62 L64 70.8 71.7 62" fill="none" stroke="#F7DE90" stroke-opacity=".65" stroke-width="1.05"/>
+  <!-- Swept quillons protect the whole hand -->
+  <path d="M61.4 78 C55 77 49.5 74.8 46.8 70.7 L43 73 C44.8 81.1 52 84.9 60 85.3 L68 85.3 C76 84.9 83.2 81.1 85 73 L81.2 70.7 C78.5 74.8 73 77 66.6 78 Z" fill="url(#goldGuardBack)" stroke="#3A2918" stroke-width="2.65"/>
+  <path d="M45.7 73.2 C49.5 79.7 55 80.7 60.1 81 M67.9 81 C73 80.7 78.5 79.7 82.3 73.2" fill="none" stroke="#FFF0AC" stroke-width="1.65"/>
+  <path d="M47 77 L50.6 78.9 M81 77 L77.4 78.9" fill="none" stroke="#8A541E" stroke-width="1.35"/>
+  <!-- Faceted collar -->
+  <path d="M60 79.3 L64 76.7 68 79.3 69.2 85 64 89 58.8 85 Z" fill="url(#goldGuard)" stroke="#423019" stroke-width="2"/>
+  <path d="M64 79 L66.4 83.2 64 86.3 61.6 83.2 Z" fill="#FFF0B0" opacity=".93"/>
+  <!-- Handle with individually readable leather wraps -->
+  <path d="M60.1 88 L67.9 88 67 111.7 64 114.6 61 111.7 Z" fill="url(#grip)" stroke="#3A2818" stroke-width="2.5"/>
+  <path d="M60.8 91.2 L67.5 94.5 M60.7 97.1 L67.3 100.3 M60.9 103 L67.2 106.2" fill="none" stroke="#D9AB52" stroke-width="2.1"/>
+  <path d="M62.1 90 L62.1 110" fill="none" stroke="#FFE19A" stroke-opacity=".45" stroke-width="1.1"/>
+  <!-- Full pommel, not a disconnected line -->
+  <path d="M64 109.9 L69.7 114.5 68.5 120.3 64 123 59.5 120.3 58.3 114.5 Z" fill="url(#goldGuard)" stroke="#3A2918" stroke-width="2.6"/>
+  <path d="M64 113.2 L67.4 116.3 64 120 60.6 116.3 Z" fill="#FDE9A7" stroke="#A26C27" stroke-width="1.05"/>
+  <path d="M64 115.5 L65.8 117 64 119 62.2 117 Z" fill="#966124"/>
+</g>
+<g transform="rotate(-45 64 64)" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Continuous tapered, two-edged blade -->
+  <path d="M64 8 L71.4 31.5 73 60.8 69 75.7 64 85.3 59 75.7 55 60.8 56.6 31.5 Z" fill="url(#bladeFront)" stroke="#42321E" stroke-width="2.5"/>
+  <path d="M64 12 L64 82" fill="none" stroke="#FFF4CC" stroke-opacity=".83" stroke-width="1.9"/>
+  <path d="M64 15 L58 35 L57.5 60.2 60.8 73.3" fill="none" stroke="#FFF1AF" stroke-opacity=".75" stroke-width="1.35"/>
+  <path d="M65 15 L70 35 L71 59.5 67.6 73.1" fill="none" stroke="#714A1B" stroke-opacity=".7" stroke-width="1.5"/>
+  <path d="M56.3 62 L64 70.8 71.7 62" fill="none" stroke="#F7DE90" stroke-opacity=".65" stroke-width="1.05"/>
+  <!-- Swept quillons protect the whole hand -->
+  <path d="M61.4 78 C55 77 49.5 74.8 46.8 70.7 L43 73 C44.8 81.1 52 84.9 60 85.3 L68 85.3 C76 84.9 83.2 81.1 85 73 L81.2 70.7 C78.5 74.8 73 77 66.6 78 Z" fill="url(#goldGuard)" stroke="#3A2918" stroke-width="2.65"/>
+  <path d="M45.7 73.2 C49.5 79.7 55 80.7 60.1 81 M67.9 81 C73 80.7 78.5 79.7 82.3 73.2" fill="none" stroke="#FFF0AC" stroke-width="1.65"/>
+  <path d="M47 77 L50.6 78.9 M81 77 L77.4 78.9" fill="none" stroke="#8A541E" stroke-width="1.35"/>
+  <!-- Faceted collar -->
+  <path d="M60 79.3 L64 76.7 68 79.3 69.2 85 64 89 58.8 85 Z" fill="url(#goldGuard)" stroke="#423019" stroke-width="2"/>
+  <path d="M64 79 L66.4 83.2 64 86.3 61.6 83.2 Z" fill="#FFF0B0" opacity=".93"/>
+  <!-- Handle with individually readable leather wraps -->
+  <path d="M60.1 88 L67.9 88 67 111.7 64 114.6 61 111.7 Z" fill="url(#grip)" stroke="#3A2818" stroke-width="2.5"/>
+  <path d="M60.8 91.2 L67.5 94.5 M60.7 97.1 L67.3 100.3 M60.9 103 L67.2 106.2" fill="none" stroke="#D9AB52" stroke-width="2.1"/>
+  <path d="M62.1 90 L62.1 110" fill="none" stroke="#FFE19A" stroke-opacity=".45" stroke-width="1.1"/>
+  <!-- Full pommel, not a disconnected line -->
+  <path d="M64 109.9 L69.7 114.5 68.5 120.3 64 123 59.5 120.3 58.3 114.5 Z" fill="url(#goldGuard)" stroke="#3A2918" stroke-width="2.6"/>
+  <path d="M64 113.2 L67.4 116.3 64 120 60.6 116.3 Z" fill="#FDE9A7" stroke="#A26C27" stroke-width="1.05"/>
+  <path d="M64 115.5 L65.8 117 64 119 62.2 117 Z" fill="#966124"/>
+</g>
+<!-- A few small polished-edge sparkles -->
+<path d="M29 22 V29 M25.5 25.5 H32.5" stroke="#FFE6A0" stroke-width="1.5" stroke-linecap="round" opacity=".95"/>
+<path d="M101 21 V27 M98 24 H104" stroke="#FFEDB2" stroke-width="1.2" stroke-linecap="round" opacity=".8"/>
+</svg>

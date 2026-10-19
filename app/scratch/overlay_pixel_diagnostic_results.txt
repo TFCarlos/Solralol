@@ -1,0 +1,22 @@
+antes: visible=False color_pixels=0 rect=(1030, 595, 500, 250)
+qt_widget_state=card_visible:True card_geometry:PySide6.QtCore.QRect(0, 0, 500, 250) proxy_rect:PySide6.QtCore.QRectF(0.000000, 0.000000, 500.000000, 250.000000) scene_items:1 proxy_visible:True proxy_opacity:1.0 proxy_widget_same:True view_scene_rect:PySide6.QtCore.QRectF(0.000000, 0.000000, 500.000000, 250.000000) views:1 sample_center:(255, 255, 255, 255)
+card_sample:(255, 255, 255, 255) card_stylesheet:'QFrame#overlayCard { background-color: #FF00FF; border: 8px solid white; border-radius: 0px; }' scene_sample:(255, 255, 255, 255)
+qt_widget_magenta=112110
+hwnd_diagnostic={'label': 'floating-panel', 'hwnd': '0x2605b2', 'qt_visible': True, 'win_visible': True, 'rect': (1030, 595, 1530, 845), 'opacity': 1.0, 'exstyle': '0x8080088', 'layered': True, 'transparent': False, 'noactivate': True, 'topmost': True, 'z_order_next': '0x3047c', 'foreground': '0x70848', 'cloaked': 0}
+durante: visible=True color_pixels=112110 rect=(1030, 595, 500, 250)
+opacity_50_changed_pixels=125000
+despues: visible=False color_pixels=0 rect=(1030, 595, 500, 250)
+control: visible=True color_pixels=89250 rect=(1030, 595, 500, 250)
+delta_magenta=112110 control_green=89250
+hwnd_diagnostic={'label': 'gold', 'hwnd': '0x19067e', 'qt_visible': True, 'win_visible': True, 'rect': (35, 90, 445, 478), 'opacity': 1.0, 'exstyle': '0x8080088', 'layered': True, 'transparent': False, 'noactivate': True, 'topmost': True, 'z_order_next': '0x1a0832', 'foreground': '0x70848', 'cloaked': 0}
+production_panel=gold visible=True geometry=(35, 90, 410, 388) changed_pixels=42766 content={'card': (410, 388), 'window': (410, 388), 'scale': 1.0, 'card_hint': (388, 388), 'body_hint': (386, 403), 'proxy': (410, 388), 'lanes': 5, 'lane_sizes': [(388, 46), (388, 46), (388, 46), (388, 46), (388, 46)]}
+hwnd_diagnostic={'label': 'alerts', 'hwnd': '0x1a0832', 'qt_visible': True, 'win_visible': True, 'rect': (500, 90, 840, 187), 'opacity': 1.0, 'exstyle': '0x8080088', 'layered': True, 'transparent': False, 'noactivate': True, 'topmost': True, 'z_order_next': '0x1a0812', 'foreground': '0x70848', 'cloaked': 0}
+production_panel=alerts visible=True geometry=(500, 90, 340, 97) changed_pixels=32830 content={'card': (340, 97), 'window': (340, 97), 'scale': 1.0, 'card_hint': (300, 97), 'body_hint': (298, 95), 'proxy': (340, 97), 'lanes': 1, 'lane_sizes': [(318, 78)]}
+hwnd_diagnostic={'label': 'threat', 'hwnd': '0x1a0812', 'qt_visible': True, 'win_visible': True, 'rect': (890, 90, 1300, 343), 'opacity': 1.0, 'exstyle': '0x8080088', 'layered': True, 'transparent': False, 'noactivate': True, 'topmost': True, 'z_order_next': '0x3607f4', 'foreground': '0x70848', 'cloaked': 0}
+production_panel=threat visible=True geometry=(890, 90, 410, 253) changed_pixels=80092 content={'card': (410, 253), 'window': (410, 253), 'scale': 1.0, 'card_hint': (288, 253), 'body_hint': (286, 251), 'proxy': (410, 253), 'lanes': 0, 'lane_sizes': []}
+hwnd_diagnostic={'label': 'purchase', 'hwnd': '0x3607f4', 'qt_visible': True, 'win_visible': True, 'rect': (1320, 90, 1830, 387), 'opacity': 1.0, 'exstyle': '0x8080088', 'layered': True, 'transparent': False, 'noactivate': True, 'topmost': True, 'z_order_next': '0x3047c', 'foreground': '0x70848', 'cloaked': 0}
+production_panel=purchase visible=True geometry=(1320, 90, 510, 297) changed_pixels=102062 content={'card': (510, 297), 'window': (510, 297), 'scale': 1.0, 'card_hint': (472, 297), 'body_hint': (470, 295), 'proxy': (510, 297), 'lanes': 0, 'lane_sizes': []}
+production_clickthrough=gold input_passthrough=True visible=True changed_pixels=42766 delta_vs_normal=0
+production_clickthrough=alerts input_passthrough=True visible=True changed_pixels=32830 delta_vs_normal=0
+production_clickthrough=threat input_passthrough=True visible=True changed_pixels=80092 delta_vs_normal=0
+production_clickthrough=purchase input_passthrough=True visible=True changed_pixels=102062 delta_vs_normal=0

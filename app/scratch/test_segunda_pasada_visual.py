@@ -64,6 +64,7 @@ def test_cabecera_sin_marca_duplicada(aplicacion: QApplication) -> None:
     from PySide6.QtWidgets import QMainWindow
 
     QMainWindow.__init__(ventana)
+    ventana.overlay = None
     cabecera = ventana.create_header()
     assert not cabecera.findChild(QLabel, "brandTitle")
     assert cabecera.findChild(QLabel, "connectionLabel") is ventana.connection_label

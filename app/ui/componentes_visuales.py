@@ -70,10 +70,15 @@ class PaginaDesplazable(QScrollArea):
     """Envuelve una página conservando su widget y todas sus señales."""
 
     def __init__(self, contenido: QWidget) -> None:
-        """Aloja el contenido recibido y permite desplazamiento cuando sea necesario."""
+        """Aloja la página y deja transparente el viewport.
+
+        Parámetros: widget de página que se alojará.
+        Retorno: None; configura scroll adaptable sin pintar el fondo del padre.
+        """
         super().__init__()
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setWidgetResizable(True)
+        self.viewport().setAutoFillBackground(False)
         self.setWidget(contenido)
         self.setObjectName("paginaDesplazable")
 

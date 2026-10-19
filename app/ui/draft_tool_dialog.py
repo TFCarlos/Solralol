@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
+import time
 from contextlib import ExitStack
 from functools import partial
-from typing import Any
+from typing import Any, ClassVar
 
+import requests
 from PySide6.QtCore import QRect, QSignalBlocker, QSize, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
@@ -34,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from _paths import DATA_DIR
 from app.services.draft_analyzer_service import DraftAnalyzerService
 from app.services.lcu_service import LCUService
 from app.services.rangos_campeones import OPCIONES_RANGO, RANGO_PREDETERMINADO
@@ -79,6 +83,7 @@ class RejillaCategoriasSituacionales(QWidget):
         self._rejilla.setHorizontalSpacing(self.SEPARACION)
         self._rejilla.setVerticalSpacing(self.SEPARACION)
         self._columnas: list[QWidget] = []
+        self._firma_columnas: tuple[int, tuple[int, ...]] | None = None
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def sizeHint(self) -> QSize:
@@ -105,6 +110,7 @@ class RejillaCategoriasSituacionales(QWidget):
             columna.setParent(None)
             columna.deleteLater()
         self._columnas = columnas
+        self._firma_columnas = None
         self._recolocar_columnas()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -126,12 +132,11 @@ class RejillaCategoriasSituacionales(QWidget):
         Returns:
             None.
         """
-        while self._rejilla.count():
-            self._rejilla.takeAt(0)
-        for indice in range(len(self._columnas)):
-            self._rejilla.setColumnStretch(indice, 0)
         cantidad = len(self._columnas)
         if not cantidad:
+            self._firma_columnas = (0, ())
+            while self._rejilla.count():
+                self._rejilla.takeAt(0)
             return
         columnas = min(
             cantidad,
@@ -141,9 +146,23 @@ class RejillaCategoriasSituacionales(QWidget):
                 // (self.ANCHO_MINIMO_COLUMNA + self.SEPARACION),
             ),
         )
+        firma = (columnas, tuple(id(widget) for widget in self._columnas))
+        if firma == self._firma_columnas:
+            return
+        self._firma_columnas = firma
+        actualizaciones_activas = self.updatesEnabled()
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(False)
+        while self._rejilla.count():
+            self._rejilla.takeAt(0)
+        for indice in range(cantidad):
+            self._rejilla.setColumnStretch(indice, 0)
         for indice, widget in enumerate(self._columnas):
             self._rejilla.addWidget(widget, indice // columnas, indice % columnas)
             self._rejilla.setColumnStretch(indice % columnas, 1)
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(True)
+            self.update()
 
 
 class DraftPowerCurveWidget(QWidget):
@@ -391,7 +410,7 @@ class TarjetaPaginaRunas(QFrame):
 class DraftToolDialog(QDialog):
     """Diálogo completo de la Herramienta de Draft en tiempo real."""
 
-    ROLES = list(DraftAnalyzerService.ROLES)
+    ROLES: ClassVar[list[str]] = list(DraftAnalyzerService.ROLES)
 
     # Marca de línea probable: en el draft nadie sabe la línea real del rival.
     PROBABLE_ROLE_PREFIX = "~"
@@ -406,7 +425,7 @@ class DraftToolDialog(QDialog):
     RANGO_IMPORTACION = RANGO_PREDETERMINADO
 
     # Líneas de la herramienta hacia la clave minúscula de las matrices locales.
-    MAPA_LINEAS_IMPORTACION = {
+    MAPA_LINEAS_IMPORTACION: ClassVar[dict[str, str]] = {
         "top": "top",
         "jungle": "jungle",
         "mid": "mid",
@@ -416,7 +435,7 @@ class DraftToolDialog(QDialog):
     }
 
     # Etiquetas legibles de esas claves para los mensajes de importación.
-    LINEAS_ETIQUETA = {
+    LINEAS_ETIQUETA: ClassVar[dict[str, str]] = {
         "top": "Top",
         "jungle": "Jungle",
         "mid": "Mid",
@@ -424,7 +443,9 @@ class DraftToolDialog(QDialog):
         "support": "Support",
     }
 
-    def __init__(self, parent: Any = None) -> None:
+    def __init__(
+        self, parent: Any = None, *, deferred_initialization: bool = False
+    ) -> None:
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         super().__init__(parent)
         self.setWindowTitle("Solralol — Herramienta de Draft en Tiempo Real")
@@ -432,20 +453,34 @@ class DraftToolDialog(QDialog):
         self.setMinimumSize(900, 700)
         aplicar_tema(self)
 
-        self.analyzer = DraftAnalyzerService()
+        self._deferred_initialization = deferred_initialization
+        self._analyzer_ready = False
+        self._analyzer_task = None
+        self._lcu_task = None
+        self._lcu_check_pending = False
+        self._lcu_probe_completed = False
+        self._pending_lcu_session: dict[str, Any] | None = None
+        self._initialization_started = time.perf_counter()
+        self.analyzer: DraftAnalyzerService | None = None
         self.lcu_service = LCUService()
         # La versión del catálogo instalado basta para los assets; abrir el
         # draft no debe esperar una petición HTTP a versions.json.
-        self.dd_version = self.analyzer.version
+        self.dd_version = "16.17.1"
         self._icon_cache = DraftIconCache(self)
 
-        self.all_champion_names = sorted(
-            {
-                prof.get("character") or prof.get("basic_info", {}).get("name")
-                for prof in self.analyzer.champions.values()
-                if prof.get("character") or prof.get("basic_info", {}).get("name")
-            }
-        )
+        if deferred_initialization:
+            self.all_champion_names = self._load_catalog_champion_names()
+        else:
+            self.analyzer = DraftAnalyzerService()
+            self.dd_version = self.analyzer.version
+            self._analyzer_ready = True
+            self.all_champion_names = sorted(
+                {
+                    prof.get("character") or prof.get("basic_info", {}).get("name")
+                    for prof in self.analyzer.champions.values()
+                    if prof.get("character") or prof.get("basic_info", {}).get("name")
+                }
+            )
 
         self.my_team_combo_widgets: list[QComboBox] = []
         self.enemy_team_combo_widgets: list[QComboBox] = []
@@ -470,16 +505,83 @@ class DraftToolDialog(QDialog):
         self.lcu_draft_active = False
         self.curve_scope = "Equipo vs equipo"
         self._last_session_key = None
-        self._repositorio_local = RepositorioCampeones(self.analyzer.path)
+        self._repositorio_local = RepositorioCampeones(
+            self.analyzer.path if self.analyzer else DATA_DIR / "champion_data"
+        )
         self._pagina_runas_activa = 1
         self._contexto_activo: tuple[str, str, str] = ("", "", "")
         self._datos_importacion: dict[str, Any] = {}
         self._estado_importacion: dict[str, str] = {}
         self._tarea_importacion: dict[str, Any] = {}
 
+        inicio_ui = time.perf_counter()
         self._build_ui()
-        self._check_lcu_status()
+        logging.getLogger(__name__).debug(
+            "[draft-perf] construccion_ui_ms=%.1f",
+            (time.perf_counter() - inicio_ui) * 1000,
+        )
         self._update_analytics()
+        if deferred_initialization:
+            self.ensure_initialized()
+        else:
+            self._check_lcu_status()
+
+    @staticmethod
+    def _load_catalog_champion_names() -> list[str]:
+        """Lee nombres de campeones del catalogo local para presentar el primer frame."""
+        try:
+            catalog = json.loads(
+                (DATA_DIR / "champion_catalog.json").read_text(encoding="utf-8")
+            )
+            names = {
+                str(entry.get("name", "")).strip()
+                for entry in catalog.get("data", {}).values()
+                if isinstance(entry, dict) and entry.get("name")
+            }
+            return sorted(names, key=str.casefold)
+        except (OSError, ValueError, TypeError, AttributeError):
+            return []
+
+    def ensure_initialized(self) -> None:
+        """Prepara analizador y consulta LCU fuera del hilo grÃ¡fico."""
+        if self._analyzer_task is None and not self._analyzer_ready:
+            self._analyzer_task = run_async(
+                DraftAnalyzerService,
+                on_finished=self._on_analyzer_initialized,
+                token="draft-analyzer",
+            )
+        if not self._lcu_probe_completed:
+            self._check_lcu_status()
+
+    def _on_analyzer_initialized(
+        self, _token: Any, analyzer: Any, error: str | None
+    ) -> None:
+        """Instala el motor preparado en worker y aplica la sesiÃ³n LCU mÃ¡s reciente."""
+        self._analyzer_task = None
+        if error or analyzer is None:
+            logging.getLogger(__name__).error(
+                "[draft] No se pudo preparar el analizador: %s",
+                error or "sin resultado",
+            )
+            self.lcu_status_lbl.setText("Error cargando datos locales")
+            self._set_lcu_managed_controls(False)
+            return
+        self.analyzer = analyzer
+        self.dd_version = analyzer.version
+        self._repositorio_local = RepositorioCampeones(analyzer.path)
+        self._analyzer_ready = True
+        elapsed = (time.perf_counter() - self._initialization_started) * 1000
+        logging.getLogger(__name__).info(
+            "[draft-perf] motor_listo_ms=%.1f campeones=%d",
+            elapsed,
+            len(analyzer.champions),
+        )
+        pending_session = self._pending_lcu_session
+        self._pending_lcu_session = None
+        if pending_session:
+            self.update_from_lcu_session(pending_session)
+        else:
+            self._update_analytics()
 
     def _build_ui(self) -> None:
         """Construye la presentación con los parámetros recibidos y devuelve el resultado existente."""
@@ -1207,16 +1309,79 @@ class DraftToolDialog(QDialog):
                 self._actualizar_slot_ban(tarjeta, marca, "", equipo)
 
     def _check_lcu_status(self) -> None:
-        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
+        """Refresh LCU status, asynchronously for the shell's deferred mode."""
+        if self._deferred_initialization:
+            if self._lcu_check_pending:
+                return
+            self._lcu_check_pending = True
+            self.lcu_status_lbl.setText("Comprobando LCU...")
+
+            def probe_lcu():
+                service = LCUService()
+                try:
+                    connected = service.is_connected()
+                    session = None
+                    if connected:
+                        try:
+                            response = service.session.get(
+                                f"https://127.0.0.1:{service.port}/lol-champ-select/v1/session",
+                                timeout=2,
+                            )
+                            if response.status_code == 200:
+                                session = response.json()
+                        except (requests.RequestException, ValueError) as exc:
+                            logging.getLogger(__name__).debug(
+                                "[draft] Champ Select unavailable during LCU probe: %s",
+                                type(exc).__name__,
+                            )
+                    return connected, session
+                finally:
+                    service.session.close()
+
+            self._lcu_task = run_async(
+                probe_lcu,
+                on_finished=self._on_lcu_status_checked,
+                token="draft-lcu-status",
+            )
+            return
         if self.lcu_service.is_connected():
-            self.lcu_status_lbl.setText("🟢 LCU Conectado")
+            self.lcu_status_lbl.setText("LCU Conectado")
             aplicar_apariencia(self.lcu_status_lbl, "tarjeta")
             session = self.lcu_service.get_champ_select_session()
             if session:
                 self.update_from_lcu_session(session)
         else:
-            self.lcu_status_lbl.setText("🟡 Modo Manual / LCU Desconectado")
+            self.lcu_status_lbl.setText("Modo Manual / LCU Desconectado")
             aplicar_apariencia(self.lcu_status_lbl, "tarjeta")
+            self._set_lcu_managed_controls(False)
+            self._limpiar_bans_header()
+
+    def _on_lcu_status_checked(
+        self, _token: Any, result: Any, error: str | None
+    ) -> None:
+        """Apply the asynchronous LCU probe result on the GUI thread."""
+        self._lcu_task = None
+        self._lcu_check_pending = False
+        self._lcu_probe_completed = True
+        if error or not result:
+            logging.getLogger(__name__).warning(
+                "[draft] LCU status probe failed: %s", error or "no result"
+            )
+            connected, session = False, None
+        else:
+            connected, session = result
+        if connected:
+            self.lcu_status_lbl.setText("LCU Conectado")
+            aplicar_apariencia(self.lcu_status_lbl, "tarjeta")
+            if session:
+                if self._analyzer_ready:
+                    self.update_from_lcu_session(session)
+                elif self._pending_lcu_session is None:
+                    self._pending_lcu_session = session
+            return
+        self.lcu_status_lbl.setText("Modo Manual / LCU Desconectado")
+        aplicar_apariencia(self.lcu_status_lbl, "tarjeta")
+        if self._analyzer_ready:
             self._set_lcu_managed_controls(False)
             self._limpiar_bans_header()
 
@@ -1270,6 +1435,9 @@ class DraftToolDialog(QDialog):
         return session.get("localPlayerCellId"), teams, bans
 
     def update_from_lcu_session(self, session: dict[str, Any]) -> None:
+        if not self._analyzer_ready:
+            self._pending_lcu_session = session
+            return
         """Una sesión, una actualización; nunca analizar estados intermedios."""
         key = self._session_key(session)
         if self.lcu_draft_active and key == self._last_session_key:
@@ -1629,6 +1797,8 @@ class DraftToolDialog(QDialog):
             aplicar_color(label, color)
 
     def _update_analytics(self) -> None:
+        if not self._analyzer_ready or self.analyzer is None:
+            return
         # Las líneas se recalculan antes de analizar: confirmadas o hipótesis.
         """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
         self._apply_role_hints()
@@ -2239,32 +2409,47 @@ class DraftToolDialog(QDialog):
 
         def operacion() -> tuple[bool, str]:
             """Importa runas y build al cliente con los datos capturados; devuelve éxito y mensaje."""
-            exito_runas, mensaje_runas = lcu.import_rune_page(
-                name=f"{campeon} Página {indice}",
-                primary_tree=pagina.get("primary_tree_id")
-                or str(pagina.get("primary_tree") or ""),
-                secondary_tree=pagina.get("secondary_tree_id")
-                or str(pagina.get("secondary_tree") or ""),
-                keystone_name=str(pagina.get("keystone") or ""),
-                slots=list(pagina.get("slots") or []),
-                secondary_slots=list(pagina.get("secondary_slots") or []),
-                shards=list(pagina.get("shards") or []),
-                keystone_id=pagina.get("keystone_id"),
-                slot_ids=pagina.get("slot_ids"),
-                secondary_slot_ids=pagina.get("secondary_slot_ids"),
-                shard_ids=pagina.get("shard_ids"),
-            )
-            exito_build, mensaje_build = lcu.import_item_set(
-                champion_id=int(build.get("champion_id") or 0),
-                champion_name=campeon,
-                role=rol,
-                item_ids=[str(item["id"]) for item in build["items"]],
-                boots_id=str(build["boots"]["id"]) if build.get("boots") else None,
-                situational=build.get("situational", []),
-            )
+            try:
+                exito_runas, mensaje_runas = lcu.import_rune_page(
+                    name=f"{campeon} Página {indice}",
+                    primary_tree=pagina.get("primary_tree_id")
+                    or str(pagina.get("primary_tree") or ""),
+                    secondary_tree=pagina.get("secondary_tree_id")
+                    or str(pagina.get("secondary_tree") or ""),
+                    keystone_name=str(pagina.get("keystone") or ""),
+                    slots=list(pagina.get("slots") or []),
+                    secondary_slots=list(pagina.get("secondary_slots") or []),
+                    shards=list(pagina.get("shards") or []),
+                    keystone_id=pagina.get("keystone_id"),
+                    slot_ids=pagina.get("slot_ids"),
+                    secondary_slot_ids=pagina.get("secondary_slot_ids"),
+                    shard_ids=pagina.get("shard_ids"),
+                )
+            except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
+                exito_runas, mensaje_runas = False, f"Error al importar runas: {exc}"
+            try:
+                exito_build, mensaje_build = lcu.import_item_set(
+                    champion_id=int(build.get("champion_id") or 0),
+                    champion_name=campeon,
+                    role=rol,
+                    item_ids=[str(item["id"]) for item in build["items"]],
+                    boots_id=str(build["boots"]["id"]) if build.get("boots") else None,
+                    situational=build.get("situational", []),
+                )
+            except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
+                exito_build, mensaje_build = False, f"Error al importar la build: {exc}"
+            if exito_runas and exito_build:
+                return True, f"Build importada correctamente. {mensaje_runas}"
+            if exito_runas:
+                return True, f"Runas importadas correctamente. Build: {mensaje_build}"
+            if exito_build:
+                return True, (
+                    f"Importación parcial: build importada correctamente. "
+                    f"Runas: {mensaje_runas}"
+                )
             return (
-                bool(exito_runas and exito_build),
-                f"{mensaje_runas} {mensaje_build}",
+                False,
+                f"Falló la importación de build y runas. Build: {mensaje_build} Runas: {mensaje_runas}",
             )
 
         self._lanzar_importacion("build_runas", self.btn_import_build_runes, operacion)

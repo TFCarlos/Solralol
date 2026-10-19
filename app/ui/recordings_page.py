@@ -134,6 +134,7 @@ class MarkerSlider(QSlider):
     """
 
     seek_requested = Signal(int)
+    scrub_position_changed = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(Qt.Orientation.Horizontal, parent)
@@ -444,8 +445,8 @@ class MarkerSlider(QSlider):
     def mousePressEvent(self, event) -> None:  # noqa: N802 - firma de Qt
         if event.button() == Qt.MouseButton.LeftButton:
             self._scrubbing = True
-            seconds = self._seconds_at(int(event.position().x()))
-            self.seek_requested.emit(int(seconds * 1000))
+            self.setSliderDown(True)
+            self._set_scrub_position(int(event.position().x()))
             event.accept()
 
             return
@@ -456,7 +457,13 @@ class MarkerSlider(QSlider):
         if event.button() == Qt.MouseButton.LeftButton and self._scrubbing:
             self._scrubbing = False
             seconds = self._seconds_at(int(event.position().x()))
-            self.seek_requested.emit(int(seconds * 1000))
+            position_ms = max(0, int(seconds * 1000))
+            self._set_position_value(position_ms)
+            self.setSliderDown(False)
+            # QMediaPlayer seek requests can take much longer than the input
+            # interval on long files. Commit exactly once, after the drag, so
+            # stale decoder work cannot queue behind newer pointer positions.
+            self.seek_requested.emit(position_ms)
             event.accept()
 
             return
@@ -470,13 +477,21 @@ class MarkerSlider(QSlider):
 
         super().leaveEvent(event)
 
-    def _emit_scrub(self, x: int) -> None:
-        seconds = self._seconds_at(int(x))
-        self.seek_requested.emit(int(seconds * 1000))
+    def _set_position_value(self, position_ms: int) -> None:
+        signals_were_blocked = self.blockSignals(True)
+        try:
+            self.setValue(max(self.minimum(), min(int(position_ms), self.maximum())))
+        finally:
+            self.blockSignals(signals_were_blocked)
+
+    def _set_scrub_position(self, x: int) -> None:
+        position_ms = max(0, int(self._seconds_at(int(x)) * 1000))
+        self._set_position_value(position_ms)
+        self.scrub_position_changed.emit(position_ms)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - firma de Qt
         if self._scrubbing:
-            self._emit_scrub(int(event.position().x()))
+            self._set_scrub_position(int(event.position().x()))
         seconds = self._seconds_at(int(event.position().x()))
         hits = self._markers_at(seconds, tolerance=8.0)
         hover_x: float | None = None
@@ -845,6 +860,7 @@ class RecordingsPage(QWidget):
         self.position_slider = MarkerSlider()
         self.position_slider.setRange(0, 0)
         self.position_slider.seek_requested.connect(self.seek_to_ms)
+        self.position_slider.scrub_position_changed.connect(self._show_scrub_position)
         playback_strip = QFrame()
         playback_strip.setObjectName("recordingPlaybackStrip")
         playback_layout = QVBoxLayout(playback_strip)
@@ -1852,6 +1868,13 @@ class RecordingsPage(QWidget):
 
             return
 
+        playback_video = self.library.optimized_playback_path(video)
+        if (
+            self.current_path == video
+            and self.player.source().toLocalFile() == str(playback_video)
+        ):
+            return
+
         self.current_path = video
         metadata = self.library.load_metadata(video)
         selected = next(
@@ -1907,7 +1930,7 @@ class RecordingsPage(QWidget):
             card.style().polish(card)
         self.play_button.setEnabled(True)
         actualizar_texto_boton(self.play_button, "⏸ Pausar")
-        self.player.setSource(QUrl.fromLocalFile(str(video)))
+        self.player.setSource(QUrl.fromLocalFile(str(playback_video)))
         self.player.play()
         self.video_widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
@@ -1985,6 +2008,16 @@ class RecordingsPage(QWidget):
             f"{format_duration(position_ms / 1000)} / "
             f"{format_duration(duration / 1000)}"
         )
+
+    def _show_scrub_position(self, position_ms: int) -> None:
+        """Actualiza el reloj durante el arrastre sin solicitar una búsqueda."""
+        duration = max(0, int(self.player.duration()))
+        label = (
+            f"{format_duration(position_ms / 1000)} / "
+            f"{format_duration(duration / 1000)}"
+        )
+        if self.position_label.text() != label:
+            self.position_label.setText(label)
 
     def _on_duration_changed(self, duration_ms: int) -> None:
         if duration_ms <= 0:

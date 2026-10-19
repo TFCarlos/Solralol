@@ -372,6 +372,35 @@ class HomeHistoryRepository:
             self._write_atomic(path, documentos)
         return data
 
+    def unlink_saved_match(
+        self, profile: dict[str, Any], session_id: str
+    ) -> bool:
+        """Retira enlaces y resúmenes derivados de una sesión guardada eliminada."""
+        if not session_id:
+            return False
+        key = self.account_key(profile)
+        path = self.root / key / "match_history.json"
+        with self._lock_for(path):
+            data = self.load(profile)
+            matches = data["matches"]
+            changed = False
+            for match in matches:
+                link = match.get("saved_match_link")
+                if not isinstance(link, dict):
+                    continue
+                if str(link.get("saved_match_id") or "") != str(session_id):
+                    continue
+                match.pop("saved_match_link", None)
+                match.pop("performance_summary", None)
+                changed = True
+            if not changed:
+                return False
+            unusable = data.pop("_unusable_match_records", [])
+            document = dict(data)
+            document["matches"] = [*matches, *unusable]
+            self._write_atomic(path, document)
+            return True
+
     def clear(self, profile: dict[str, Any]) -> None:
         """Elimina el historial de la cuenta indicada bajo el cerrojo de archivo.
 
@@ -675,7 +704,6 @@ class LCUHomeProvider:
             if self.cliente.refresh_connection()
             else {
                 "masteries": None,
-                "champions": None,
                 "skins": None,
                 "challenges": None,
                 "titles": None,
@@ -704,17 +732,12 @@ class LCUHomeProvider:
         return collection
 
     def _load_collection(self, profile: dict[str, Any]) -> dict[str, Any]:
-        """Consulta por separado maestría, campeones, skins y desafíos locales."""
+        """Consulta por separado maestrías, skins y desafíos locales."""
         summoner_id = str(profile.get("summonerId") or "")
         routes = {
             "masteries": [
                 f"/lol-collections/v1/inventories/{summoner_id}/champion-mastery/top?limit=3",
                 "/lol-champion-mastery/v1/local-player/champion-mastery",
-            ],
-            "champions": [
-                f"/lol-champions/v1/inventories/{summoner_id}/champions",
-                f"/lol-champions/v1/inventories/{summoner_id}/champions-minimal",
-                "/lol-champions/v1/owned-champions-minimal",
             ],
             "skins": [f"/lol-champions/v1/inventories/{summoner_id}/skins-minimal"],
             "challenges": [
@@ -747,19 +770,6 @@ class LCUHomeProvider:
             and not output["titles"].get("selected")
         ):
             output["titles"]["selected"] = challenge_data.get("title")
-        total = None
-        if summoner_id:
-            try:
-                total = self._normalize_collection(
-                    "champion_total",
-                    self._get(
-                        f"/lol-champions/v1/inventories/{summoner_id}/champions-playable-count"
-                    ),
-                )
-            except (RuntimeError, ConnectionError):
-                pass
-        if isinstance(output.get("champions"), dict) and total is not None:
-            output["champions"]["total_count"] = total
         return output
 
     @staticmethod
@@ -793,7 +803,7 @@ class LCUHomeProvider:
                 key=lambda item: item["points"],
                 reverse=True,
             )[:3]
-        if category in {"champions", "skins"}:
+        if category == "skins":
             entries = (
                 payload
                 if isinstance(payload, list)
@@ -805,8 +815,6 @@ class LCUHomeProvider:
                 return None
             owned = []
             has_ownership = False
-            vistos: set[str] = set()
-            total = 0
             for item in entries:
                 if not isinstance(item, dict):
                     continue
@@ -834,35 +842,11 @@ class LCUHomeProvider:
                         "isChroma",
                     )
                 )
-                if category == "champions" and not excluded:
-                    champion_id = next(
-                        (
-                            str(item.get(key)).strip()
-                            for key in ("id", "championId", "key")
-                            if item.get(key) is not None and str(item.get(key)).strip()
-                        ),
-                        "",
-                    )
-                    if champion_id and champion_id not in vistos:
-                        vistos.add(champion_id)
-                        total += 1
-                        if is_owned:
-                            owned.append(champion_id)
-                elif category == "skins" and is_owned and not excluded:
+                if is_owned and not excluded:
                     owned.append(item)
             if entries and not has_ownership:
                 return None
-            return {
-                "owned_count": len(owned),
-                "total_count": total if category == "champions" else None,
-            }
-        if category == "champion_total":
-            if isinstance(payload, dict):
-                payload = payload.get(
-                    "count",
-                    payload.get("playableChampionCount"),
-                )
-            return LCUHomeProvider._ranked_integer(payload)
+            return {"owned_count": len(owned), "total_count": None}
         if category == "challenges" and isinstance(payload, (int, float)):
             return {"count": None, "points": int(payload)}
         if category == "challenges" and isinstance(payload, dict):
@@ -1775,15 +1759,42 @@ class LCUHomeProvider:
             return 0
 
 
+def normalizar_partidas_unicas(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Elimina IDs duplicados y conserva el orden recibido.
+
+    Parámetros: registros del historial local.
+    Retorno: partidas válidas únicas cuando existe un ID estable.
+    """
+    unicas: list[dict[str, Any]] = []
+    vistos: set[str] = set()
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        identificador = str(
+            match.get("stable_match_id") or match.get("game_id") or match.get("gameId") or ""
+        ).strip()
+        if identificador and identificador in vistos:
+            continue
+        if identificador:
+            vistos.add(identificador)
+        unicas.append(match)
+    return unicas
+
+
 def analyze_home_history(matches: list[dict[str, Any]]) -> dict[str, Any]:
-    """Calcula KPIs y distribuciones usando únicamente partidas conocidas."""
+    """Calcula métricas de uso y resultado de partidas locales únicas.
+
+    Parámetros: partidas importadas o guardadas localmente.
+    Retorno: conteos, win rate, campeón más jugado y distribuciones validadas.
+    """
+    matches = normalizar_partidas_unicas(matches)
     played = [
         match for match in matches if match.get("result") in {"victory", "defeat"}
     ]
     wins = sum(match.get("result") == "victory" for match in played)
     champions = Counter(
         str(match.get("champion_name") or "")
-        for match in played
+        for match in matches
         if match.get("champion_name")
     )
     lanes = Counter(
@@ -1806,10 +1817,19 @@ def analyze_home_history(matches: list[dict[str, Any]]) -> dict[str, Any]:
             mejor_racha = max(mejor_racha, racha_temporal)
         else:
             racha_temporal = 0
-    for match in matches:
-        if match.get("result") != "victory":
-            break
-        racha_actual += 1
+    resultado_inicial = matches[0].get("result") if matches else None
+    racha_actual_total = 0
+    racha_tipo = (
+        resultado_inicial
+        if resultado_inicial in {"victory", "defeat"}
+        else None
+    )
+    if racha_tipo:
+        for match in matches:
+            if match.get("result") != resultado_inicial:
+                break
+            racha_actual_total += 1
+    racha_actual = racha_actual_total if racha_tipo == "victory" else 0
     hours: Counter[int] = Counter()
     weekdays: Counter[int] = Counter()
     for match in played:
@@ -1850,15 +1870,20 @@ def analyze_home_history(matches: list[dict[str, Any]]) -> dict[str, Any]:
                 else "unavailable"
             )
         opponent_states[state] += 1
+    campeones_ordenados = sorted(
+        champions.items(), key=lambda item: (-item[1], item[0].casefold())
+    )
     return {
         "total": len(matches),
         "played": len(played),
         "wins": wins,
         "current_win_streak": racha_actual,
+        "current_streak": racha_actual_total,
+        "current_streak_result": racha_tipo,
         "longest_win_streak": mejor_racha,
         "winrate": round(wins * 100 / len(played)) if played else None,
-        "top_champion": champions.most_common(1)[0][0] if champions else None,
-        "champions": champions.most_common(3),
+        "top_champion": campeones_ordenados[0][0] if campeones_ordenados else None,
+        "champions": campeones_ordenados[:3],
         "lanes": lanes.most_common(),
         "classes": classes.most_common(),
         "hours": sorted(hours.items()),

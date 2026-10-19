@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 import pytest
@@ -38,7 +39,9 @@ class SesionLCUFalsa:
         self.calls: list[tuple[str, str, Any]] = []
         self.fail_get = False
         self.fail_write_status = 0
+        self.fail_write_message = "write rejected"
         self.mismatch_after_write = False
+        self.fail_next_put_404 = False
         self.next_id = 1
 
     def get(self, url: str, timeout: int) -> RespuestaFalsa:
@@ -66,7 +69,9 @@ class SesionLCUFalsa:
         """
         self.calls.append(("POST", url.rsplit("/", 1)[-1], json))
         if self.fail_write_status:
-            return RespuestaFalsa(self.fail_write_status, {"error": "write rejected"})
+            return RespuestaFalsa(
+                self.fail_write_status, {"message": self.fail_write_message}
+            )
         guardada = {**json, "id": self.next_id, "isEditable": True}
         self.next_id += 1
         self.pages.append(guardada)
@@ -82,6 +87,10 @@ class SesionLCUFalsa:
         """
         page_id = int(url.rsplit("/", 1)[-1])
         self.calls.append(("PUT", str(page_id), json))
+        if self.fail_next_put_404:
+            self.fail_next_put_404 = False
+            self.pages = [page for page in self.pages if page.get("id") != page_id]
+            return RespuestaFalsa(404)
         for indice, page in enumerate(self.pages):
             if page.get("id") == page_id:
                 self.pages[indice] = {**json, "id": page_id, "isEditable": True}
@@ -244,6 +253,84 @@ def test_importacion_crea_payload_completo_y_verifica_lectura() -> None:
     assert [call[0] for call in sesion.calls].count("GET") == 4
 
 
+def test_lista_de_ids_vacia_conserva_los_tres_fragmentos_recomendados() -> None:
+    """Resuelve los fragmentos por recomendación cuando el campo de IDs está vacío."""
+    sesion = SesionLCUFalsa()
+    servicio = crear_servicio(sesion)
+    ids = seleccion_valida(8000, 8100)
+    exito, mensaje = servicio.import_rune_page(
+        "Briar Página 1",
+        8000,
+        8100,
+        ids[0],
+        ids[1:4],
+        ids[4:6],
+        ["Adaptive Force", "Adaptive Force", "Health Scaling"],
+        shard_ids=[],
+    )
+
+    assert exito, mensaje
+    assert sesion.calls[-2][2]["selectedPerkIds"] == [
+        *ids[:6],
+        5008,
+        5008,
+        5001,
+    ]
+    assert len(sesion.calls[-2][2]["selectedPerkIds"]) == 9
+
+
+@pytest.mark.parametrize(
+    ("primary", "secondary", "ids"),
+    [
+        (8000, 8100, [8005, 8014, 9104, 9111, 8143, 8135]),
+        (8100, 8300, [9923, 8143, 8137, 8135, 8313, 8321]),
+    ],
+)
+def test_briar_recomendaciones_pta_y_hail_of_blades_envian_nueve_ids(
+    primary: int, secondary: int, ids: list[int]
+) -> None:
+    """Comprueba el payload LCU de las dos páginas recomendadas para Briar."""
+    sesion = SesionLCUFalsa()
+    for style_id, filas_reales in {
+        8000: {0: [8005], 1: [8014], 2: [9104], 3: [9111]},
+        8100: {0: [9923], 1: [8143], 2: [8137], 3: [8135]},
+        8300: {1: [8313], 2: [8321]},
+    }.items():
+        estilo = next(style for style in sesion.styles if style["id"] == style_id)
+        for fila, identificadores in filas_reales.items():
+            estilo["slots"][fila]["perks"][: len(identificadores)] = identificadores
+            for identificador in identificadores:
+                sesion.perks.append(
+                    {
+                        "id": identificador,
+                        "name": f"Perk {identificador}",
+                        "styleId": style_id,
+                        "slotType": "kKeyStone"
+                        if fila == 0
+                        else "kMixedRegularSplashable",
+                    }
+                )
+    servicio = crear_servicio(sesion)
+
+    exito, mensaje = servicio.import_rune_page(
+        "Briar",
+        primary,
+        secondary,
+        ids[0],
+        ids[1:4],
+        ids[4:6],
+        ["Adaptive Force", "Adaptive Force", "Health Scaling"],
+        shard_ids=[],
+    )
+
+    assert exito, mensaje
+    payload = next(call[2] for call in sesion.calls if call[0] == "POST")
+    assert len(payload["selectedPerkIds"]) == 9
+    assert payload["selectedPerkIds"][:4] == ids[:4]
+    assert set(payload["selectedPerkIds"][4:6]) == set(ids[4:6])
+    assert payload["selectedPerkIds"][6:] == [5008, 5008, 5001]
+
+
 def test_importacion_reordena_runas_sin_cambiar_la_recomendacion() -> None:
     """Asigna los IDs recomendados a las filas LCU sin alterar su conjunto."""
     sesion = SesionLCUFalsa()
@@ -388,3 +475,186 @@ def test_importacion_informa_fallo_lcu_y_discrepancia_al_guardar() -> None:
     exito, mensaje = importar(servicio, 8100, 8300, ids)
     assert not exito
     assert "configuración distinta" in mensaje
+
+
+def test_limite_de_paginas_no_repite_post_si_no_hay_paginas_editables() -> None:
+    """Explica el límite y memoriza el rechazo mientras no cambie la colección."""
+    sesion = SesionLCUFalsa()
+    sesion.fail_write_status = 400
+    sesion.fail_write_message = "Max pages reached"
+    servicio = crear_servicio(sesion)
+    ids = seleccion_valida(8100, 8300)
+    exito, mensaje = importar(servicio, 8100, 8300, ids)
+    assert not exito
+    assert "límite de páginas" in mensaje.casefold()
+    assert [call[0] for call in sesion.calls].count("POST") == 1
+    exito, mensaje = importar(servicio, 8100, 8300, ids)
+    assert not exito
+    assert [call[0] for call in sesion.calls].count("POST") == 1
+    assert sesion.pages == []
+
+
+def test_pagina_solralol_se_actualiza_sin_intentar_crear_otra() -> None:
+    """Actualiza una página gestionada incluso cuando POST simularía el límite."""
+    sesion = SesionLCUFalsa()
+    sesion.fail_write_status = 400
+    sesion.fail_write_message = "Max pages reached"
+    sesion.pages = [
+        {"id": 8, "name": "Solralol - Otra build", "isEditable": True, "current": True},
+        {"id": 9, "name": "Mi página personal", "isEditable": True},
+    ]
+    servicio = crear_servicio(sesion)
+    ids = seleccion_valida(8100, 8300)
+    exito, mensaje = importar(servicio, 8100, 8300, ids)
+    assert exito
+    assert "actualizada" in mensaje
+    assert len(sesion.pages) == 2
+    assert sesion.pages[1]["name"] == "Mi página personal"
+    assert [call[0] for call in sesion.calls].count("PUT") == 1
+    assert [call[0] for call in sesion.calls].count("POST") == 0
+    assert not any(call[0] == "DELETE" for call in sesion.calls)
+
+
+def test_pagina_solralol_reutiliza_id_existente_aunque_haya_capacidad() -> None:
+    """Reutiliza la página gestionada en vez de crear una al cambiar de campeón."""
+    sesion = SesionLCUFalsa()
+    sesion.pages = [
+        {"id": 8, "name": "Solralol - Otra build", "isEditable": True},
+        {"id": 9, "name": "Mi página personal", "isEditable": True},
+    ]
+    servicio = crear_servicio(sesion)
+    exito, mensaje = importar(servicio, 8100, 8300, seleccion_valida(8100, 8300))
+    assert exito
+    assert "actualizada" in mensaje
+    assert [call[0] for call in sesion.calls].count("POST") == 0
+    assert [call[0] for call in sesion.calls].count("PUT") == 1
+    assert sesion.pages[0]["name"] == "Solralol - Prueba"
+    assert sesion.pages[1]["name"] == "Mi página personal"
+
+
+def test_solralol_actualiza_por_id_y_prioriza_la_ranura_seleccionada() -> None:
+    """Conserva el ID de la página Solralol correspondiente a Page 2."""
+    sesion = SesionLCUFalsa()
+    sesion.pages = [
+        {"id": 8, "name": "Solralol - Briar - Page 1", "isEditable": True},
+        {"id": 9, "name": "SOLRALOL - Jungle - Page 2", "isEditable": True},
+        {"id": 10, "name": "Mi página", "isEditable": True},
+    ]
+    servicio = crear_servicio(sesion)
+
+    exito, mensaje = servicio.import_rune_page(
+        "Kayn Página 2",
+        8100,
+        8300,
+        *seleccion_valida(8100, 8300)[:1],
+        seleccion_valida(8100, 8300)[1:4],
+        seleccion_valida(8100, 8300)[4:6],
+        seleccion_valida(8100, 8300)[6:9],
+    )
+
+    assert exito, mensaje
+    assert [page["id"] for page in sesion.pages] == [8, 9, 10]
+    assert sesion.pages[0]["name"] == "Solralol - Briar - Page 1"
+    assert sesion.pages[1]["name"] == "Solralol - Kayn - Page 2"
+    assert sesion.pages[1]["selectedPerkIds"] == seleccion_valida(8100, 8300)
+    assert [call[1] for call in sesion.calls if call[0] == "PUT"] == ["9"]
+    assert not any(call[0] == "POST" for call in sesion.calls)
+
+
+def test_sin_solralol_sobrescribe_la_ultima_pagina_editable_por_orden_lcu() -> None:
+    """Renombra la última página editable recibida y mantiene intactas las demás."""
+    sesion = SesionLCUFalsa()
+    sesion.pages = [
+        {"id": 90, "name": "ID mayor pero primera", "isEditable": True},
+        {"id": 12, "name": "Solo lectura", "isEditable": False},
+        {"id": 4, "name": "Última por orden", "isEditable": True},
+    ]
+    servicio = crear_servicio(sesion)
+    ids = seleccion_valida(8000, 8100)
+
+    exito, mensaje = importar(servicio, 8000, 8100, ids)
+
+    assert exito, mensaje
+    assert [page["id"] for page in sesion.pages] == [90, 12, 4]
+    assert sesion.pages[0]["name"] == "ID mayor pero primera"
+    assert sesion.pages[1]["name"] == "Solo lectura"
+    assert sesion.pages[2]["name"] == "Solralol - Prueba"
+    assert [call[0] for call in sesion.calls].count("POST") == 0
+    assert [call[1] for call in sesion.calls if call[0] == "PUT"] == ["4"]
+
+
+def test_cambios_de_campeon_reutilizan_el_mismo_id_y_no_crean_duplicados() -> None:
+    """Reemplaza repetidamente la misma página por la selección actual."""
+    sesion = SesionLCUFalsa()
+    servicio = crear_servicio(sesion)
+    configuraciones = [
+        ("Briar Página 1", 8100, 8300),
+        ("Kayn Página 1", 8000, 8100),
+        ("Aatrox Página 2", 8100, 8300),
+        ("Briar Página 1", 8000, 8100),
+    ]
+
+    resultados = [
+        servicio.import_rune_page(
+            nombre,
+            principal,
+            secundaria,
+            *seleccion_valida(principal, secundaria)[:1],
+            seleccion_valida(principal, secundaria)[1:4],
+            seleccion_valida(principal, secundaria)[4:6],
+            seleccion_valida(principal, secundaria)[6:9],
+        )
+        for nombre, principal, secundaria in configuraciones
+    ]
+
+    assert all(exito for exito, _ in resultados)
+    assert len(sesion.pages) == 1
+    assert sesion.pages[0]["id"] == 1
+    assert sesion.pages[0]["name"] == "Solralol - Briar - Page 1"
+    assert [call[0] for call in sesion.calls].count("POST") == 1
+    assert [call[0] for call in sesion.calls].count("PUT") == 3
+
+
+def test_importaciones_concurrentes_se_serializan_y_no_crean_paginas_duplicadas() -> (
+    None
+):
+    """Serializa dos solicitudes concurrentes sobre el mismo cliente LCU."""
+    sesion = SesionLCUFalsa()
+    servicio = crear_servicio(sesion)
+    ids = seleccion_valida(8100, 8300)
+    resultados: list[tuple[bool, str]] = []
+
+    def importar_en_hilo() -> None:
+        """Ejecuta una importación idéntica y conserva su resultado."""
+        resultados.append(importar(servicio, 8100, 8300, ids))
+
+    hilos = [threading.Thread(target=importar_en_hilo) for _ in range(2)]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join(timeout=3)
+
+    assert all(not hilo.is_alive() for hilo in hilos)
+    assert len(resultados) == 2
+    assert all(exito for exito, _ in resultados)
+    assert len(sesion.pages) == 1
+    assert [call[0] for call in sesion.calls].count("POST") == 1
+    assert [call[0] for call in sesion.calls].count("PUT") == 1
+
+
+def test_id_eliminado_entre_lectura_y_escritura_se_resuelve_con_pagina_actual() -> None:
+    """Refresca páginas tras un 404 y actualiza un destino editable vigente."""
+    sesion = SesionLCUFalsa()
+    sesion.pages = [
+        {"id": 1, "name": "Solralol - Antigua - Page 1", "isEditable": True},
+        {"id": 2, "name": "Solralol - Respaldo - Page 1", "isEditable": True},
+    ]
+    sesion.fail_next_put_404 = True
+    servicio = crear_servicio(sesion)
+
+    exito, mensaje = importar(servicio, 8100, 8300, seleccion_valida(8100, 8300))
+
+    assert exito, mensaje
+    assert [page["id"] for page in sesion.pages] == [2]
+    assert sesion.pages[0]["name"] == "Solralol - Prueba"
+    assert [call[1] for call in sesion.calls if call[0] == "PUT"] == ["1", "2"]

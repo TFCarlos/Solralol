@@ -103,7 +103,7 @@ def test_shell_completo_y_draft(
 ) -> None:
     """Verifica siete destinos, draft único incrustado y actualización LCU oculta."""
     ventana = ventana_global
-    assert ventana.pages.count() == 7
+    assert ventana.pages.count() == 8
     for indice in range(6):
         ventana.pages.setCurrentIndex(indice)
         for _ in range(10):
@@ -113,7 +113,7 @@ def test_shell_completo_y_draft(
     draft = ventana.draft_tool_dialog
     assert draft is ventana.pages.widget(6) and not draft.isWindow()
     ventana.open_draft_tool_dialog()
-    assert ventana.pages.count() == 7 and ventana.draft_tool_dialog is draft
+    assert ventana.pages.count() == 8 and ventana.draft_tool_dialog is draft
     assert ventana.draft_nav_button.isChecked()
     assert len(draft.my_team_combo_widgets) == len(draft.enemy_team_combo_widgets) == 5
     assert all(

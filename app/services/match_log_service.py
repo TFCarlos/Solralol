@@ -42,6 +42,15 @@ class MatchLogService:
 
         return json_path, log_path
 
+    def delete_match_log(self, session_id: str) -> None:
+        """Elimina los artefactos derivados del log de una partida guardada."""
+        safe_id = str(session_id)
+        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_+-."
+        if not safe_id or any(char not in allowed for char in safe_id):
+            raise ValueError("Identificador de partida no válido.")
+        for suffix in (".json", ".log"):
+            (self.logs_dir / f"match_{safe_id}{suffix}").unlink(missing_ok=True)
+
     def get_match_log(self, session: dict[str, Any]) -> tuple[dict[str, Any], str]:
         """
         Obtiene el log de la partida. Si ya existe en disco lo carga;

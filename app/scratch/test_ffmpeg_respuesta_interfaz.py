@@ -58,6 +58,11 @@ def test_orden_limita_hilos_de_codificacion_y_filtros() -> None:
         recording_service.RECORDING_FILTER_THREADS
     )
     assert orden[orden.index("-c:v") + 1] == "h264_amf"
+    assert orden[orden.index("-usage") + 1] == "transcoding"
+    assert orden[orden.index("-latency") + 1] == "1"
+    assert orden[orden.index("-g") + 1] == str(
+        recording_service.quality_fps("1080") * 2
+    )
     assert orden[orden.index("-quality") + 1] == "speed"
     assert recording_service.RECORDING_ENCODER_THREADS <= 8
 

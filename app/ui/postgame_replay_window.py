@@ -382,6 +382,7 @@ class PostgameReplayWindow(QMainWindow):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self.marker_slider.seek_requested.connect(self.seek_to_ms)
+        self.marker_slider.scrub_position_changed.connect(self._show_scrub_position)
         layout.addWidget(self.marker_slider)
 
         # Fila de transporte envuelta en un widget para poder moverla (con
@@ -793,6 +794,15 @@ class PostgameReplayWindow(QMainWindow):
             f"{format_duration(position_ms / 1000.0)} / "
             f"{format_duration(self.player.duration() / 1000.0)}"
         )
+
+    def _show_scrub_position(self, position_ms: int) -> None:
+        """Refleja el punto elegido sin hacer que el decoder lo persiga."""
+        label = (
+            f"{format_duration(position_ms / 1000.0)} / "
+            f"{format_duration(self.player.duration() / 1000.0)}"
+        )
+        if self.time_label.text() != label:
+            self.time_label.setText(label)
 
     def _on_duration(self, duration_ms: int) -> None:
         self.marker_slider.setRange(0, int(max(1, duration_ms)))
@@ -1315,16 +1325,22 @@ class PostgameReplayWindow(QMainWindow):
             self.status_label.setText(f"No se encontró el vídeo {target.name}.")
             return
 
+        playback_path = self.library.optimized_playback_path(target)
+        if (
+            self.video_path == target
+            and self.player.source().toLocalFile() == str(playback_path)
+        ):
+            return
+
         self.video_path = target
         self.player.stop()
-        self.player.setSource(QUrl())
         self.metadata = self._load_metadata(target)
         self.game_time_offset = float(self.metadata.get("game_time_offset") or 0.0)
         # El sidecar puede traer la partida (eventos, jugador local...) y el
         # tracker la sesión completa en disco: se toma la más rica de las
         # dos, sin mezclar partidas distintas.
         self._adopt_session_for_video()
-        self.player.setSource(QUrl.fromLocalFile(str(target)))
+        self.player.setSource(QUrl.fromLocalFile(str(playback_path)))
         self.player.pause()
         self._pending_seek_ms = 0
         self._refresh_header()

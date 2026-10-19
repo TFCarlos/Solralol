@@ -5,12 +5,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QBoxLayout,
     QComboBox,
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -23,13 +24,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.services.home_history_service import normalizar_partidas_unicas
 from app.services.resumen_rendimiento_historial import (
     etiqueta_puntuacion,
     puntuacion_historial_vigente,
 )
 from app.ui.sistema_visual import PALETA
+from app.ui.superficies_analisis import IconoRedondeado
 from app.ui.tema import aplicar_apariencia
 from data_dragon import get_champion_icon_path, get_item_icon_path
+
+_HOME_CHAMPION_PIXMAPS: dict[tuple[str, int], QPixmap] = {}
 
 
 def _local_champion_names() -> dict[str, str]:
@@ -55,11 +60,17 @@ class RelojActividad(QWidget):
     """Dibuja las 24 horas en un anillo con intensidad según las partidas."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Inicializa el reloj circular sin datos de actividad."""
+        """Inicializa el reloj circular sin datos de actividad.
+
+        Parámetros: widget padre opcional.
+        Retorno: None; reserva una banda compacta para el reloj.
+        """
         super().__init__(parent)
+        self.setObjectName("homeDashboard")
         self.conteos: dict[int, int] = {}
         self.hora_pico: int | None = None
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(118)
+        self.setMaximumHeight(122)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_data(self, conteos: dict[int, int], hora_pico: int | None) -> None:
@@ -69,17 +80,21 @@ class RelojActividad(QWidget):
         self.update()
 
     def paintEvent(self, event: Any) -> None:
-        """Pinta segmentos horarios y la hora de mayor actividad."""
+        """Pinta segmentos horarios y la hora de mayor actividad.
+
+        Parámetros: evento de pintura de Qt.
+        Retorno: None; representa la intensidad horaria disponible.
+        """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         center_x = self.width() / 2
         center_y = self.height() / 2
-        radius = min(self.width(), self.height()) * 0.36
+        radius = min(self.width(), self.height()) * 0.30
         maximum = max(self.conteos.values(), default=0)
         for hour in range(24):
             angle = math.radians(hour * 15 - 90)
             intensity = self.conteos.get(hour, 0) / maximum if maximum else 0
-            length = 8 + 23 * intensity
+            length = 6 + 16 * intensity
             color = PALETA["oro"] if intensity else PALETA["borde_sutil"]
             painter.setPen(QPen(QColor(color), 3.5 if intensity else 2.0))
             painter.drawLine(
@@ -95,6 +110,237 @@ class RelojActividad(QWidget):
             f"{self.hora_pico:02d}:00\nTU HORA"
             if self.hora_pico is not None
             else "24 h\nACTIVIDAD",
+        )
+
+
+class GraficoProgresionClasificatoria(QWidget):
+    """Dibuja la evolución de rango de las partidas clasificatorias recientes."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Inicializa el gráfico sin muestra clasificatoria.
+
+        Parámetros: widget padre opcional.
+        Retorno: None; deja la serie vacía hasta recibir historial.
+        """
+        super().__init__(parent)
+        self.valores: list[float] = []
+        self.fuente = ""
+        self.etiquetas: list[str] = []
+        self.setMinimumHeight(112)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def establecer_partidas(self, partidas: list[dict[str, Any]]) -> None:
+        """Prepara LP exactos o un proxy determinista de resultados clasificatorios.
+
+        Parámetros: partidas recibidas en orden de más recientes a más antiguas.
+        Retorno: None; conserva la serie solo si cambia el conjunto representado.
+        """
+        clasificatorias = sorted(
+            (
+                partida
+                for partida in partidas
+                if self._es_clasificatoria(partida)
+                and partida.get("result") in {"victory", "defeat"}
+            ),
+            key=lambda partida: str(partida.get("started_at") or ""),
+        )[-20:]
+        if len(clasificatorias) < 2:
+            valores: list[float] = []
+            fuente = ""
+        else:
+            puntos = [
+                self._numero(
+                    partida,
+                    ("lp_after", "league_points_after", "ranked_lp", "league_points", "lp"),
+                )
+                for partida in clasificatorias
+            ]
+            deltas = [
+                self._numero(
+                    partida,
+                    ("lp_delta", "league_points_delta", "lp_change", "ranked_lp_change"),
+                )
+                for partida in clasificatorias
+            ]
+            if all(valor is not None for valor in puntos):
+                valores = [float(valor) for valor in puntos if valor is not None]
+                fuente = "LP registrados"
+            elif all(valor is not None for valor in deltas):
+                valores = []
+                acumulado = 0.0
+                for valor in deltas:
+                    acumulado += float(valor or 0)
+                    valores.append(acumulado)
+                fuente = "Variación LP registrada"
+            else:
+                valores = []
+                acumulado = 0.0
+                for partida in clasificatorias:
+                    acumulado += 1 if partida.get("result") == "victory" else -1
+                    valores.append(acumulado)
+                fuente = "Índice W/L · proxy clasificatorio"
+        etiquetas = [
+            str(partida.get("started_at") or partida.get("result") or "")
+            for partida in clasificatorias
+        ]
+        if (valores, fuente, etiquetas) == (self.valores, self.fuente, self.etiquetas):
+            return
+        self.valores = valores
+        self.fuente = fuente
+        self.etiquetas = etiquetas
+        self.update()
+
+    @staticmethod
+    def _es_clasificatoria(partida: dict[str, Any]) -> bool:
+        """Identifica SoloQ o Flex mediante el ID o nombre explícito de cola.
+
+        Parámetros: registro normalizado de una partida.
+        Retorno: True si la partida pertenece a una cola clasificatoria.
+        """
+        cola = str(
+            partida.get("queue")
+            or partida.get("queue_type")
+            or partida.get("queueType")
+            or ""
+        ).upper()
+        queue_id = str(partida.get("queue_id") or "")
+        return "RANKED" in cola or queue_id in {"420", "440"}
+
+    @staticmethod
+    def _numero(partida: dict[str, Any], campos: tuple[str, ...]) -> float | None:
+        """Devuelve el primer valor numérico disponible entre campos admitidos.
+
+        Parámetros: partida y nombres de campos de progresión.
+        Retorno: número finito o None si los campos faltan o no son válidos.
+        """
+        for campo in campos:
+            try:
+                valor = float(partida.get(campo))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if math.isfinite(valor):
+                return valor
+        return None
+
+    def paintEvent(self, event: Any) -> None:
+        """Pinta una curva clasificatoria con guías, ejes y marcadores.
+
+        Parámetros: evento de pintura de Qt.
+        Retorno: None; dibuja progreso real o informa que falta muestra.
+        """
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        area = QRectF(self.rect()).adjusted(30, 12, -12, -25)
+        if len(self.valores) < 2:
+            painter.setPen(QColor("#AAB4BF"))
+            painter.drawText(
+                area,
+                Qt.AlignmentFlag.AlignCenter,
+                "Progresión clasificatoria no disponible\nSe necesitan al menos 2 partidas registradas",
+            )
+            return
+        minimo = min(self.valores)
+        maximo = max(self.valores)
+        margen = max(1.0, (maximo - minimo) * 0.18)
+        minimo -= margen
+        maximo += margen
+        painter.setFont(QFont("Segoe UI", 8))
+        for indice in range(4):
+            fraccion = indice / 3
+            y = area.top() + area.height() * fraccion
+            valor_eje = maximo - (maximo - minimo) * fraccion
+            painter.setPen(QPen(QColor("#35404a"), 1))
+            painter.drawLine(QPointF(area.left(), y), QPointF(area.right(), y))
+            painter.setPen(QColor("#AAB4BF"))
+            painter.drawText(QRectF(0, y - 8, 26, 16), Qt.AlignmentFlag.AlignRight, f"{valor_eje:.0f}")
+        coordenadas = [
+            QPointF(
+                area.left() + area.width() * indice / (len(self.valores) - 1),
+                area.bottom() - (valor - minimo) / max(0.001, maximo - minimo) * area.height(),
+            )
+            for indice, valor in enumerate(self.valores)
+        ]
+        for indice, (anterior, siguiente) in enumerate(
+            zip(coordenadas, coordenadas[1:])
+        ):
+            sube = self.valores[indice + 1] >= self.valores[indice]
+            color = QColor("#36B982" if sube else "#E4515B")
+            painter.setPen(QPen(color, 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            painter.drawLine(anterior, siguiente)
+        for indice, punto in enumerate(coordenadas):
+            sube = indice == 0 or self.valores[indice] >= self.valores[indice - 1]
+            color = QColor("#36B982" if sube else "#E4515B")
+            painter.setPen(QPen(QColor("#10151e"), 1.5))
+            painter.setBrush(color)
+            painter.drawEllipse(punto, 3.2, 3.2)
+        painter.setPen(QColor("#AAB4BF"))
+        painter.drawText(QRectF(area.left(), area.bottom() + 4, 60, 16), Qt.AlignmentFlag.AlignLeft, "Antiguas")
+        painter.drawText(QRectF(area.right() - 60, area.bottom() + 4, 60, 16), Qt.AlignmentFlag.AlignRight, "Recientes")
+
+
+class GraficoPorcentajeVictorias(QWidget):
+    """Muestra un anillo proporcional a victorias y derrotas reales."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Inicializa el anillo sin partidas; retorna None."""
+        super().__init__(parent)
+        self.victorias = 0
+        self.derrotas = 0
+        self.porcentaje: int | None = None
+        self.setMinimumSize(112, 112)
+        self.setMaximumSize(148, 148)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def establecer_valores(self, victorias: int, derrotas: int) -> None:
+        """Actualiza el conteo real y porcentaje de resultados.
+
+        Parámetros: cantidades de victorias y derrotas válidas.
+        Retorno: None; evita repintar si ambas cantidades se mantienen.
+        """
+        victorias_nuevas = max(0, int(victorias))
+        derrotas_nuevas = max(0, int(derrotas))
+        if (victorias_nuevas, derrotas_nuevas) == (self.victorias, self.derrotas):
+            return
+        self.victorias = victorias_nuevas
+        self.derrotas = derrotas_nuevas
+        total = self.victorias + self.derrotas
+        self.porcentaje = round(self.victorias * 100 / total) if total else None
+        self.update()
+
+    def paintEvent(self, event: Any) -> None:
+        """Pinta el anillo, el porcentaje central y el total de partidas."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        diametro = min(self.width(), self.height()) - 20
+        rect = QRectF(
+            (self.width() - diametro) / 2,
+            (self.height() - diametro) / 2,
+            diametro,
+            diametro,
+        )
+        grosor = max(8, round(diametro * 0.12))
+        painter.setPen(QPen(QColor("#27313a"), grosor, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+        painter.drawArc(rect, 0, 360 * 16)
+        total = self.victorias + self.derrotas
+        if total:
+            victoria = round(360 * 16 * self.victorias / total)
+            painter.setPen(QPen(QColor("#36B982"), grosor, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+            painter.drawArc(rect, 90 * 16, -victoria)
+            painter.setPen(QPen(QColor("#E4515B"), grosor, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+            painter.drawArc(rect, (90 * 16 - victoria) % (360 * 16), -(360 * 16 - victoria))
+        painter.setPen(QColor("#F1E7CD"))
+        painter.setFont(QFont("Segoe UI", 17, QFont.Weight.Bold))
+        painter.drawText(
+            QRectF(0, self.height() * 0.36, self.width(), 28),
+            Qt.AlignmentFlag.AlignCenter,
+            f"{self.porcentaje}%" if self.porcentaje is not None else "—",
+        )
+        painter.setPen(QColor("#AAB4BF"))
+        painter.setFont(QFont("Segoe UI", 8))
+        painter.drawText(
+            QRectF(0, self.height() * 0.54, self.width(), 22),
+            Qt.AlignmentFlag.AlignCenter,
+            f"{total} partidas",
         )
 
 
@@ -118,21 +364,33 @@ class HomeDashboard(QWidget):
         catalog = item_catalog or {}
         self.item_catalog = catalog.get("items", catalog)
         self.version = version
+        self._profile: dict[str, Any] = {}
         self._collection: dict[str, Any] = {}
         self._analytics: dict[str, Any] = {}
         self._matchups_two_columns: bool | None = None
+        self._summary_columns: int | None = None
+        self._dashboard_layout_mode: str | None = None
+        self._dashboard_matches_grouped: bool | None = None
+        self._perfil_horizontal: bool | None = None
+        self._enemy_visibility_signature: tuple[Any, ...] | None = None
+        self._layout_inicial_activado = False
         self.matchups_grid_host: QWidget | None = None
         self.matchups_grid: QGridLayout | None = None
         self.matchups_groups: tuple[QWidget, QWidget] | None = None
         self._collection_columns: int | None = None
+        self._top_champions_signature: tuple[Any, ...] | None = None
         self._enemy_team_rows: list[tuple[list[QLabel], QLabel, list[str]]] = []
         self._syncing = False
         self._data_signature: tuple[Any, ...] | None = None
         self._build()
 
     def minimumSizeHint(self) -> QSize:
-        """Permite que el scroll y el reflujo reduzcan el ancho sin desbordes."""
-        return QSize(0, self.root.sizeHint().height())
+        """Permite que el scroll adapte el dashboard a distintas alturas.
+
+        Parámetros: ninguno.
+        Retorno: tamaño mínimo flexible en anchura y acotado en altura.
+        """
+        return QSize(0, min(680, self.root.sizeHint().height()))
 
     def _build(self) -> None:
         """Construye las tarjetas del dashboard dentro de una cuadrícula adaptable."""
@@ -142,45 +400,81 @@ class HomeDashboard(QWidget):
         self.root.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self.profile = self._card()
         self.profile.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         profile_layout = QHBoxLayout(self.profile)
         self.profile_layout = profile_layout
-        profile_layout.setContentsMargins(20, 18, 20, 18)
-        profile_layout.setSpacing(18)
-        self.profile_icon = QLabel("◎")
-        self.profile_icon.setFixedSize(62, 62)
+        profile_layout.setContentsMargins(14, 12, 14, 12)
+        profile_layout.setSpacing(12)
+        self.profile_frame = QFrame()
+        self.profile_frame.setObjectName("homeProfileFrame")
+        self.profile_frame.setFixedSize(92, 92)
+        profile_glow = QGraphicsDropShadowEffect(self.profile_frame)
+        profile_glow.setBlurRadius(20)
+        profile_glow.setOffset(0, 0)
+        profile_glow.setColor(QColor(200, 167, 90, 75))
+        self.profile_frame.setGraphicsEffect(profile_glow)
+        profile_frame_layout = QVBoxLayout(self.profile_frame)
+        profile_frame_layout.setContentsMargins(5, 5, 5, 5)
+        self.profile_icon = IconoRedondeado(radio=13)
+        self.profile_icon.setObjectName("homeProfilePortrait")
+        self.profile_icon.setFixedSize(80, 80)
         self.profile_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        profile_layout.addWidget(self.profile_icon)
+        profile_frame_layout.addWidget(self.profile_icon)
+        profile_layout.addWidget(self.profile_frame)
         info = QVBoxLayout()
+        self.profile_info_layout = info
         self.home_title = QLabel("Tu panel de League")
         self.home_title.setObjectName("heroTitle")
-        info.addWidget(self.home_title)
         self.profile_line = QLabel("Conecta League para importar tu cuenta local")
         self.profile_line.setObjectName("sectionTitle")
         info.addWidget(self.profile_line)
+        self.profile_meta = QLabel("Nivel —  ·  Región LCU")
+        self.profile_meta.setObjectName("homeProfileMeta")
+        info.addWidget(self.profile_meta)
         self.home_text = QLabel("Historial privado guardado en este dispositivo.")
         self.home_text.setWordWrap(True)
         info.addWidget(self.home_text)
         self.source_note = QLabel(
             "Datos del cliente local y del historial de SOLRALOL. No requiere la API pública de Riot."
         )
-        self.source_note.setWordWrap(True)
-        self.source_note.setObjectName("historyStatus")
-        info.addWidget(self.source_note)
+        self.source_note.setObjectName("homeCoverage")
+        self.source_note.setToolTip(self.source_note.text())
         profile_layout.addLayout(info, 1)
         self.connection = QLabel("Cliente sin sincronizar")
-        self.connection.setObjectName("historyStatus")
+        self.connection.setObjectName("homeConnectionStatus")
+        self.connection.setMaximumHeight(28)
+        self.connection.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.sync_button = QPushButton("Sincronizar LCU")
         self.sync_button.setObjectName("primaryButton")
+        self.sync_button.setFixedHeight(34)
         self.sync_button.clicked.connect(self.sync_requested)
         actions = QWidget()
         actions_layout = QHBoxLayout(actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(7)
         actions_layout.addWidget(self.connection)
         actions_layout.addWidget(self.sync_button)
         profile_layout.addWidget(actions)
-        self.root.addWidget(self.profile)
+        self.dashboard_heading = QWidget()
+        heading_layout = QVBoxLayout(self.dashboard_heading)
+        heading_layout.setContentsMargins(0, 0, 0, 0)
+        heading_layout.setSpacing(2)
+        heading_layout.addWidget(self.home_title)
+        self.home_subtitle = QLabel(
+            "Actividad, clasificatorias e historial en un solo lugar."
+        )
+        self.home_subtitle.setObjectName("homeProfileMeta")
+        heading_layout.addWidget(self.home_subtitle)
+        self.root.addWidget(self.dashboard_heading)
+        self.summary_host = QWidget()
+        self.summary_host.setObjectName("homeSummaryHost")
+        self.summary_grid = QGridLayout(self.summary_host)
+        self.summary_grid.setContentsMargins(0, 0, 0, 0)
+        self.summary_grid.setHorizontalSpacing(12)
+        self.summary_grid.setVerticalSpacing(12)
+        self._build_summary_cards()
+        self.root.addWidget(self.summary_host)
 
         self.grid = QGridLayout()
         self.grid.setContentsMargins(0, 0, 0, 0)
@@ -194,7 +488,7 @@ class HomeDashboard(QWidget):
         history_layout.setContentsMargins(20, 18, 20, 18)
         history_layout.setSpacing(10)
         header = QHBoxLayout()
-        title = QLabel("Historial de partidas recordadas")
+        title = QLabel("Historial de partidas recientes")
         title.setObjectName("sectionTitle")
         header.addWidget(title)
         header.addStretch(1)
@@ -223,8 +517,10 @@ class HomeDashboard(QWidget):
         self.history_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
+        self.history_scroll.viewport().setAutoFillBackground(False)
         self.history_content = QWidget()
         self.history_content_layout = QVBoxLayout(self.history_content)
+        self.history_content.setAutoFillBackground(False)
         self.history_content_layout.setContentsMargins(2, 2, 8, 2)
         self.history_content_layout.setSpacing(6)
         self.match_rows = QVBoxLayout()
@@ -259,6 +555,8 @@ class HomeDashboard(QWidget):
         self.playstyle_card = self._section(
             "Tu estilo de juego", "Se calculará con el historial local."
         )
+        self.playstyle_card.layout().setContentsMargins(12, 10, 12, 10)
+        self.playstyle_card.layout().setSpacing(4)
         self.playstyle_text = self.playstyle_card.findChild(QLabel, "sectionBody")
         self.teammates_card = self._section(
             "Compañeros frecuentes",
@@ -286,6 +584,92 @@ class HomeDashboard(QWidget):
             self.grid.addWidget(tarjeta, indice, 0)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+    def _build_summary_cards(self) -> None:
+        """Construye los paneles compactos de análisis superior.
+
+        Parámetros: ninguno.
+        Retorno: None; crea perfil, progresión, win rate y campeones.
+        """
+        self.recent_card = self._card()
+        recent_layout = QVBoxLayout(self.recent_card)
+        recent_layout.setContentsMargins(16, 13, 16, 12)
+        recent_layout.setSpacing(6)
+        recent_heading = QHBoxLayout()
+        recent_title = QLabel("Progresión clasificatoria")
+        recent_title.setObjectName("sectionTitle")
+        recent_heading.addWidget(recent_title)
+        recent_heading.addStretch(1)
+        self.progression_source = QLabel("LP exactos o proxy de resultados")
+        self.progression_source.setObjectName("homeCoverage")
+        recent_heading.addWidget(self.progression_source)
+        recent_layout.addLayout(recent_heading)
+        self.recent_chart = GraficoProgresionClasificatoria()
+        recent_layout.addWidget(self.recent_chart, 1)
+
+        self.winrate_card = self._card()
+        winrate_layout = QVBoxLayout(self.winrate_card)
+        winrate_layout.setContentsMargins(16, 13, 16, 12)
+        winrate_layout.setSpacing(6)
+        self.winrate_title = QLabel("Win rate SoloQ")
+        self.winrate_title.setObjectName("sectionTitle")
+        winrate_layout.addWidget(self.winrate_title)
+        self.winrate_source = QLabel("Según historial registrado")
+        self.winrate_source.setObjectName("homeCoverage")
+        winrate_layout.addWidget(self.winrate_source)
+        winrate_body = QHBoxLayout()
+        self.winrate_chart = GraficoPorcentajeVictorias()
+        winrate_body.addWidget(self.winrate_chart)
+        legend = QVBoxLayout()
+        self.win_legend = QLabel("● 0 victorias")
+        self.loss_legend = QLabel("● 0 derrotas")
+        self.win_legend.setObjectName("homeWinLegend")
+        self.loss_legend.setObjectName("homeLossLegend")
+        legend.addStretch(1)
+        legend.addWidget(self.win_legend)
+        legend.addWidget(self.loss_legend)
+        legend.addStretch(1)
+        winrate_body.addLayout(legend, 1)
+        winrate_layout.addLayout(winrate_body, 1)
+
+        self.rank_emblem = QLabel("◇")
+        self.rank_emblem.setObjectName("homeRankInlineEmblem")
+        self.rank_emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.rank_value = QLabel("Rango no disponible")
+        self.rank_value.setObjectName("homeRankValue")
+        self.rank_lp = QLabel("Sin datos locales de clasificatoria")
+        self.rank_lp.setObjectName("homeRankLp")
+        self.rank_row = QHBoxLayout()
+        self.rank_row.setContentsMargins(0, 5, 0, 0)
+        self.rank_row.setSpacing(6)
+        self.rank_row.addWidget(self.rank_emblem)
+        self.rank_row.addWidget(self.rank_value)
+        self.rank_row.addWidget(self.rank_lp)
+        self.rank_row.addStretch(1)
+        self.profile_info_layout.addLayout(self.rank_row)
+
+        self.champions_card = self._card()
+        champions_layout = QVBoxLayout(self.champions_card)
+        champions_layout.setContentsMargins(16, 13, 16, 12)
+        champions_layout.setSpacing(8)
+        champions_title = QLabel("Campeones más jugados")
+        champions_title.setObjectName("sectionTitle")
+        champions_layout.addWidget(champions_title)
+        champions_source = QLabel("Según partidas registradas localmente por SOLRALOL")
+        champions_source.setObjectName("homeChampionsSource")
+        champions_source.setWordWrap(True)
+        champions_layout.addWidget(champions_source)
+        self.champions_row = QHBoxLayout()
+        self.champions_row.setSpacing(8)
+        champions_layout.addLayout(self.champions_row, 1)
+        self.summary_cards = [
+            self.profile,
+            self.recent_card,
+            self.winrate_card,
+            self.champions_card,
+        ]
+        for index, card in enumerate(self.summary_cards):
+            self.summary_grid.addWidget(card, 0, index)
+
     def _card(self) -> QFrame:
         """Crea una tarjeta con el estilo aprobado de la aplicación."""
         card = QFrame()
@@ -310,17 +694,89 @@ class HomeDashboard(QWidget):
         return card
 
     def resizeEvent(self, event: Any) -> None:
-        """Recoloca tarjetas en tres, dos o una columna según el ancho actual."""
+        """Recoloca las tarjetas al cambiar el ancho disponible.
+
+        Parámetros: evento de redimensionado de Qt.
+        Retorno: None; refluye los resúmenes y las secciones existentes.
+        """
         super().resizeEvent(event)
+        width = event.size().width()
+        modo = "estrecho" if width < 850 else "medio" if width < 1250 else "amplio"
+        columnas_resumen = 4 if width >= 1180 else 2 if width >= 720 else 1
+        muchas_partidas = len(self._matches) >= 5
+        requiere_reflujo = (
+            columnas_resumen != self._summary_columns
+            or modo != self._dashboard_layout_mode
+            or muchas_partidas != self._dashboard_matches_grouped
+            or (self.profile.width() >= 430) != self._perfil_horizontal
+        )
+        actualizaciones_activas = self.updatesEnabled()
+        if requiere_reflujo and actualizaciones_activas:
+            self.setUpdatesEnabled(False)
+        self._reflow_summary(event.size().width())
         self._reflow(event.size().width())
+        self._arrange_matchup_groups()
+        self._update_enemy_team_visibility()
+        self._revisar_columnas_coleccion()
+        if requiere_reflujo and actualizaciones_activas:
+            self.setUpdatesEnabled(True)
+            self.update()
+
+    def _reflow_summary(self, width: int) -> None:
+        """Refluye los paneles superiores según el ancho disponible.
+
+        Parámetros: ancho lógico del dashboard.
+        Retorno: None; distribuye los paneles en cuatro, dos o una columna.
+        """
+        if not hasattr(self, "summary_grid"):
+            return
+        columnas = 4 if width >= 1180 else 2 if width >= 720 else 1
+        horizontal = self.profile.width() >= 430
+        if columnas == self._summary_columns and horizontal == self._perfil_horizontal:
+            return
+        self._summary_columns = columnas
+        self._perfil_horizontal = horizontal
+        actualizaciones_activas = self.updatesEnabled()
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(False)
+        for card in self.summary_cards:
+            self.summary_grid.removeWidget(card)
+        for columna in range(4):
+            self.summary_grid.setColumnStretch(columna, 0)
+        for index, card in enumerate(self.summary_cards):
+            fila, columna = divmod(index, columnas)
+            self.summary_grid.addWidget(card, fila, columna)
+            card.setMinimumHeight(208 if columnas == 4 else 176 if columnas == 2 else 150)
+        if columnas == 4:
+            for columna, peso in enumerate((5, 4, 2, 3)):
+                self.summary_grid.setColumnStretch(columna, peso)
+        else:
+            for columna in range(columnas):
+                self.summary_grid.setColumnStretch(columna, 1)
+        self.profile_layout.setDirection(QBoxLayout.Direction.LeftToRight if horizontal else QBoxLayout.Direction.TopToBottom)
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def _reflow(self, width: int) -> None:
-        """Distribuye tarjetas y ajusta la altura al ancho y datos actuales."""
-        self.profile_layout.setDirection(
-            QBoxLayout.Direction.TopToBottom
-            if width < 850
-            else QBoxLayout.Direction.LeftToRight
-        )
+        """Distribuye tarjetas y adapta el perfil al ancho disponible.
+
+        Parámetros: anchura lógica del dashboard.
+        Retorno: None; conserva el reflujo de historial y paneles inferiores.
+        """
+        modo = "estrecho" if width < 850 else "medio" if width < 1250 else "amplio"
+        muchas_partidas = len(self._matches) >= 5
+        if modo == self._dashboard_layout_mode and muchas_partidas == self._dashboard_matches_grouped:
+            return
+        self._dashboard_layout_mode = modo
+        self._dashboard_matches_grouped = muchas_partidas
+        actualizaciones_activas = self.updatesEnabled()
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(False)
+        horizontal = self.profile.width() >= 430
+        if horizontal != self._perfil_horizontal:
+            self._perfil_horizontal = horizontal
+            self.profile_layout.setDirection(QBoxLayout.Direction.LeftToRight if horizontal else QBoxLayout.Direction.TopToBottom)
         for tarjeta in self.tarjetas:
             self.grid.removeWidget(tarjeta)
         for columna in range(3):
@@ -360,9 +816,9 @@ class HomeDashboard(QWidget):
             if len(self._matches) >= 5:
                 self.grid.addWidget(self.history_card, 0, 0, 2, 2)
                 self.grid.addWidget(self.activity_card, 0, 2)
-                self.grid.addWidget(self.playstyle_card, 1, 2)
                 self.grid.addWidget(self.teammates_card, 2, 0)
                 self.grid.addWidget(self.insights_card, 2, 1)
+                self.grid.addWidget(self.playstyle_card, 1, 2)
                 self.grid.addWidget(self.collection_card, 2, 2)
             else:
                 self.grid.addWidget(self.history_card, 0, 0)
@@ -389,20 +845,19 @@ class HomeDashboard(QWidget):
         )
         for tarjeta in bottom_cards:
             tarjeta.setMinimumHeight(altura_comun if width >= 850 else 0)
-        if self.matchups_grid is not None:
-            self._arrange_matchup_groups()
-        self._update_enemy_team_visibility()
-        collection_columns = 3 if self.collection_card.width() >= 420 else 2
-        if (
-            self._collection_columns is not None
-            and collection_columns != self._collection_columns
-        ):
-            self._render_collection()
         self.updateGeometry()
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def showEvent(self, event: Any) -> None:
-        """Ajusta la cuadrícula al tamaño final al mostrar la página."""
+        """Ajusta las cuadrículas después de mostrar la página.
+
+        Parámetros: evento de visualización de Qt.
+        Retorno: None; aplica el reflujo con el ancho final del viewport.
+        """
         super().showEvent(event)
+        self._reflow_summary(self.width())
         self._reflow(self.width())
         QTimer.singleShot(0, self._activate_matchup_geometry)
 
@@ -410,6 +865,9 @@ class HomeDashboard(QWidget):
         """Activa la geometría de enfrentamientos tras completar el primer show."""
         if not self.isVisible() or self.matchups_grid is None:
             return
+        if self._layout_inicial_activado:
+            return
+        self._reflow_summary(self.width())
         self._reflow(self.width())
         self.matchups_grid.activate()
         if self.matchups_grid_host is not None:
@@ -421,6 +879,7 @@ class HomeDashboard(QWidget):
         if self.insights_card.layout() is not None:
             self.insights_card.layout().activate()
         self.updateGeometry()
+        self._layout_inicial_activado = True
 
     def set_dashboard_data(
         self,
@@ -431,9 +890,15 @@ class HomeDashboard(QWidget):
         collection: dict[str, Any] | None = None,
         syncing: bool = False,
     ) -> None:
-        """Actualiza perfil, indicadores y filas visibles con datos calculados."""
+        """Actualiza identidad, estadísticas, gráficos y partidas visibles.
+
+        Parámetros: perfil LCU, historial, analítica, estado y colección opcional.
+        Retorno: None; conserva filtros, scroll y widgets de resumen sin cambios.
+        """
         matches = history.get("matches", [])
-        nuevos_matches = [match for match in matches if isinstance(match, dict)]
+        nuevos_matches = normalizar_partidas_unicas(
+            [match for match in matches if isinstance(match, dict)]
+        )
         ids_anteriores = tuple(
             str(match.get("stable_match_id") or match.get("game_id") or "")
             for match in self._matches
@@ -467,45 +932,38 @@ class HomeDashboard(QWidget):
             if not conservar_estado_historial:
                 self._visible_count = 25
             self._data_signature = firma
-        self.connection.setText(status)
+        self._profile = profile or {}
+        self.connection.setText(
+            "LCU listo"
+            if any(token in status.casefold() for token in ("listo", "conectado", "ready"))
+            else "LCU sin conexión"
+        )
+        self.connection.setToolTip(status)
         self._collection = collection or {}
         self._syncing = syncing
         self.sync_button.setEnabled(not syncing)
         self.sync_button.setText("Sincronizando…" if syncing else "Sincronizar LCU")
         if profile:
-            name = str(profile.get("gameName") or "Invocador")
-            tag = str(profile.get("tagLine") or "")
-            ranked = profile.get("ranked") or []
-            solo = next(
-                (
-                    queue
-                    for queue in ranked
-                    if "SOLO" in str(queue.get("queue", "")).upper()
-                ),
-                None,
-            )
-            rank_text = (
-                f" · {solo['tier']} {solo.get('division', '')} · {solo.get('league_points') if solo.get('league_points') is not None else '—'} LP"
-                if solo
-                else " · SoloQ sin datos locales"
-            )
-            self.profile_line.setText(
-                f"{name}{'#' + tag if tag else ''} · Nivel {profile.get('summonerLevel') or '—'} · {profile.get('region') or 'Región LCU'}{rank_text}"
-            )
-            self.profile_icon.setText(f"◉ {profile.get('profileIconId') or ''}")
+            self._render_profile(profile)
         self.home_title.setText("Tu panel de League")
         winrate = analytics.get("winrate")
-        self.home_text.setText(
-            f"{analytics.get('total', 0)} partidas recordadas · {winrate}% de victorias"
-            + (
-                f" · Más jugado: {analytics['top_champion']}"
-                if analytics.get("top_champion")
-                else ""
-            )
-            + f" · Racha actual: {analytics.get('current_win_streak', 0)}"
-            if winrate is not None
-            else f"{analytics.get('total', 0)} partidas recordadas · Sin muestra suficiente para winrate · Racha máxima: {analytics.get('longest_win_streak', 0)}"
+        streak_type = analytics.get("current_streak_result")
+        streak = (
+            f"Racha actual: {analytics.get('current_streak', 0)} "
+            f"{'victorias' if streak_type == 'victory' else 'derrotas'}"
+            if streak_type
+            else "Sin racha registrada"
         )
+        summary = f"{analytics.get('total', 0)} partidas recordadas"
+        summary += (
+            f" · {winrate}% de victorias"
+            if winrate is not None
+            else " · Sin muestra suficiente para winrate"
+        )
+        if analytics.get("top_champion"):
+            summary += f" · Más jugado: {analytics['top_champion']}"
+        self.home_text.setText(f"{analytics.get('total', 0)} partidas registradas · {streak}")
+        self.home_text.setToolTip(summary)
         self.history_status.setText(
             f"{len(self._matches)} partidas almacenadas en este dispositivo."
         )
@@ -532,15 +990,16 @@ class HomeDashboard(QWidget):
                 f"Peor hora: {worst_hour[0]:02d}:00 ({worst_hour[1]}% en {worst_hour[2]} partidas)"
             )
         self.activity_text.setText(
-            f"Hora de mayor actividad: {peak:02d}:00 · {len(self._matches)} partidas"
-            + (
-                "\n" + "\n".join(hour_insights)
-                if hour_insights
-                else "\nMejor/peor winrate requiere cinco partidas por hora."
-            )
+            f"Pico {peak:02d}:00 · {len(self._matches)} partidas"
             if peak is not None
-            else "Faltan fechas de partida válidas para calcular actividad."
+            else "Faltan fechas válidas para calcular actividad."
         )
+        self.activity_text.setToolTip(
+            "\n".join(hour_insights)
+            if hour_insights
+            else "Mejor/peor win rate requiere cinco partidas por hora."
+        )
+        self._render_summary(analytics)
         if datos_cambiaron:
             self._render_playstyle(analytics)
             self._render_teammates(analytics)
@@ -555,6 +1014,135 @@ class HomeDashboard(QWidget):
                         self.history_scroll.verticalScrollBar().setValue(valor)
                     ),
                 )
+
+    def _render_profile(self, profile: dict[str, Any]) -> None:
+        """Pinta nombre, nivel y región de la cuenta local.
+
+        Parámetros: perfil local normalizado o vacío.
+        Retorno: None; muestra solo información proporcionada por la LCU.
+        """
+        name = str(profile.get("gameName") or "Invocador")
+        tag = str(profile.get("tagLine") or "")
+        level = profile.get("summonerLevel")
+        region = str(profile.get("region") or "Región LCU")
+        self.profile_line.setText(f"{name}{'#' + tag if tag else ''}")
+        self.profile_meta.setText(
+            f"Nivel {level if level is not None else '—'}  ·  {region}"
+        )
+        if not self.profile_icon.pixmap() or self.profile_icon.pixmap().isNull():
+            self.profile_icon.setText("SOL")
+
+    def _render_summary(self, analytics: dict[str, Any]) -> None:
+        """Actualiza las tarjetas con estadísticas reales del historial.
+
+        Parámetros: analítica agregada del historial local.
+        Retorno: None; evita inventar rango o resultados no disponibles.
+        """
+        self.recent_chart.establecer_partidas(self._matches)
+        self.progression_source.setText(
+            self.recent_chart.fuente or "SoloQ/Flex · muestra insuficiente"
+        )
+        victories = int(analytics.get("wins", 0) or 0)
+        played = int(analytics.get("played", 0) or 0)
+        defeats = max(0, played - victories)
+        ranked_queues = self._profile.get("ranked", [])
+        ranked_queues = ranked_queues if isinstance(ranked_queues, list) else []
+        solo = next(
+            (
+                queue
+                for queue in ranked_queues
+                if isinstance(queue, dict)
+                and "SOLO" in str(queue.get("queue", "")).upper()
+            ),
+            None,
+        )
+        if solo:
+            tier = str(solo.get("tier") or "Rango no disponible").replace("_", " ")
+            division = str(solo.get("division") or "").strip()
+            lp = solo.get("league_points")
+            self.rank_emblem.setText("✦")
+            self.rank_value.setText(f"{tier} {division}".strip())
+            self.rank_lp.setText(
+                f"{lp} LP" if lp is not None else "LP no disponible"
+            )
+            wins_clasificatorios = solo.get("wins")
+            derrotas_clasificatorias = solo.get("losses")
+            if wins_clasificatorios is not None and derrotas_clasificatorias is not None:
+                victories = int(wins_clasificatorios)
+                defeats = int(derrotas_clasificatorias)
+                self.winrate_source.setText("Registro actual de SoloQ")
+                self.winrate_title.setText("Win rate SoloQ")
+            else:
+                self.winrate_source.setText("SoloQ · historial local disponible")
+                self.winrate_title.setText("Win rate registrado")
+        else:
+            self.rank_emblem.setText("◇")
+            self.rank_value.setText("Rango no disponible")
+            self.rank_lp.setText("Sin datos locales de clasificatoria")
+            self.winrate_source.setText("Historial local · SoloQ no disponible")
+            self.winrate_title.setText("Win rate registrado")
+        self.winrate_chart.establecer_valores(victories, defeats)
+        self.win_legend.setText(f"●  {victories} victorias")
+        self.loss_legend.setText(f"●  {defeats} derrotas")
+        self._render_top_champions(analytics)
+
+    def _render_top_champions(self, analytics: dict[str, Any]) -> None:
+        """Muestra campeones, volumen y win rate individual.
+
+        Parámetros: analítica agregada que define el orden de campeones.
+        Retorno: None; conserva las tarjetas cuando el modelo no ha cambiado.
+        """
+        champions = analytics.get("champions") or []
+        entradas: list[tuple[str, int, int | None]] = []
+        for champion, count in champions[:3]:
+            name = str(champion)
+            partidas = [
+                match
+                for match in self._matches
+                if match.get("champion_name") == name
+                and match.get("result") in {"victory", "defeat"}
+            ]
+            victorias = sum(match.get("result") == "victory" for match in partidas)
+            porcentaje = round(victorias * 100 / len(partidas)) if partidas else None
+            entradas.append((name, int(count), porcentaje))
+        firma = tuple(entradas)
+        if firma == self._top_champions_signature:
+            return
+        self._top_champions_signature = firma
+        while self.champions_row.count():
+            item = self.champions_row.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        if not champions:
+            vacio = QLabel("Sin partidas registradas")
+            vacio.setObjectName("homeCoverage")
+            self.champions_row.addWidget(vacio)
+            return
+        for name, count, winrate in entradas:
+            entrada = QWidget()
+            layout = QVBoxLayout(entrada)
+            layout.setContentsMargins(2, 0, 2, 0)
+            layout.setSpacing(3)
+            icono = QLabel()
+            icono.setObjectName("homeTopChampionPortrait")
+            icono.setFixedSize(56, 56)
+            icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._set_champion_icon(icono, name, 48)
+            layout.addWidget(icono, alignment=Qt.AlignmentFlag.AlignHCenter)
+            nombre = QLabel(name)
+            nombre.setObjectName("homeTopChampionName")
+            nombre.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(nombre)
+            partidas_label = QLabel(f"{count} partidas")
+            partidas_label.setObjectName("homeCoverage")
+            partidas_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(partidas_label)
+            winrate_label = QLabel(f"{winrate}% WR" if winrate is not None else "WR —")
+            winrate_label.setObjectName("homeTopChampionWinrate")
+            winrate_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(winrate_label)
+            self.champions_row.addWidget(entrada, 1)
 
     def _clear_section(self, card: QFrame, keep: int = 1) -> QVBoxLayout:
         """Vacía widgets dinámicos de una tarjeta y conserva su cabecera."""
@@ -585,7 +1173,11 @@ class HomeDashboard(QWidget):
                 item.layout().deleteLater()
 
     def _render_playstyle(self, analytics: dict[str, Any]) -> None:
-        """Dibuja roles, clases, campeones y modos con barras e iconos."""
+        """Dibuja distribuciones compactas de roles, clases y modos.
+
+        Parámetros: analítica local ya agregada.
+        Retorno: None; reconstruye solo el contenido de estilo de juego.
+        """
         layout = self._clear_section(self.playstyle_card)
         if self.playstyle_text is not None:
             self.playstyle_text.deleteLater()
@@ -600,44 +1192,27 @@ class HomeDashboard(QWidget):
             "support": "Soporte",
             "unknown": "Sin rol",
         }
-        primary = lanes[0] if lanes else None
-        hero = QLabel(
-            labels.get(primary[0], str(primary[0]).title())
-            if primary
-            else "Rol sin datos"
-        )
-        hero.setObjectName("homePlaystylePrimary")
-        layout.addWidget(hero)
-        if primary:
-            layout.addWidget(
-                QLabel(f"{primary[1]} partidas · {round(primary[1] * 100 / total)}%")
-            )
-        for role, count in lanes[:5]:
+        if lanes:
+            layout.addWidget(self._subheading("Roles principales"))
+        for role, count in lanes[:3]:
             self._add_bar(layout, labels.get(role, str(role).title()), count, total)
         classes = analytics.get("classes") or []
         if classes:
             layout.addWidget(self._subheading("Clases de campeones"))
             class_total = max(1, sum(count for _, count in classes))
-            for name, count in classes[:4]:
+            for name, count in classes[:3]:
                 self._add_bar(layout, str(name), count, class_total)
-        champions = analytics.get("champions") or []
-        if champions:
-            layout.addWidget(self._subheading("Campeones más jugados"))
-            row = QHBoxLayout()
-            for name, count in champions[:3]:
-                row.addWidget(self._champion_entry(str(name), int(count), 36))
-            row.addStretch(1)
-            layout.addLayout(row)
         modes = analytics.get("modes") or []
         if modes:
-            layout.addWidget(self._subheading("Modos"))
             row = QHBoxLayout()
+            row.setSpacing(4)
             for name, count in modes[:3]:
                 chip = QLabel(f"{name} · {count}")
                 chip.setObjectName("homeModeChip")
                 row.addWidget(chip)
             row.addStretch(1)
             layout.addLayout(row)
+        self.playstyle_card.setMinimumHeight(0)
 
     def _add_bar(self, layout: QVBoxLayout, label: str, count: int, total: int) -> None:
         """Añade una fila con porcentaje y barra de proporción accesible."""
@@ -913,6 +1488,9 @@ class HomeDashboard(QWidget):
         if two_columns == self._matchups_two_columns:
             return
         self._matchups_two_columns = two_columns
+        actualizaciones_activas = self.matchups_grid_host.updatesEnabled()
+        if actualizaciones_activas:
+            self.matchups_grid_host.setUpdatesEnabled(False)
         for group in self.matchups_groups:
             self.matchups_grid.removeWidget(group)
         self.matchups_grid.setColumnStretch(0, 1)
@@ -923,6 +1501,29 @@ class HomeDashboard(QWidget):
         else:
             self.matchups_grid.addWidget(self.matchups_groups[0], 0, 0)
             self.matchups_grid.addWidget(self.matchups_groups[1], 1, 0)
+        if actualizaciones_activas:
+            self.matchups_grid_host.setUpdatesEnabled(True)
+            self.matchups_grid_host.update()
+
+    def _revisar_columnas_coleccion(self) -> None:
+        """Recompone los iconos de colección solo al cruzar su breakpoint real."""
+        if not hasattr(self, "collection_card"):
+            return
+        columnas = 3 if self.collection_card.width() >= 420 else 2
+        if self._collection_columns is None:
+            self._collection_columns = columnas
+            return
+        if columnas == self._collection_columns:
+            return
+        self._collection_columns = columnas
+        if self._collection.get("masteries"):
+            actualizaciones_activas = self.collection_card.updatesEnabled()
+            if actualizaciones_activas:
+                self.collection_card.setUpdatesEnabled(False)
+            self._render_collection()
+            if actualizaciones_activas:
+                self.collection_card.setUpdatesEnabled(True)
+                self.collection_card.update()
 
     def _render_collection(self) -> None:
         """Muestra las categorías de colección que respondieron desde la LCU."""
@@ -984,50 +1585,9 @@ class HomeDashboard(QWidget):
             layout.addLayout(mastery_grid)
         elif masteries is None:
             layout.addWidget(QLabel("Maestrías: endpoint local no disponible"))
-        if masteries is not None:
-            layout.addWidget(self._collection_separator())
-        champions = collection.get("champions")
-        if isinstance(champions, dict):
-            owned = int(champions.get("owned_count", 0))
-            total = int(champions.get("total_count") or 0)
-            percent = 100 * owned / total if total else 0
-            layout.addWidget(self._subheading("CAMPEONES EN PROPIEDAD"))
-            metric = QLabel(
-                f"{owned} de {total} campeones"
-                if total
-                else "Total disponible desconocido"
-            )
-            metric.setObjectName("homeCollectionMetric")
-            layout.addWidget(metric)
-            if total:
-                porcentaje_texto = f"{percent:.1f}".replace(".", ",")
-                percentage = QLabel(f"{porcentaje_texto}% de la colección")
-                percentage.setObjectName("homeCollectionLabel")
-                layout.addWidget(percentage)
-                progress = QProgressBar()
-                progress.setObjectName("homeCollectionProgress")
-                progress.setTextVisible(False)
-                progress.setRange(0, total)
-                progress.setValue(min(owned, total))
-                progress.setFixedHeight(9)
-                layout.addWidget(progress)
-                faltan = max(0, total - owned)
-                estado = QLabel(
-                    "Colección completa"
-                    if faltan == 0
-                    else (
-                        "Te falta 1 campeón para completar la colección."
-                        if faltan == 1
-                        else f"Te faltan {faltan} campeones para completar la colección."
-                    )
-                )
-                estado.setObjectName("homeCoverage")
-                layout.addWidget(estado)
-        elif champions is None:
-            layout.addWidget(QLabel("No se pudo consultar la colección de campeones"))
         skins = collection.get("skins")
         if isinstance(skins, dict):
-            layout.addWidget(self._collection_separator())
+            self._add_collection_separator(layout)
             skin_row = QHBoxLayout()
             skin_value = QLabel(f"{int(skins.get('owned_count', 0)):,}")
             skin_value.setObjectName("homeCollectionMetric")
@@ -1040,7 +1600,7 @@ class HomeDashboard(QWidget):
             layout.addWidget(QLabel("Skins: endpoint local no disponible"))
         challenges = collection.get("challenges")
         if isinstance(challenges, dict):
-            layout.addWidget(self._collection_separator())
+            self._add_collection_separator(layout)
             layout.addWidget(self._subheading("DESAFÍOS"))
             challenge_row = QHBoxLayout()
             tier = str(challenges.get("tier") or "SIN NIVEL")
@@ -1063,7 +1623,7 @@ class HomeDashboard(QWidget):
             layout.addWidget(QLabel("Desafíos: endpoint local no disponible"))
         titles = collection.get("titles")
         if isinstance(titles, dict) and titles.get("selected"):
-            layout.addWidget(self._collection_separator())
+            self._add_collection_separator(layout)
             layout.addWidget(self._subheading("TÍTULO ACTIVO"))
             title = QLabel(str(titles["selected"]))
             title.setObjectName("homeActiveTitle")
@@ -1072,6 +1632,11 @@ class HomeDashboard(QWidget):
             layout.addWidget(QLabel("Título: endpoint local no disponible"))
         elif not collection:
             layout.addWidget(QLabel("Sin conexión; se conserva el historial local."))
+
+    def _add_collection_separator(self, layout: QVBoxLayout) -> None:
+        """Añade separadores solo entre secciones presentes en el panel."""
+        if layout.count() > 1:  # El primer elemento es el encabezado fijo de la tarjeta.
+            layout.addWidget(self._collection_separator())
 
     @staticmethod
     def _collection_separator() -> QFrame:
@@ -1082,21 +1647,42 @@ class HomeDashboard(QWidget):
         return separator
 
     def _set_champion_icon(self, label: QLabel, champion: str, size: int) -> None:
-        """Carga un retrato ya almacenado localmente sin iniciar descargas."""
+        """Carga y recorta un retrato campeón cacheado localmente.
+
+        Parámetros: etiqueta, nombre del campeón y tamaño lógico del icono.
+        Retorno: None; reutiliza pixmaps escalados y evita descargas.
+        """
         if not champion:
             return
         try:
             path = get_champion_icon_path(champion, self.version, download=False)
-            pixmap = QPixmap(str(path)) if path else QPixmap()
-            if not pixmap.isNull():
-                label.setPixmap(
-                    pixmap.scaled(
+            key = (str(path), size)
+            pixmap = _HOME_CHAMPION_PIXMAPS.get(key)
+            if pixmap is None:
+                original = QPixmap(str(path)) if path else QPixmap()
+                if not original.isNull():
+                    escalado = original.scaled(
                         size,
                         size,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation,
                     )
-                )
+                    pixmap = QPixmap(escalado.size())
+                    pixmap.fill(Qt.GlobalColor.transparent)
+                    painter = QPainter(pixmap)
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                    recorte = QPainterPath()
+                    recorte.addRoundedRect(QRectF(pixmap.rect()), 7, 7)
+                    painter.setClipPath(recorte)
+                    painter.drawPixmap(0, 0, escalado)
+                    painter.end()
+                    if len(_HOME_CHAMPION_PIXMAPS) >= 96:
+                        _HOME_CHAMPION_PIXMAPS.pop(next(iter(_HOME_CHAMPION_PIXMAPS)))
+                    _HOME_CHAMPION_PIXMAPS[key] = pixmap
+                else:
+                    pixmap = QPixmap()
+            if not pixmap.isNull():
+                label.setPixmap(pixmap)
         except (OSError, TypeError, ValueError):
             return
 
@@ -1212,17 +1798,25 @@ class HomeDashboard(QWidget):
             return
         width = self.history_scroll.viewport().width()
         visible_count = 5 if width >= 1000 else 4 if width >= 700 else 3
+        firma = (visible_count, tuple(tuple(nombres) for _, _, nombres in self._enemy_team_rows))
+        if firma == self._enemy_visibility_signature:
+            return
+        self._enemy_visibility_signature = firma
         for icons, overflow, names in self._enemy_team_rows:
             for index, icon in enumerate(icons):
-                icon.setVisible(index < visible_count)
+                ocultar = index >= visible_count
+                if icon.isHidden() != ocultar:
+                    icon.setHidden(ocultar)
             hidden = names[visible_count:]
-            overflow.setVisible(bool(hidden))
+            if overflow.isHidden() != (not hidden):
+                overflow.setHidden(not hidden)
             overflow.setText(f"+{len(hidden)}" if hidden else "")
             overflow.setToolTip(", ".join(hidden))
 
     def render_matches(self, *_args: Any) -> None:
         """Pinta un lote acotado de partidas según el filtro elegido."""
         self._enemy_team_rows.clear()
+        self._enemy_visibility_signature = None
         while self.match_rows.count():
             item = self.match_rows.takeAt(0)
             widget = item.widget()

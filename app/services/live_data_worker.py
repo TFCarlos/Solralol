@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from typing import Any
 
@@ -7,6 +8,8 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from app.services.game_service import GameService
 from app.services.live_match_tracker import LiveMatchTracker
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class LiveDataWorker(QObject):
@@ -18,6 +21,8 @@ class LiveDataWorker(QObject):
     live_analysis_failed = Signal(str)
     #: La API local dejó de responder después de estar en partida: ha terminado.
     game_ended = Signal()
+    game_finished = Signal(object)
+    GAME_END_FAILURE_THRESHOLD = 3
 
     def __init__(
         self,
@@ -38,36 +43,63 @@ class LiveDataWorker(QObject):
         )
         self.last_game_signature = ""
         self.was_in_game = False
+        self.consecutive_read_failures = 0
 
     @Slot()
     def read_snapshot(self) -> None:
+        """Lee telemetría y tolera fallos transitorios antes de cerrar LIVE.
+
+        Parámetros: ninguno.
+        Retorno: None; emite el fin solo tras varios sondeos fallidos seguidos.
+        """
         try:
             snapshot = self.game_service.get_game_snapshot()
 
             if snapshot is None:
-                was_in_game = self.was_in_game
-                self._finish_tracking()
-                self.was_in_game = False
-                self.last_game_signature = ""
-                self._emit_read_failed(
-                    "League no está en una partida activa."
-                )
-
-                if was_in_game:
-                    self._emit_game_ended()
-
+                self._handle_snapshot_failure("League no está en una partida activa.")
                 return
 
             snapshot = deepcopy(snapshot)
             self._update_tracker(snapshot)
+            if self.was_in_game and self.consecutive_read_failures:
+                _LOGGER.info(
+                    "Telemetría LIVE recuperada tras %d sondeos fallidos",
+                    self.consecutive_read_failures,
+                )
+            self.consecutive_read_failures = 0
             self.was_in_game = True
             self.snapshot_ready.emit(snapshot)
             self._emit_live_analysis()
         except Exception as error:
-            self._emit_read_failed(
-                f"No se pudo leer la partida: {error}"
-            )
+            self._handle_snapshot_failure(f"No se pudo leer la partida: {error}")
             self.live_analysis_failed.emit(str(error))
+
+    def _handle_snapshot_failure(self, message: str) -> None:
+        """Registra una lectura fallida y confirma el fin tras el umbral.
+
+        Parámetros: mensaje de diagnóstico sin credenciales.
+        Retorno: None; conserva la sesión hasta tres fallos consecutivos.
+        """
+        self.consecutive_read_failures += 1
+        if self.consecutive_read_failures == 1:
+            _LOGGER.warning("Fallo de telemetría LIVE; se conserva el estado actual")
+        self._emit_read_failed(message)
+        if (
+            not self.was_in_game
+            or self.consecutive_read_failures < self.GAME_END_FAILURE_THRESHOLD
+        ):
+            return
+        _LOGGER.info(
+            "Partida LIVE confirmada como finalizada tras %d sondeos fallidos",
+            self.consecutive_read_failures,
+        )
+        completed = self._finish_tracking()
+        if completed is not None:
+            self.game_finished.emit(completed)
+        self.was_in_game = False
+        self.last_game_signature = ""
+        self.consecutive_read_failures = 0
+        self._emit_game_ended()
 
     def _update_tracker(self, snapshot: dict[str, Any]) -> None:
         local_player = snapshot.get("local_player", {})
@@ -94,7 +126,10 @@ class LiveDataWorker(QObject):
 
         if new_game:
             if self.tracker.is_tracking:
-                self._finish_tracking()
+                completed = self._finish_tracking()
+                if completed is not None:
+                    self.game_finished.emit(completed)
+                    self._emit_game_ended()
             self.tracker.start(snapshot)
         else:
             self.tracker.update(snapshot)
@@ -115,9 +150,9 @@ class LiveDataWorker(QObject):
         }
         self.live_analysis_ready.emit(session)
 
-    def _finish_tracking(self) -> None:
-        """Cierra la sesión en curso (la guarda el tracker de la ventana)."""
-        self.tracker.finish()
+    def _finish_tracking(self) -> dict[str, Any] | None:
+        """Finaliza y entrega la sesión para su persistencia asíncrona."""
+        return self.tracker.finish()
 
     def _emit_read_failed(self, message: str) -> None:
         try:

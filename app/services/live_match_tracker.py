@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
+import threading
 from collections import Counter
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -9,13 +12,30 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+_SESSIONS_LOCK = threading.RLock()
+
+
+def _sessions_lock(_path: Path) -> threading.RLock:
+    return _SESSIONS_LOCK
+
+
+def _session_timestamp(session: dict[str, Any]) -> float:
+    """Epoch UTC para ordenar sesiones por la fecha real de fin/inicio."""
+    raw = session.get("ended_at") or session.get("started_at")
+    try:
+        value = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
 
 
 class LiveMatchTracker:
     """Registra telemetría local y guarda sesiones analizables."""
 
     SAMPLE_INTERVAL_SECONDS = 2.0
-    MAX_SAVED_SESSIONS = 50
+    MAX_SAVED_SESSIONS = 10
 
     #: Resolución con la que un snapshot llega al disco. Durante la partida
     #: se muestrea cada ``SAMPLE_INTERVAL_SECONDS`` (2 s) porque el análisis en
@@ -182,7 +202,7 @@ class LiveMatchTracker:
         self.last_sample_time = game_time
         self._detect_player_changes(point)
 
-    def finish(self) -> dict[str, Any] | None:
+    def finish(self, *, persist: bool | None = None) -> dict[str, Any] | None:
         if self.session is None:
             return None
 
@@ -196,22 +216,53 @@ class LiveMatchTracker:
         completed.pop("seen_event_ids", None)
         completed.pop("last_player_state", None)
 
+        should_persist = self.persist if persist is None else bool(persist)
+        if should_persist:
+            self.persist_completed_session(completed)
+
+        self.last_sample_time = -1.0
+        self.event_order = 0
+        return completed
+
+    def persist_completed_session(self, completed: dict[str, Any]) -> None:
+        """Persiste una partida terminada, deduplicando y reteniendo las diez más recientes.
+
+        Se puede llamar desde un worker. La sesión se copia para que el guardado
+        no modifique datos que todavía consume la grabadora o la interfaz.
+        """
+        with _sessions_lock(self.sessions_path):
+            self._persist_completed_session_locked(completed)
+
+    def _persist_completed_session_locked(self, completed: dict[str, Any]) -> None:
+        if not isinstance(completed, dict) or not completed.get("ended_at"):
+            raise ValueError("Solo se pueden guardar partidas completadas.")
+        completed = deepcopy(completed)
         if self.persist:
             thin_snapshots(completed)
             sessions = self.load_saved_sessions()
+            session_id = str(completed.get("session_id") or "")
+            sessions = [
+                item for item in sessions
+                if isinstance(item, dict)
+                and str(item.get("session_id") or "") != session_id
+                and item.get("ended_at")
+            ]
             sessions.append(completed)
-            self._save_sessions(sessions[-self.MAX_SAVED_SESSIONS :])
+            sessions.sort(key=_session_timestamp, reverse=True)
+            evicted = sessions[self.MAX_SAVED_SESSIONS :]
+            sessions = sessions[: self.MAX_SAVED_SESSIONS]
+            self._save_sessions(sessions, replace=True)
+            if evicted:
+                self._delete_match_logs(
+                    {str(old.get("session_id") or "") for old in evicted}
+                )
 
             try:
                 from app.services.match_log_service import MatchLogService
 
                 MatchLogService().save_match_log(completed)
             except Exception:
-                pass
-
-        self.last_sample_time = -1.0
-        self.event_order = 0
-        return completed
+                logger.exception("No se pudo generar el log de la partida terminada")
 
     def get_live_session(self) -> dict[str, Any] | None:
         return deepcopy(self.session) if self.session else None
@@ -225,16 +276,49 @@ class LiveMatchTracker:
         modifique una sesión debe guardarla (``_save_sessions``) para que el
         cambio llegue al disco y a esta caché.
         """
-        stamp = self._path_stamp()
+        with _sessions_lock(self.sessions_path):
+            stamp = self._path_stamp()
 
-        if self._sessions_cache is not None and stamp == self._sessions_cache_stamp:
-            return self._sessions_cache
+            if self._sessions_cache is not None and stamp == self._sessions_cache_stamp:
+                return self._sessions_cache
 
-        sessions = self._read_sessions_file()
-        self._sessions_cache = sessions
-        self._sessions_cache_stamp = stamp
+            sessions = self._read_sessions_file()
+            self._sessions_cache = sessions
+            self._sessions_cache_stamp = stamp
+            return sessions
 
-        return sessions
+    def enforce_saved_session_limit(self) -> list[dict[str, Any]]:
+        """Migra el historial local a diez partidas completas, únicas y recientes."""
+        with _sessions_lock(self.sessions_path):
+            return self._enforce_saved_session_limit_locked()
+
+    def _enforce_saved_session_limit_locked(self) -> list[dict[str, Any]]:
+        sessions = self.load_saved_sessions()
+        valid = {
+            str(item.get("session_id") or ""): item
+            for item in sessions
+            if isinstance(item, dict)
+            and item.get("ended_at")
+            and item.get("session_id")
+        }
+        retained = sorted(valid.values(), key=_session_timestamp, reverse=True)[
+            : self.MAX_SAVED_SESSIONS
+        ]
+        retained_ids = [str(item["session_id"]) for item in retained]
+        current_ids = [
+            str(item.get("session_id") or "")
+            for item in sessions
+            if isinstance(item, dict)
+        ]
+        if retained_ids != current_ids or len(sessions) != len(current_ids):
+            self._save_sessions(retained, replace=True)
+            removed_ids = {
+                str(item.get("session_id") or "")
+                for item in sessions
+                if isinstance(item, dict)
+            } - set(retained_ids)
+            self._delete_match_logs(removed_ids)
+        return retained
 
     def _read_sessions_file(self) -> list[dict[str, Any]]:
         try:
@@ -255,12 +339,31 @@ class LiveMatchTracker:
 
     def delete_saved_session(self, session_id: str) -> None:
         """Elimina la sesión guardada y con ella los análisis que contiene."""
+        with _sessions_lock(self.sessions_path):
+            self._delete_saved_session_locked(session_id)
+
+    def _delete_saved_session_locked(self, session_id: str) -> None:
         sessions = [
             session
             for session in self.load_saved_sessions()
             if session.get("session_id") != session_id
         ]
-        self._save_sessions(sessions)
+        self._save_sessions(sessions, replace=True)
+        self._delete_match_logs({str(session_id)})
+
+    @staticmethod
+    def _delete_match_logs(session_ids: set[str]) -> None:
+        if not session_ids:
+            return
+        try:
+            from app.services.match_log_service import MatchLogService
+
+            logs = MatchLogService()
+            for session_id in session_ids:
+                if session_id:
+                    logs.delete_match_log(session_id)
+        except (OSError, ValueError):
+            logger.exception("No se pudieron limpiar logs de partidas eliminadas")
 
     def guardar_analisis_partida(
         self, session_id: str, registro: dict[str, Any]
@@ -1307,6 +1410,8 @@ class LiveMatchTracker:
     def _save_sessions(
         self,
         sessions: list[dict[str, Any]],
+        *,
+        replace: bool = False,
     ) -> None:
         """Guarda la lista completa en disco y la deja como caché en memoria.
 
@@ -1316,26 +1421,52 @@ class LiveMatchTracker:
         modo que el historial deja de crecer sin freno y el primer guardado
         tras esta mejora compacta también las partidas ya existentes.
         """
-        for session in sessions:
-            if isinstance(session, dict):
+        with _sessions_lock(self.sessions_path):
+            incoming: dict[str, dict[str, Any]] = {}
+            for session in sessions:
+                if isinstance(session, dict) and session.get("session_id"):
+                    incoming[str(session["session_id"])] = session
+            if replace:
+                combined = incoming
+            else:
+                stamp = self._path_stamp()
+                current = (
+                    self._sessions_cache
+                    if self._sessions_cache is not None
+                    and stamp == self._sessions_cache_stamp
+                    else self._read_sessions_file()
+                )
+                combined = {
+                    str(session.get("session_id")): session
+                    for session in current
+                    if isinstance(session, dict) and session.get("session_id")
+                }
+                combined.update(incoming)
+            retained = sorted(
+                combined.values(), key=_session_timestamp, reverse=True
+            )[: self.MAX_SAVED_SESSIONS]
+            for session in retained:
                 thin_snapshots(session)
 
-        self.sessions_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-        temporary_path = self.sessions_path.with_suffix(".tmp")
-        with temporary_path.open("w", encoding="utf-8") as file:
-            json.dump(
-                sessions,
-                file,
-                ensure_ascii=False,
-                separators=(",", ":"),
+            self.sessions_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary_name = tempfile.mkstemp(
+                prefix="live_match_sessions_",
+                suffix=".tmp",
+                dir=self.sessions_path.parent,
             )
-        temporary_path.replace(self.sessions_path)
+            temporary_path = Path(temporary_name)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as file:
+                    json.dump(retained, file, ensure_ascii=False, separators=(",", ":"))
+                    file.flush()
+                    os.fsync(file.fileno())
+                temporary_path.replace(self.sessions_path)
+            except Exception:
+                temporary_path.unlink(missing_ok=True)
+                raise
 
-        self._sessions_cache = sessions
-        self._sessions_cache_stamp = self._path_stamp()
+            self._sessions_cache = retained
+            self._sessions_cache_stamp = self._path_stamp()
 
 
 def thin_snapshots(

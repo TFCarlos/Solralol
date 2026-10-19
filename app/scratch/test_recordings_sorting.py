@@ -13,6 +13,34 @@ from app.services.recording_service import RecordingLibrary, RecordingService
 from app.ui.recordings_page import RecordingsPage
 
 
+def test_seek_proxy_is_bound_to_source_version_and_counted_in_storage(
+    aplicacion: QApplication, tmp_path: Path,
+) -> None:
+    """Asocia la copia indexada al original sin exponerla como otra grabación."""
+    library = RecordingLibrary(tmp_path)
+    source = tmp_path / "Kayn.mp4"
+    source.write_bytes(b"source")
+    proxy = library.seek_cache_path(source)
+    proxy.parent.mkdir(parents=True)
+    proxy.write_bytes(b"seek-ready-copy")
+
+    assert library.optimized_playback_path(source) == proxy
+    assert library.video_files() == [source]
+    assert library.total_size_bytes() == source.stat().st_size + proxy.stat().st_size
+
+    page = RecordingsPage(library, RecordingService(library))
+    page.play_entry(source)
+    assert page.current_path == source
+    assert Path(page.player.source().toLocalFile()) == proxy
+    page.player.stop()
+    page.close()
+
+    source.write_bytes(b"changed source")
+    assert library.optimized_playback_path(source) == source
+    assert library.delete(source)
+    assert not proxy.exists()
+
+
 @pytest.fixture(scope="module")
 def aplicacion() -> QApplication:
     """Crea la aplicación Qt necesaria para las pruebas de la página."""

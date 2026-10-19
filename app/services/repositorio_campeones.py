@@ -446,6 +446,71 @@ class RepositorioCampeones:
                 pass
         return sorted(perfiles, key=lambda perfil: str(perfil["character"]).casefold())
 
+    def perfiles_globales(self) -> list[dict[str, Any]]:
+        """Lee solo perfiles globales validados, sin copiar ni normalizar matrices.
+
+        El motor de Draft necesita el perfil estatico, no las matrices completas
+        por rango. Este camino evita copiar y depurar matrices grandes para
+        construir su indice de campeones.
+        """
+        perfiles: list[dict[str, Any]] = []
+        with self._cerrojo:
+            for ruta in sorted(self.raiz.glob("*.json")):
+                campeon = ruta.stem
+                try:
+                    documento = json.loads(
+                        ruta.read_text(encoding="utf-8"),
+                        parse_constant=rechazar_constante_json,
+                    )
+                    if not isinstance(documento, dict):
+                        continue
+                    if documento.get("schema_version") != VERSION_ESQUEMA:
+                        continue
+                    if identificador_campeon(
+                        str(documento.get("champion", ""))
+                    ) != identificador_campeon(campeon):
+                        continue
+                    perfil = documento.get("profile")
+                    if (
+                        not isinstance(perfil, dict)
+                        or identificador_campeon(str(perfil.get("character", "")))
+                        != identificador_campeon(campeon)
+                        or not isinstance(perfil.get("basic_info"), dict)
+                    ):
+                        continue
+                    for campo in (
+                        "power_curve_and_scaling",
+                        "combat_attributes",
+                        "map_and_control",
+                        "resistances_and_survivability",
+                        "matchups",
+                    ):
+                        if campo in perfil and not isinstance(perfil[campo], dict):
+                            raise TypeError(f"Perfil invalido: {campo}")
+                    perfiles.append(perfil)
+                except (OSError, ValueError, TypeError):
+                    continue
+
+            catalogo = self.raiz.parent / "champion_catalog.json"
+            if catalogo.exists():
+                try:
+                    datos = json.loads(catalogo.read_text(encoding="utf-8"))
+                    conocidos = {
+                        identificador_campeon(perfil["character"])
+                        for perfil in perfiles
+                    }
+                    for entrada in datos.get("data", {}).values():
+                        nombre = entrada.get("name")
+                        if (
+                            isinstance(nombre, str)
+                            and identificador_campeon(nombre) not in conocidos
+                        ):
+                            perfiles.append({"character": nombre, "basic_info": {}})
+                except (OSError, ValueError, AttributeError, TypeError):
+                    pass
+
+        return sorted(perfiles, key=lambda perfil: str(perfil["character"]).casefold())
+
     def invalidar(self, campeon: str) -> None:
         """Elimina campeón recibido de la caché; retorna None."""
         with self._cerrojo:

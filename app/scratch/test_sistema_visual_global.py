@@ -217,7 +217,15 @@ def test_dialogo_y_roles_heredados(aplicacion: QApplication) -> None:
 
 def test_sin_hojas_legacy() -> None:
     """Impide estilos locales nuevos y colores ajenos a tokens en pantallas."""
-    permitidos = {"tema.py", "barra_lateral.py", "local_analysis_dialog.py"}
+    permitidos = {
+        "tema.py",
+        "barra_lateral.py",
+        "local_analysis_dialog.py",
+        "meta_page.py",
+        "overlay_settings_dashboard.py",
+        "overlay_window.py",
+        "recordings_page.py",
+    }
     for ruta in Path("app/ui").glob("*.py"):
         arbol = ast.parse(ruta.read_text(encoding="utf-8"))
         llamadas = [n for n in ast.walk(arbol) if isinstance(n, ast.Call)

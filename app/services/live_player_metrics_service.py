@@ -1,4 +1,4 @@
-﻿"""Métricas por jugador que alimentan los overlays de la partida en vivo.
+"""Métricas por jugador que alimentan los overlays de la partida en vivo.
 
 Todo se calcula a partir del snapshot de la Live Client Data API, que es la
 única fuente disponible durante la partida. La API no expone el oro real de los
@@ -55,6 +55,7 @@ ROLE_ALIASES = {
 GOLD_PER_KILL = 300
 GOLD_PER_ASSIST = 75
 GOLD_PER_CS = 20
+
 
 def _int(value: Any) -> int:
     try:
@@ -135,7 +136,7 @@ def estimate_gold(
     player: dict,
     item_catalog: dict,
     current_gold: Any = None,
-) -> int:
+) -> int | None:
     """Oro de un jugador a partir del snapshot (build y lo ganado).
 
     La API local no expone el oro de los rivales, así que se estima sumando el
@@ -145,13 +146,44 @@ def estimate_gold(
     firma por compatibilidad, pero ya no interviene en el cálculo.
     """
     if not isinstance(player, dict):
-        return 0
+        return None
 
+    items = player.get("items")
     inventory_value = get_inventory_value(player, item_catalog)
 
     scores = player.get("scores", {})
-    if not isinstance(scores, dict):
-        scores = {}
+    if not isinstance(items, list) or not isinstance(scores, dict):
+        return None
+    for key in ("kills", "assists", "creepScore"):
+        if key not in scores or isinstance(scores[key], bool):
+            return None
+        try:
+            int(scores[key])
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    catalog_items = item_catalog.get("items", item_catalog)
+    if not isinstance(catalog_items, dict):
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            return None
+        item_id = str(item.get("itemID") or item.get("itemId") or item.get("id") or "")
+        if not item_id or item_id == "0":
+            continue
+        price = item.get("price")
+        if (
+            isinstance(price, (int, float))
+            and not isinstance(price, bool)
+            and price > 0
+        ):
+            continue
+        catalog_item = catalog_items.get(item_id)
+        gold = catalog_item.get("gold") if isinstance(catalog_item, dict) else None
+        if not isinstance(gold, dict) or not any(
+            key in gold and gold[key] is not None for key in ("total", "base")
+        ):
+            return None
 
     return (
         inventory_value
@@ -214,11 +246,7 @@ def _team_players(
     if not isinstance(local_player, dict):
         local_player = {}
 
-    local_team = str(
-        snapshot.get("local_team")
-        or local_player.get("team")
-        or ""
-    )
+    local_team = str(snapshot.get("local_team") or local_player.get("team") or "")
 
     participantes = [
         player for player in snapshot.get("all_players", []) if isinstance(player, dict)
@@ -228,7 +256,9 @@ def _team_players(
         metricas = jugador.get("scores", {})
         equipo = str(jugador.get("team", ""))
         if isinstance(metricas, dict):
-            bajas_equipo[equipo] = bajas_equipo.get(equipo, 0) + _int(metricas.get("kills"))
+            bajas_equipo[equipo] = bajas_equipo.get(equipo, 0) + _int(
+                metricas.get("kills")
+            )
     entradas = []
     for indice, jugador in enumerate(participantes):
         metricas = jugador.get("scores", {})
@@ -258,9 +288,17 @@ def _team_players(
             continue
 
         entry = _gold_entry(player, item_catalog)
-        identidad = player_identity(player) or f"{player_champion(player)}:{participantes.index(player)}"
+        metricas_jugador = player.get("scores", {})
+        identidad = (
+            player_identity(player)
+            or f"{player_champion(player)}:{participantes.index(player)}"
+        )
         resultado = puntuaciones.get(identidad)
-        entry["score"] = resultado["total"] if resultado else None
+        puntuacion_valida = isinstance(metricas_jugador, dict) and all(
+            clave in metricas_jugador
+            for clave in ("kills", "deaths", "assists", "creepScore")
+        )
+        entry["score"] = resultado["total"] if resultado and puntuacion_valida else None
         entry["performance"] = resultado
 
         if local_team:
@@ -299,15 +337,15 @@ def _lane_row(
     enemy_entry: dict | None,
 ) -> dict:
     """Línea del overlay de oro: aliado y rival del mismo rol."""
-    ally_gold = int(ally_entry["gold"]) if ally_entry else 0
-    enemy_gold = int(enemy_entry["gold"]) if enemy_entry else 0
-    paired = ally_entry is not None and enemy_entry is not None
+    ally_gold = ally_entry.get("gold") if ally_entry else None
+    enemy_gold = enemy_entry.get("gold") if enemy_entry else None
+    paired = ally_gold is not None and enemy_gold is not None
 
     return {
         "role": role,
         "ally": ally_entry,
         "enemy": enemy_entry,
-        "delta": (ally_gold - enemy_gold) if paired else 0,
+        "delta": (ally_gold - enemy_gold) if paired else None,
         "paired": paired,
     }
 
@@ -322,7 +360,7 @@ def build_gold_report(
     jugador aliado de un rol con el rival del mismo rol (``None`` si falta).
     """
     empty = {
-        "team": {"ally": 0, "enemy": 0, "delta": 0},
+        "team": {"ally": None, "enemy": None, "delta": None},
         "lanes": [],
     }
 
@@ -334,8 +372,18 @@ def build_gold_report(
     if not allies and not enemies:
         return empty
 
-    ally_total = sum(entry["gold"] for entry in allies)
-    enemy_total = sum(entry["gold"] for entry in enemies)
+    ally_values = [entry["gold"] for entry in allies if entry["gold"] is not None]
+    enemy_values = [entry["gold"] for entry in enemies if entry["gold"] is not None]
+    ally_total = (
+        sum(ally_values)
+        if len(allies) == 5 and len(ally_values) == len(allies)
+        else None
+    )
+    enemy_total = (
+        sum(enemy_values)
+        if len(enemies) == 5 and len(enemy_values) == len(enemies)
+        else None
+    )
 
     lanes: list[dict] = []
     ally_used: set[int] = set()
@@ -345,30 +393,23 @@ def build_gold_report(
         ally_entry = _pop_role(allies, role, ally_used)
         enemy_entry = _pop_role(enemies, role, enemy_used)
 
-        if ally_entry is None and enemy_entry is None:
-            continue
-
         lanes.append(_lane_row(role, ally_entry, enemy_entry))
+
+    if len(ally_used) != 5 or len(enemy_used) != 5:
+        ally_total = None
+        enemy_total = None
 
     # Jugadores con rol desconocido o duplicado se añaden al final para no
     # perderlos en el resumen de equipo.
-    for index, entry in enumerate(allies):
-        if index not in ally_used:
-            lanes.append(
-                _lane_row(str(entry.get("role", "UNKNOWN")), entry, None)
-            )
-
-    for index, entry in enumerate(enemies):
-        if index not in enemy_used:
-            lanes.append(
-                _lane_row(str(entry.get("role", "UNKNOWN")), None, entry)
-            )
-
     return {
         "team": {
             "ally": ally_total,
             "enemy": enemy_total,
-            "delta": ally_total - enemy_total,
+            "delta": (
+                ally_total - enemy_total
+                if ally_total is not None and enemy_total is not None
+                else None
+            ),
         },
         "lanes": lanes,
     }
@@ -388,14 +429,27 @@ def build_rival_ranking(
         return {"strongest": None, "weakest": None}
 
     ranked = sorted(
-        enemies,
+        (entry for entry in enemies if entry.get("score") is not None),
         key=lambda entry: (
-            -int(entry.get("score", 0)),
+            -int(entry["score"]),
             str(entry.get("champion", "")),
+            str(entry.get("role", "")),
         ),
     )
 
+    if not ranked:
+        return {
+            "strongest": None,
+            "weakest": None,
+            "strongest_tie_count": 0,
+            "weakest_tie_count": 0,
+        }
+
+    mayor = ranked[0]["score"]
+    menor = ranked[-1]["score"]
     return {
         "strongest": ranked[0],
         "weakest": ranked[-1] if len(ranked) > 1 else None,
+        "strongest_tie_count": sum(entry["score"] == mayor for entry in ranked),
+        "weakest_tie_count": sum(entry["score"] == menor for entry in ranked),
     }

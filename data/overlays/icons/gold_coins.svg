@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none" role="img" aria-labelledby="title desc">
+<title id="title">Stacks of gold coins</title>
+<desc id="desc">Two overlapping piles of individually rimmed golden coins with engraved runes, bright edges, and a metallic shine.</desc>
+<defs>
+ <linearGradient id="coinTop" x1="59" y1="28" x2="98" y2="67" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF0B4"/><stop offset=".25" stop-color="#F7D478"/><stop offset=".55" stop-color="#DAA447"/><stop offset="1" stop-color="#B77B2B"/></linearGradient>
+ <linearGradient id="coinSide" x1="14" y1="34" x2="63" y2="48" gradientUnits="userSpaceOnUse"><stop stop-color="#A96F29"/><stop offset=".26" stop-color="#E3B353"/><stop offset=".55" stop-color="#F8CF6E"/><stop offset="1" stop-color="#8C581D"/></linearGradient>
+ <linearGradient id="coinSideLight" x1="58" y1="58" x2="110" y2="75" gradientUnits="userSpaceOnUse"><stop stop-color="#9D6325"/><stop offset=".23" stop-color="#E6AF4D"/><stop offset=".54" stop-color="#FFDA7C"/><stop offset=".82" stop-color="#C98B32"/><stop offset="1" stop-color="#84511D"/></linearGradient>
+</defs>
+<g id="coin-b0">
+  <path d="M15 65 C15 69.75 28.20 72.30 39 72.30 C49.80 72.30 63 69.75 63 65 L63 73 C63 78.47 50.04 80.30 39 80.30 C27.96 80.30 15 78.47 15 73 Z" fill="url(#coinSide)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M17.0 73.0 C18.0 77.02 28.20 78.80 39 78.80 C49.80 78.80 60.0 77.02 61.0 73.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M19 68 V76.28 M23 70 V78.26 M55 70 V78.26 M59 68 V76.28" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="39" cy="65" rx="24" ry="7.3" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="39" cy="64.7" rx="20.40" ry="4.95" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M20.0 64.0 C29.88 59.20 45.00 59.50 56.0 63.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-b1">
+  <path d="M15 54 C15 58.74 28.20 61.30 39 61.30 C49.80 61.30 63 58.74 63 54 L63 62 C63 67.47 50.04 69.30 39 69.30 C27.96 69.30 15 67.47 15 62 Z" fill="url(#coinSide)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M17.0 62.0 C18.0 66.02 28.20 67.80 39 67.80 C49.80 67.80 60.0 66.02 61.0 62.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M19 57 V65.28 M23 59 V67.26 M55 59 V67.26 M59 57 V65.28" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="39" cy="54" rx="24" ry="7.3" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="39" cy="53.7" rx="20.40" ry="4.95" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M20.0 53.0 C29.88 48.20 45.00 48.50 56.0 52.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-b2">
+  <path d="M15 43 C15 47.74 28.20 50.30 39 50.30 C49.80 50.30 63 47.74 63 43 L63 51 C63 56.48 50.04 58.30 39 58.30 C27.96 58.30 15 56.48 15 51 Z" fill="url(#coinSide)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M17.0 51.0 C18.0 55.02 28.20 56.80 39 56.80 C49.80 56.80 60.0 55.02 61.0 51.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M19 46 V54.28 M23 48 V56.26 M55 48 V56.26 M59 46 V54.28" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="39" cy="43" rx="24" ry="7.3" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="39" cy="42.7" rx="20.40" ry="4.95" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M20.0 42.0 C29.88 37.20 45.00 37.50 56.0 41.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-b3">
+  <path d="M15 32 C15 36.74 28.20 39.30 39 39.30 C49.80 39.30 63 36.74 63 32 L63 40 C63 45.48 50.04 47.30 39 47.30 C27.96 47.30 15 45.48 15 40 Z" fill="url(#coinSide)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M17.0 40.0 C18.0 44.02 28.20 45.80 39 45.80 C49.80 45.80 60.0 44.02 61.0 40.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M19 35 V43.28 M23 37 V45.26 M55 37 V45.26 M59 35 V43.28" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="39" cy="32" rx="24" ry="7.3" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="39" cy="31.7" rx="20.40" ry="4.95" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M20.0 31.0 C29.88 26.20 45.00 26.50 56.0 30.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g stroke-linejoin="round"><path d="M39 27.6 L43.8 31.6 39 35.7 34.2 31.6 Z" fill="#AD762C" stroke="#FFE2A0" stroke-width="1.15"/><path d="M39 29.6 L41 31.6 39 33.7 37 31.6 Z" fill="#FFF3BD"/></g><g id="coin-f0">
+  <path d="M58 100 C58 105.33 72.30 108.20 84 108.20 C95.70 108.20 110 105.33 110 100 L110 108 C110 114.15 95.96 116.20 84 116.20 C72.04 116.20 58 114.15 58 108 Z" fill="url(#coinSideLight)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M60.0 108.0 C61.0 112.51 72.30 114.70 84 114.70 C95.70 114.70 107.0 112.51 108.0 108.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M62 103 V111.69 M66 105 V113.90 M102 105 V113.90 M106 103 V111.69" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="84" cy="100" rx="26" ry="8.2" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="84" cy="99.7" rx="22.40" ry="5.85" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M63.0 99.0 C74.12 93.30 90.50 93.60 103.0 98.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-f1">
+  <path d="M58 89 C58 94.33 72.30 97.20 84 97.20 C95.70 97.20 110 94.33 110 89 L110 97 C110 103.15 95.96 105.20 84 105.20 C72.04 105.20 58 103.15 58 97 Z" fill="url(#coinSideLight)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M60.0 97.0 C61.0 101.51 72.30 103.70 84 103.70 C95.70 103.70 107.0 101.51 108.0 97.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M62 92 V100.69 M66 94 V102.90 M102 94 V102.90 M106 92 V100.69" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="84" cy="89" rx="26" ry="8.2" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="84" cy="88.7" rx="22.40" ry="5.85" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M63.0 88.0 C74.12 82.30 90.50 82.60 103.0 87.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-f2">
+  <path d="M58 78 C58 83.33 72.30 86.20 84 86.20 C95.70 86.20 110 83.33 110 78 L110 86 C110 92.15 95.96 94.20 84 94.20 C72.04 94.20 58 92.15 58 86 Z" fill="url(#coinSideLight)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M60.0 86.0 C61.0 90.51 72.30 92.70 84 92.70 C95.70 92.70 107.0 90.51 108.0 86.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M62 81 V89.69 M66 83 V91.90 M102 83 V91.90 M106 81 V89.69" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="84" cy="78" rx="26" ry="8.2" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="84" cy="77.7" rx="22.40" ry="5.85" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M63.0 77.0 C74.12 71.30 90.50 71.60 103.0 76.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-f3">
+  <path d="M58 67 C58 72.33 72.30 75.20 84 75.20 C95.70 75.20 110 72.33 110 67 L110 75 C110 81.15 95.96 83.20 84 83.20 C72.04 83.20 58 81.15 58 75 Z" fill="url(#coinSideLight)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M60.0 75.0 C61.0 79.51 72.30 81.70 84 81.70 C95.70 81.70 107.0 79.51 108.0 75.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M62 70 V78.69 M66 72 V80.90 M102 72 V80.90 M106 70 V78.69" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="84" cy="67" rx="26" ry="8.2" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="84" cy="66.7" rx="22.40" ry="5.85" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M63.0 66.0 C74.12 60.30 90.50 60.60 103.0 65.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g id="coin-f4">
+  <path d="M58 56 C58 61.33 72.30 64.20 84 64.20 C95.70 64.20 110 61.33 110 56 L110 64 C110 70.15 95.96 72.20 84 72.20 C72.04 72.20 58 70.15 58 64 Z" fill="url(#coinSideLight)" stroke="#553718" stroke-width="2.1" stroke-linejoin="round"/>
+  <path d="M60.0 64.0 C61.0 68.51 72.30 70.70 84 70.70 C95.70 70.70 107.0 68.51 108.0 64.0" stroke="#F9D47A" stroke-width="1.5" fill="none" opacity=".68"/>
+  <path d="M62 59 V67.69 M66 61 V69.90 M102 61 V69.90 M106 59 V67.69" stroke="#FFEB9F" stroke-width="1.15" opacity=".6"/>
+  <ellipse cx="84" cy="56" rx="26" ry="8.2" fill="url(#coinTop)" stroke="#6C451C" stroke-width="2.2"/>
+  <ellipse cx="84" cy="55.7" rx="22.40" ry="5.85" stroke="#FFF1B4" stroke-width="1.45" opacity=".78"/>
+  <path d="M63.0 55.0 C74.12 49.30 90.50 49.60 103.0 54.0" fill="none" stroke="#FFF6CE" stroke-width="1.6" opacity=".76"/>
+</g><g stroke-linejoin="round"><path d="M84 51.1 L89.8 55.6 84 60.3 78.2 55.6 Z" fill="#AA6D27" stroke="#FFE6A1" stroke-width="1.5"/><path d="M84 53.1 L87.1 55.6 84 58.1 80.9 55.6 Z" fill="#FFE7A1" stroke="#F6C46C" stroke-width=".75"/></g><path d="M107 40 V47 M103.5 43.5 H110.5" stroke="#FFE8A3" stroke-width="1.75" stroke-linecap="round"/>
+<circle cx="112" cy="52" r="1.5" fill="#FCE5A8" opacity=".85"/>
+</svg>

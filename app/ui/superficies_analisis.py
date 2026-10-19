@@ -1,6 +1,8 @@
 """Superficies pintadas de bajo coste e imágenes contenidas del análisis."""
 
-from PySide6.QtCore import QRectF, Qt
+from typing import Any
+
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
     QLinearGradient,
@@ -19,32 +21,68 @@ from app.ui.sistema_visual import PALETA, RADIO_ICONO, RADIO_TARJETA
 class FondoTecnologico(QWidget):
     """Fondo abstracto estático con luz cálida, luz teal y retícula tenue."""
 
-    def paintEvent(self, event: QPaintEvent) -> None:
-        """Pinta gradientes y retícula dentro del área del evento; retorna None."""
-        pintor = QPainter(self)
-        pintor.fillRect(self.rect(), QColor(PALETA["base"]))
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Inicializa la superficie y una caché rasterizada tras el redimensionado."""
+        super().__init__(parent)
+        self._fondo_cache = QPixmap()
+        self._temporizador_fondo = QTimer(self)
+        self._temporizador_fondo.setSingleShot(True)
+        self._temporizador_fondo.setInterval(90)
+        self._temporizador_fondo.timeout.connect(self._actualizar_cache_fondo)
+
+    def resizeEvent(self, event: Any) -> None:
+        """Pospone la rasterización del fondo hasta que se estabilice el tamaño."""
+        super().resizeEvent(event)
+        self._temporizador_fondo.start()
+
+    def _actualizar_cache_fondo(self) -> None:
+        """Rasteriza una sola copia del fondo para el tamaño estable actual."""
+        if self.width() <= 0 or self.height() <= 0:
+            return
+        self._fondo_cache = self._crear_fondo(self.size())
+        self.update()
+
+    @staticmethod
+    def _crear_fondo(tamano: QSize) -> QPixmap:
+        """Pinta gradientes y retícula en un pixmap del tamaño lógico indicado."""
+        fondo = QPixmap(tamano)
+        pintor = QPainter(fondo)
+        FondoTecnologico._pintar_fondo(pintor, tamano.width(), tamano.height())
+        pintor.end()
+        return fondo
+
+    @staticmethod
+    def _pintar_fondo(pintor: QPainter, ancho: int, alto: int) -> None:
+        """Dibuja la atmósfera tecnológica sin crear widgets ni alterar geometrías."""
+        rectangulo = QRectF(0, 0, ancho, alto)
+        pintor.fillRect(rectangulo, QColor(PALETA["base"]))
         for x, y, radio, color, alfa in (
             (0.16, 0.02, 0.8, PALETA["oro"], 40),
             (0.95, 0.4, 0.65, PALETA["teal"], 22),
             (0.65, 1.0, 0.6, PALETA["calida"], 180),
         ):
-            luz = QRadialGradient(
-                self.width() * x,
-                self.height() * y,
-                max(self.width(), self.height()) * radio,
-            )
+            luz = QRadialGradient(x * ancho, y * alto, max(ancho, alto) * radio)
             inicio = QColor(color)
             inicio.setAlpha(alfa)
             fin = QColor(color)
             fin.setAlpha(0)
             luz.setColorAt(0, inicio)
             luz.setColorAt(1, fin)
-            pintor.fillRect(self.rect(), luz)
+            pintor.fillRect(rectangulo, luz)
         pintor.setPen(QPen(QColor(180, 157, 94, 7), 1))
-        for x in range(0, self.width(), 64):
-            pintor.drawLine(x, 0, x, self.height())
-        for y in range(0, self.height(), 64):
-            pintor.drawLine(0, y, self.width(), y)
+        for x in range(0, ancho, 64):
+            pintor.drawLine(x, 0, x, alto)
+        for y in range(0, alto, 64):
+            pintor.drawLine(0, y, ancho, y)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """Pinta gradientes y retícula dentro del área del evento; retorna None."""
+        pintor = QPainter(self)
+        if not self._fondo_cache.isNull():
+            pintor.drawPixmap(self.rect(), self._fondo_cache)
+            if self._fondo_cache.size() == self.size() or self._temporizador_fondo.isActive():
+                return
+        self._pintar_fondo(pintor, self.width(), self.height())
 
 
 class TarjetaCampeon(QFrame):

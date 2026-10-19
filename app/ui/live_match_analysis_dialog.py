@@ -493,6 +493,11 @@ class HighlightFlow(QWidget):
         self._grid.setVerticalSpacing(5)
         self._badges: list[QLabel] = []
         self._badge_widths: dict[QLabel, int] = {}
+        self._firma_disposicion: tuple[tuple[int, int, int, int], ...] | None = None
+        self._temporizador_reflujo = QTimer(self)
+        self._temporizador_reflujo.setSingleShot(True)
+        self._temporizador_reflujo.setInterval(100)
+        self._temporizador_reflujo.timeout.connect(self._reflow)
         policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
@@ -534,25 +539,24 @@ class HighlightFlow(QWidget):
         badge.setMaximumHeight(44)
         natural_width = badge.fontMetrics().horizontalAdvance(badge.text()) + 26
         self._badge_widths[badge] = min(210, max(104, natural_width))
+        self._firma_disposicion = None
         self._reflow()
         self.updateGeometry()
 
     def resizeEvent(self, event: Any) -> None:
         """Recoloca los distintivos cuando cambia el ancho disponible."""
         super().resizeEvent(event)
-        self._reflow()
+        self._temporizador_reflujo.start()
 
     def _reflow(self) -> None:
         """Distribuye los badges en filas sin exceder el ancho del panel."""
-        while self._grid.count():
-            self._grid.takeAt(0)
         available = max(104, self.width())
         row = 0
         column = 0
         row_width = 0
+        posiciones: list[tuple[QLabel, int, int, int]] = []
         for badge in self._badges:
             badge_width = min(available, self._badge_widths.get(badge, 104))
-            badge.setFixedWidth(badge_width)
             if (
                 column
                 and row_width + self._grid.horizontalSpacing() + badge_width > available
@@ -560,9 +564,24 @@ class HighlightFlow(QWidget):
                 row += 1
                 column = 0
                 row_width = 0
-            self._grid.addWidget(badge, row, column, Qt.AlignmentFlag.AlignLeft)
+            posiciones.append((badge, row, column, badge_width))
             row_width += badge_width + self._grid.horizontalSpacing()
             column += 1
+        firma = tuple((id(badge), fila, columna, ancho) for badge, fila, columna, ancho in posiciones)
+        if firma == self._firma_disposicion:
+            return
+        self._firma_disposicion = firma
+        actualizaciones_activas = self.updatesEnabled()
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(False)
+        while self._grid.count():
+            self._grid.takeAt(0)
+        for badge, fila, columna, ancho in posiciones:
+            badge.setFixedWidth(ancho)
+            self._grid.addWidget(badge, fila, columna, Qt.AlignmentFlag.AlignLeft)
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(True)
+            self.update()
         self.updateGeometry()
 
 

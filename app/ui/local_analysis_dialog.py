@@ -48,7 +48,7 @@ from app.services.analisis_local_service import AnalisisLocalService
 from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
 from app.services.champion_variant_service import ChampionVariantService
 from app.services.item_synergy_calculator_service import ItemSynergyCalculatorService
-from app.services.rangos_campeones import OPCIONES_RANGO, RANGO_PREDETERMINADO
+from app.services.rangos_campeones import RANGO_ANALISIS_LOCAL
 from app.services.repositorio_campeones import EstadoDatos, RepositorioCampeones
 from app.services.settings_service import SettingsService
 from app.services.synergy_recommendation_service import SynergyRecommendationService
@@ -723,7 +723,7 @@ class LocalAnalysisDialog(QDialog):
         else:
             self.item_catalog = {"version": self.version, "items": raw_catalog}
         self.service = SynergyRecommendationService()
-        self.analysis_rank = self._load_analysis_rank()
+        self.analysis_rank = RANGO_ANALISIS_LOCAL
         self.analysis_lane = self._load_analysis_lane()
         self._active_variant_key = ""
         self._active_variant: dict[str, Any] | None = None
@@ -743,6 +743,7 @@ class LocalAnalysisDialog(QDialog):
         self._worker_analisis: AnalisisLocalWorker | None = None
         self._rutas_recursos: dict[tuple[str, str], Path] = {}
         self._imagenes_recursos: dict[str, bytes] = {}
+        self._firma_layout_responsivo: tuple[bool, bool, int] | None = None
         self._pixmaps_recursos: dict[str, QPixmap] = {}
         self._datos_preparados: dict[str, Any] = {}
         self._mostrar_todos_candidatos = False
@@ -826,21 +827,11 @@ class LocalAnalysisDialog(QDialog):
         controls.addWidget(self.style_value)
         controls.addSpacing(10)
         controls.addWidget(rank_caption)
-        self.analysis_rank_combo = QComboBox()
-        self.analysis_rank_combo.setObjectName("analysisRankCombo")
-        self.analysis_rank_combo.setMinimumWidth(140)
-        self.analysis_rank_combo.setMaximumWidth(220)
-        self.analysis_rank_combo.setToolTip("Rango de los datos guardados localmente")
-        for rank_key, rank_label in OPCIONES_RANGO:
-            self.analysis_rank_combo.addItem(rank_label, rank_key)
-        saved_rank_index = self.analysis_rank_combo.findData(self.analysis_rank)
-        self.analysis_rank_combo.setCurrentIndex(
-            saved_rank_index
-            if saved_rank_index >= 0
-            else self.analysis_rank_combo.findData(RANGO_PREDETERMINADO)
-        )
-        self.analysis_rank_combo.currentIndexChanged.connect(self._on_rank_changed)
-        controls.addWidget(self.analysis_rank_combo)
+        self.analysis_rank_label = QLabel("Esmeralda+")
+        self.analysis_rank_label.setObjectName("analysisRankLabel")
+        self.analysis_rank_label.setMinimumWidth(90)
+        self.analysis_rank_label.setToolTip("Estadísticas U.GG de Esmeralda+")
+        controls.addWidget(self.analysis_rank_label)
         controls.addStretch(1)
         self.winrate_progress_label = QLabel("")
         self.winrate_progress_label.setObjectName("winrateProgressLabel")
@@ -871,7 +862,7 @@ class LocalAnalysisDialog(QDialog):
         )
         self.update_single_champ_btn.setFixedSize(ANCHO_ACCIONES_HEROE, ALTURA_CONTROL)
         self.update_single_champ_btn.setToolTip(
-            "Actualiza los datos del campeón seleccionado en todas sus líneas y rangos"
+            "Actualiza los datos del campeón seleccionado en Esmeralda+"
         )
         self.update_single_champ_btn.clicked.connect(
             self._start_single_champion_winrate_update
@@ -881,7 +872,7 @@ class LocalAnalysisDialog(QDialog):
         self.update_winrates_btn.setIcon(crear_icono("M20 7a9 9 0 1 0 1 8M20 3v5h-5"))
         self.update_winrates_btn.setFixedSize(ANCHO_ACCIONES_HEROE, ALTURA_CONTROL)
         self.update_winrates_btn.setToolTip(
-            "Actualiza los datos de todos los campeones en todas sus líneas y rangos"
+            "Actualiza los datos de todos los campeones en Esmeralda+"
         )
         self.update_winrates_btn.clicked.connect(
             self._start_all_champions_winrate_update
@@ -905,19 +896,19 @@ class LocalAnalysisDialog(QDialog):
             (
                 (champion_caption, self.champion_combo),
                 (lane_caption, self.analysis_lane_combo),
-                (rank_caption, self.analysis_rank_combo),
+                (rank_caption, self.analysis_rank_label),
                 (style_caption, self.style_value),
             )
         ):
             filtros.addWidget(etiqueta, 0, columna)
             filtros.addWidget(componente, 1, columna)
-            filtros.setColumnStretch(columna, 1)
+            filtros.setColumnStretch(columna, 0 if columna == 2 else 1)
         analysis_layout.addWidget(panel_filtros)
         self._filtros_analisis = filtros
         self._pares_filtros = (
             (champion_caption, self.champion_combo),
             (lane_caption, self.analysis_lane_combo),
-            (rank_caption, self.analysis_rank_combo),
+            (rank_caption, self.analysis_rank_label),
             (style_caption, self.style_value),
         )
         self.analysis_loading_bar = QProgressBar()
@@ -2025,40 +2016,37 @@ class LocalAnalysisDialog(QDialog):
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Apila grupos al reducir el ancho recibido y conserva todas las secciones; retorna None."""
         super().resizeEvent(event)
-        if hasattr(self, "_filas_adaptables"):
-            direccion = (
-                QBoxLayout.Direction.TopToBottom
-                if self.width() < 1180
-                else QBoxLayout.Direction.LeftToRight
-            )
-            for fila in self._filas_adaptables:
-                fila.setDirection(direccion)
-            self._disposicion_hero.setDirection(
-                QBoxLayout.Direction.TopToBottom
-                if self.width() < 1100
-                else QBoxLayout.Direction.LeftToRight
-            )
-            self._acciones_campeon.setDirection(
-                QBoxLayout.Direction.LeftToRight
-                if self.width() < 1100
-                else QBoxLayout.Direction.TopToBottom
-            )
-            columnas = 2 if self.width() < 1100 else 4
-            while self._filtros_analisis.count():
-                self._filtros_analisis.takeAt(0)
-            for columna in range(4):
-                self._filtros_analisis.setColumnStretch(
-                    columna, int(columna < columnas)
-                )
-            for indice, (etiqueta, componente) in enumerate(self._pares_filtros):
-                fila, columna = divmod(indice, columnas)
-                self._filtros_analisis.addWidget(etiqueta, fila * 2, columna)
-                self._filtros_analisis.addWidget(componente, fila * 2 + 1, columna)
-            self.rune_pages_layout.setDirection(
-                QBoxLayout.Direction.TopToBottom
-                if self.width() < 1100
-                else QBoxLayout.Direction.LeftToRight
-            )
+        if not hasattr(self, "_filas_adaptables"):
+            return
+        firma = (self.width() < 1180, self.width() < 1100, 2 if self.width() < 1100 else 4)
+        if firma == self._firma_layout_responsivo:
+            return
+        self._firma_layout_responsivo = firma
+        actualizaciones_activas = self.updatesEnabled()
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(False)
+        direccion = QBoxLayout.Direction.TopToBottom if firma[0] else QBoxLayout.Direction.LeftToRight
+        for fila in self._filas_adaptables:
+            fila.setDirection(direccion)
+        self._disposicion_hero.setDirection(QBoxLayout.Direction.TopToBottom if firma[1] else QBoxLayout.Direction.LeftToRight)
+        self._acciones_campeon.setDirection(QBoxLayout.Direction.LeftToRight if firma[1] else QBoxLayout.Direction.TopToBottom)
+        columnas = firma[2]
+        while self._filtros_analisis.count():
+            self._filtros_analisis.takeAt(0)
+        for columna in range(4):
+            self._filtros_analisis.setColumnStretch(columna, int(columna < columnas))
+        for indice, (etiqueta, componente) in enumerate(self._pares_filtros):
+            fila, columna = divmod(indice, columnas)
+            self._filtros_analisis.addWidget(etiqueta, fila * 2, columna)
+            self._filtros_analisis.addWidget(componente, fila * 2 + 1, columna)
+        self.rune_pages_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 1100
+            else QBoxLayout.Direction.LeftToRight
+        )
+        if actualizaciones_activas:
+            self.setUpdatesEnabled(True)
+            self.update()
 
     def _select_champion(self, index: int) -> None:
         """Selecciona index, sincroniza el editor y agenda su análisis; retorna None."""
@@ -2090,7 +2078,7 @@ class LocalAnalysisDialog(QDialog):
             )
         )
         linea = str(self.analysis_lane_combo.currentData() or "mid")
-        rango = str(self.analysis_rank_combo.currentData() or RANGO_PREDETERMINADO)
+        rango = RANGO_ANALISIS_LOCAL
         clave = ChampionVariantService.key(campeon, linea, rango)
         if (
             clave == self._clave_analisis_aplicado
@@ -2107,7 +2095,7 @@ class LocalAnalysisDialog(QDialog):
         self.update_single_champ_btn.setEnabled(False)
         self.update_winrates_btn.setEnabled(False)
         self.status.setText(
-            f"Cargando análisis de {campeon} para {dict(_ANALYSIS_LANES).get(linea, linea)} ({self.analysis_rank_combo.currentText()})..."
+            f"Cargando análisis de {campeon} para {dict(_ANALYSIS_LANES).get(linea, linea)} (Esmeralda+)..."
         )
         if self._worker_analisis is not None:
             self._worker_analisis.requestInterruption()
@@ -2134,7 +2122,7 @@ class LocalAnalysisDialog(QDialog):
             self._active_variant_key,
             perfil,
             str(self.analysis_lane_combo.currentData() or "mid"),
-            str(self.analysis_rank_combo.currentData() or RANGO_PREDETERMINADO),
+            RANGO_ANALISIS_LOCAL,
             self._default_rune_page(perfil.get("basic_info", {})),
             parent=self,
         )
@@ -2254,7 +2242,7 @@ class LocalAnalysisDialog(QDialog):
         linea = dict(_ANALYSIS_LANES).get(
             str(self.analysis_lane_combo.currentData()), ""
         )
-        rango = self.analysis_rank_combo.currentText()
+        rango = "Esmeralda+"
         mensajes = {
             EstadoDatos.SIN_DATOS_LOCALES.value: "No hay datos guardados",
             EstadoDatos.SIN_DATOS_FUENTE.value: "La fuente no proporcionó muestra suficiente",
@@ -2420,7 +2408,7 @@ class LocalAnalysisDialog(QDialog):
             if 0 <= index < len(self.champions)
             else ""
         )
-        rank_key = str(self.analysis_rank_combo.currentData() or RANGO_PREDETERMINADO)
+        rank_key = RANGO_ANALISIS_LOCAL
         return f"{champion.casefold()}|{rank_key}"
 
     def _profile_lane_stats(self, variant: dict[str, Any] | None) -> dict[str, Any]:
@@ -2442,7 +2430,7 @@ class LocalAnalysisDialog(QDialog):
         index = self.champion_combo.currentIndex()
         if not (0 <= index < len(self.champions)):
             return {}
-        rank_key = str(self.analysis_rank_combo.currentData() or RANGO_PREDETERMINADO)
+        rank_key = RANGO_ANALISIS_LOCAL
         stored = (
             self.champions[index].get("lane_stats")
             if 0 <= index < len(self.champions)
@@ -3765,27 +3753,15 @@ class LocalAnalysisDialog(QDialog):
     @staticmethod
     def _load_analysis_rank() -> str:
         """Devuelve Esmeralda+ como rango inicial del panel, sin parámetros."""
-        return RANGO_PREDETERMINADO
-
-    def _on_rank_changed(self) -> None:
-        """Persiste el rango elegido y recarga la variante de la línea activa."""
-        rank_key = str(self.analysis_rank_combo.currentData() or RANGO_PREDETERMINADO)
-        self.analysis_rank = rank_key
-        self._active_variant_key = ""
-        self._active_variant = None
-        self._ensure_variant()
+        return RANGO_ANALISIS_LOCAL
 
     def _start_single_champion_winrate_update(self) -> None:
-        """Actualiza un campeón guardando su matriz completa rango x línea.
-
-        Es la vía prevista: tras esto, cambiar de rango o de línea en el panel es
-        una lectura del JSON, sin ninguna descarga adicional.
-        """
+        """Actualiza las líneas disponibles del campeón seleccionado en Esmeralda+; retorna None."""
         current_champ = self.champion_combo.currentText()
         self._start_winrate_update(target_champion_name=current_champ)
 
     def _start_all_champions_winrate_update(self) -> None:
-        """Actualiza matrices completas de todos los campeones en segundo plano; retorna None."""
+        """Actualiza en segundo plano los datos Esmeralda+ de todos los campeones; retorna None."""
         self._start_winrate_update(target_champion_name="")
 
     def _start_winrate_update(self, target_champion_name: str = "") -> None:
@@ -3797,8 +3773,8 @@ class LocalAnalysisDialog(QDialog):
         ):
             self.status.setText("Actualización en curso")
             return
-        rank_key = str(self.analysis_rank_combo.currentData() or RANGO_PREDETERMINADO)
-        rank_label = self.analysis_rank_combo.currentText()
+        rank_key = RANGO_ANALISIS_LOCAL
+        rank_label = "Esmeralda+"
         self._last_rank_label = rank_label
         self._modo_actualizacion = "uno" if target_champion_name else "todos"
         self._actualizacion_activa = True
@@ -3807,7 +3783,6 @@ class LocalAnalysisDialog(QDialog):
 
         self._marcar_botones_actualizacion(True)
         self.champion_combo.setEnabled(False)
-        self.analysis_rank_combo.setEnabled(False)
         self.analysis_lane_combo.setEnabled(False)
         self.winrate_progress_bar.setRange(
             0, 100 if target_champion_name else max(1, len(self.champions))
@@ -3823,17 +3798,18 @@ class LocalAnalysisDialog(QDialog):
 
         if target_champion_name:
             self.status.setText(
-                f"Actualizando {target_champion_name} en todas sus líneas y rangos..."
+                f"Actualizando {target_champion_name} en Esmeralda+..."
             )
         else:
             self.status.setText(
-                "Actualizando todos los campeones en todas sus líneas y rangos..."
+                "Actualizando todos los campeones en Esmeralda+..."
             )
 
         self._winrate_worker = ChampionScraperWorker(
             target_champion_name=target_champion_name,
             champions_path=self.champions_path,
             rank=rank_key,
+            solo_rango_analisis_local=True,
             parent=self,
         )
         self._winrate_worker.progress.connect(self._on_winrate_progress)
@@ -3908,7 +3884,6 @@ class LocalAnalysisDialog(QDialog):
         self._temporizador_progreso.start(1500)
         self._marcar_botones_actualizacion(False)
         self.champion_combo.setEnabled(True)
-        self.analysis_rank_combo.setEnabled(True)
         self.analysis_lane_combo.setEnabled(True)
         self.champions = self._repositorio_campeones.perfiles()
         self._active_variant_key = ""
@@ -3940,7 +3915,6 @@ class LocalAnalysisDialog(QDialog):
         self.winrate_progress_label.setVisible(True)
         self._marcar_botones_actualizacion(False)
         self.champion_combo.setEnabled(True)
-        self.analysis_rank_combo.setEnabled(True)
         self.analysis_lane_combo.setEnabled(True)
         logging.getLogger(__name__).error(
             "[update] falló la sincronización manual: %s", error_msg

@@ -28,6 +28,7 @@ TRAZOS = (
     "M3 6h13v12H3zM16 10l5-3v10l-5-3",
     "M9 3h6l1 4 4 2v6l-4 2-1 4H9l-1-4-4-2V9l4-2zM9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0",
     "M4 3l16 16M20 3L4 19M2 17l5 5M17 22l5-5M4 3v5l4-4M20 3v5l-4-4",
+    "M12 2l2.7 6.1L21 11l-6.3 2.9L12 20l-2.7-6.1L3 11l6.3-2.9zM19 16v6M16 19h6",
 )
 
 
@@ -54,6 +55,7 @@ class BarraLateral(QFrame):
             "Grabaciones",
             "Ajustes",
             "Herramienta de Draft",
+            "Meta",
         ]
         self.expandida = True
         self.setFixedWidth(ANCHO_BARRA)

@@ -150,13 +150,13 @@ def test_briar_cura_builds_separadas_segun_la_pagina_de_runas(
     sostenida = curador.curar(variante, perfil, candidatos, pagina_sostenida)
     letalidad_repetida = curador.curar(variante, perfil, candidatos, pagina_letalidad)
     assert [item["name"] for item in letalidad["recommended_core_items"]] == [
-        "Soberbia",
-        "Recaudadora",
-        "Recuerdos de lord Dominik",
+        "Hoja del rey arruinado",
+        "Cuchilla negra",
+        "Baile de la muerte",
     ]
     assert [item["name"] for item in sostenida["recommended_core_items"]] == [
+        "Soberbia",
         "Recaudadora",
-        "Hidra titánica",
         "Recuerdos de lord Dominik",
     ]
     assert letalidad["recommended_build"] != sostenida["recommended_build"]

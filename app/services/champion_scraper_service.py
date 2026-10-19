@@ -26,6 +26,7 @@ from app.services.preparador_datos_campeon import PreparadorDatosCampeon
 from app.services.rangos_campeones import (
     OPCIONES_RANGO,
     POR_CLAVE,
+    RANGO_ANALISIS_LOCAL,
     RANGO_PREDETERMINADO,
     normalizar_rango,
 )
@@ -89,12 +90,18 @@ class ChampionScraperService:
         champions_path: Path | None = None,
         request_delay: float = 0.8,
         rank: str = RANGO_PREDETERMINADO,
+        solo_rango_analisis_local: bool = False,
     ) -> None:
-        """Inicializa proveedor remoto con raíz local y rango; retorna None."""
+        """Inicializa el proveedor con su caché local, rango y modo estricto opcional; retorna None."""
         self.champions_path = champions_path or DATA_DIR / "champion_data"
         self.repositorio = RepositorioCampeones(self.champions_path)
         self.request_delay = max(0.0, request_delay)
-        self.rank = normalizar_rango(rank) or RANGO_PREDETERMINADO
+        self.solo_rango_analisis_local = solo_rango_analisis_local
+        self.rank = (
+            RANGO_ANALISIS_LOCAL
+            if solo_rango_analisis_local
+            else normalizar_rango(rank) or RANGO_PREDETERMINADO
+        )
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -836,6 +843,8 @@ class ChampionScraperService:
         compatible = normalizar_rango(rank)
         if compatible is None:
             raise ValueError("Rango no compatible")
+        if self.solo_rango_analisis_local and compatible != RANGO_ANALISIS_LOCAL:
+            raise ValueError("Análisis local solo admite Esmeralda+")
         self.rank = compatible
         try:
             yield
@@ -849,7 +858,7 @@ class ChampionScraperService:
         stop_check: Callable[[], bool] | None = None,
         min_games: int = _MIN_LANE_GAMES,
     ) -> dict[str, Any]:
-        """Genera líneas disponibles para los seis rangos compatibles del campeón.
+        """Genera las líneas del campeón para el rango configurado.
 
         Devuelve ``{"rank": {"line": {..variante..}}}`` listo para persistir en el JSON
         del campeón. ``min_games`` clasifica la confianza; toda muestra positiva se
@@ -865,7 +874,11 @@ class ChampionScraperService:
 
         matrix: dict[str, Any] = {}
         self._errores_parciales = []
-        ranks = [key for key, _ in OPCIONES_RANGO]
+        ranks = (
+            [RANGO_ANALISIS_LOCAL]
+            if self.solo_rango_analisis_local
+            else [key for key, _ in OPCIONES_RANGO]
+        )
         overview = self._overview(self.champion_ids.get(name.casefold() or ""))
         if not isinstance(overview, dict) or not isinstance(overview.get("12"), dict):
             raise TypeError("No se pudieron descargar las estadísticas del campeón")

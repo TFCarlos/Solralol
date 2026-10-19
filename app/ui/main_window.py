@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
+    QRectF,
     QSize,
     Qt,
     QThread,
@@ -21,13 +22,15 @@ from PySide6.QtGui import (
     QColor,
     QDesktopServices,
     QGuiApplication,
+    QLinearGradient,
     QPainter,
     QPainterPath,
+    QPixmap,
+    QRadialGradient,
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -117,9 +120,11 @@ from app.ui.live_match_analysis_dialog import (
     LiveMatchAnalysisDialog,
 )
 from app.ui.local_analysis_dialog import LocalAnalysisDialog
+from app.ui.meta_page import PaginaMeta
+from app.ui.overlay_settings_dashboard import OverlaySettingsDashboard
 from app.ui.overlay_window import OverlayWindow
-from app.ui.postgame_replay_window import PostgameReplayWindow  # noqa: E402
-from app.ui.recordings_page import RecordingsPage  # noqa: E402
+from app.ui.postgame_replay_window import PostgameReplayWindow
+from app.ui.recordings_page import RecordingsPage
 from app.ui.sistema_visual import PALETA
 from app.ui.superficies_analisis import FondoTecnologico, IconoRedondeado
 from app.ui.tema import aplicar_tema
@@ -129,8 +134,250 @@ from app.ui.tema import aplicar_tema
 ROW_BUTTON_WIDTH = 145
 
 
+def _leer_splash_campeon(nombre: str) -> bytes:
+    """Lee el splash oficial fuera del hilo gráfico.
+
+    Parámetros: nombre de Data Dragon del campeón.
+    Retorno: contenido binario cacheado o descargado, vacío si no está disponible.
+    """
+    from data_dragon import get_champion_splash_path
+
+    ruta = get_champion_splash_path(nombre, download=True)
+    return ruta.read_bytes() if ruta and ruta.is_file() else b""
+
+
 class Backdrop(FondoTecnologico):
-    """Fondo abstracto compartido del shell, sin ilustraciones de fondo."""
+    """Fondo compartido con splash oficial, viñeta y composición cacheada."""
+
+    def __init__(self) -> None:
+        """Inicializa la superficie.
+
+        Parámetros: ninguno.
+        Retorno: None; prepara caché y generación del arte actual.
+        """
+        super().__init__()
+        self._nombre_campeon = ""
+        self._nombre_solicitado = ""
+        self._imagen_splash = QPixmap()
+        self._cache_splash: tuple[tuple[int, int], QPixmap] | None = None
+        self._cache_fondo_ocre: tuple[QSize, QPixmap] | None = None
+        self._generacion_solicitud = 0
+        self._modo_home = False
+        self._temporizador_redimension_fondo = QTimer(self)
+        self._temporizador_redimension_fondo.setSingleShot(True)
+        self._temporizador_redimension_fondo.setInterval(90)
+        self._temporizador_redimension_fondo.timeout.connect(
+            self._finalizar_redimension_fondo
+        )
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Difiere los recálculos del fondo global durante el cambio de tamaño."""
+        if self._modo_home:
+            super().resizeEvent(event)
+        else:
+            QWidget.resizeEvent(self, event)
+        self._temporizador_redimension_fondo.start()
+
+    def _finalizar_redimension_fondo(self) -> None:
+        """Invalida el recorte Home o genera una sola copia del fondo ocre estable."""
+        if self._modo_home:
+            self._cache_splash = None
+        elif self.width() > 0 and self.height() > 0:
+            tamano = self.size()
+            self._cache_fondo_ocre = (tamano, self._crear_fondo_ocre(tamano))
+        self.update()
+
+    def _crear_fondo_ocre(self, tamano: QSize) -> QPixmap:
+        """Rasteriza el fondo ocre para reutilizarlo entre eventos de pintura."""
+        imagen = QPixmap(tamano)
+        imagen.fill(QColor("#080b10"))
+        pintor = QPainter(imagen)
+        self._dibujar_fondo_ocre(pintor, tamano.width(), tamano.height())
+        pintor.end()
+        return imagen
+
+    @staticmethod
+    def _dibujar_fondo_ocre(painter: QPainter, ancho: int, alto: int) -> None:
+        """Pinta la atmósfera ocre sobre un painter del tamaño indicado."""
+        rectangulo = QRectF(0, 0, ancho, alto)
+        painter.fillRect(rectangulo, QColor("#080b10"))
+        for x, y, radio, tono, alfa in (
+            (0.08, 0.04, 0.82, QColor(145, 103, 39), 70),
+            (0.78, 0.92, 0.72, QColor(112, 74, 25), 46),
+            (0.92, 0.18, 0.58, QColor(74, 60, 35), 30),
+        ):
+            luz = QRadialGradient(x * ancho, y * alto, max(ancho, alto) * radio)
+            centro = QColor(tono)
+            centro.setAlpha(alfa)
+            transparente = QColor(tono)
+            transparente.setAlpha(0)
+            luz.setColorAt(0.0, centro)
+            luz.setColorAt(1.0, transparente)
+            painter.fillRect(rectangulo, luz)
+        viñeta = QLinearGradient(0, 0, ancho, alto)
+        viñeta.setColorAt(0.0, QColor(4, 7, 11, 28))
+        viñeta.setColorAt(0.55, QColor(4, 7, 11, 2))
+        viñeta.setColorAt(1.0, QColor(4, 7, 11, 90))
+        painter.fillRect(rectangulo, viñeta)
+
+    def establecer_modo_home(self, activo: bool) -> None:
+        """Cambia entre el fondo hero de Inicio y el fondo estático ocre.
+
+        Parámetros: True en Inicio; False en cualquier otra página principal.
+        Retorno: None; repinta una vez y carga el arte guardado al volver a Inicio.
+        """
+        if self._modo_home == activo:
+            return
+        self._modo_home = activo
+        if activo:
+            self._temporizador_fondo.start()
+            self._temporizador_redimension_fondo.start()
+            self._solicitar_splash_actual()
+        self.update()
+
+    def establecer_campeon_mas_jugado(self, campeon: str | None) -> None:
+        """Solicita el nuevo splash solo si cambia el campeón principal.
+
+        Parámetros: nombre canónico del campeón o None si no hay historial.
+        Retorno: None; inicia una única carga asíncrona para ese campeón.
+        """
+        nombre = str(campeon or "").strip()
+        if nombre == self._nombre_campeon:
+            if self._modo_home:
+                self._solicitar_splash_actual()
+            return
+        self._nombre_campeon = nombre
+        self._generacion_solicitud += 1
+        self._nombre_solicitado = ""
+        if not nombre:
+            self._imagen_splash = QPixmap()
+            self._cache_splash = None
+        self.update()
+        if not self._modo_home or not nombre:
+            return
+        self._solicitar_splash_actual()
+
+    def _solicitar_splash_actual(self) -> None:
+        """Carga el splash deseado solo al estar en Inicio y si aún no se solicitó.
+
+        Parámetros: ninguno.
+        Retorno: None; reutiliza solicitudes e imágenes ya preparadas.
+        """
+        nombre = self._nombre_campeon
+        if not nombre or nombre == self._nombre_solicitado:
+            return
+        self._nombre_solicitado = nombre
+        token = self._generacion_solicitud
+        self._imagen_splash = QPixmap()
+        self._cache_splash = None
+        self.update()
+        run_async(
+            lambda: _leer_splash_campeon(nombre),
+            on_finished=self._aplicar_splash,
+            token=(token, nombre),
+        )
+
+    def _aplicar_splash(
+        self, token: tuple[int, str], contenido: Any, error: str | None
+    ) -> None:
+        """Publica el splash si sigue perteneciendo al campeón actual.
+
+        Parámetros: token de generación, bytes recibidos y error opcional.
+        Retorno: None; sustituye el arte visible únicamente para la petición vigente.
+        """
+        if token != (self._generacion_solicitud, self._nombre_campeon):
+            return
+        if error or not isinstance(contenido, bytes) or not contenido:
+            return
+        imagen = QPixmap()
+        if not imagen.loadFromData(contenido):
+            return
+        self._imagen_splash = imagen
+        self._cache_splash = None
+        self.update()
+
+    def paintEvent(self, event: Any) -> None:
+        """Pinta el fondo ocre estático o el hero de Inicio.
+
+        Parámetros: evento de pintura de Qt.
+        Retorno: None; compone la imagen cacheada sobre el fondo base.
+        """
+        if not self._modo_home:
+            self._pintar_fondo_ocre()
+            return
+        super().paintEvent(event)
+        if self._imagen_splash.isNull() or self.width() <= 0 or self.height() <= 0:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        target = QRectF(
+            self.width() * 0.18, 0, self.width() * 0.82, self.height() * 0.72
+        )
+        clave = (round(target.width()), round(target.height()))
+        if self._cache_splash is None or self._cache_splash[0] != clave:
+            if self._temporizador_redimension_fondo.isActive():
+                ancho_imagen = self._imagen_splash.width()
+                alto_imagen = self._imagen_splash.height()
+                proporcion_destino = target.width() / max(1.0, target.height())
+                if ancho_imagen / max(1, alto_imagen) > proporcion_destino:
+                    fuente = QRectF(
+                        (ancho_imagen - alto_imagen * proporcion_destino) / 2,
+                        0,
+                        alto_imagen * proporcion_destino,
+                        alto_imagen,
+                    )
+                else:
+                    alto_fuente = ancho_imagen / max(0.01, proporcion_destino)
+                    fuente = QRectF(
+                        0, (alto_imagen - alto_fuente) / 2, ancho_imagen, alto_fuente
+                    )
+                painter.drawPixmap(
+                    target.toRect(), self._imagen_splash, fuente.toRect()
+                )
+            else:
+                ancho = max(1, clave[0])
+                alto = max(1, clave[1])
+                escalada = self._imagen_splash.scaled(
+                    ancho,
+                    alto,
+                    Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                x = max(0, (escalada.width() - ancho) // 2)
+                y = max(0, (escalada.height() - alto) // 2)
+                recortada = escalada.copy(x, y, ancho, alto)
+                self._cache_splash = (clave, recortada)
+                painter.drawPixmap(target.toRect(), recortada)
+        else:
+            painter.drawPixmap(target.toRect(), self._cache_splash[1])
+        velo_horizontal = QLinearGradient(0, 0, self.width(), 0)
+        velo_horizontal.setColorAt(0.0, QColor(5, 8, 12, 248))
+        velo_horizontal.setColorAt(0.34, QColor(5, 8, 12, 218))
+        velo_horizontal.setColorAt(0.68, QColor(5, 8, 12, 105))
+        velo_horizontal.setColorAt(1.0, QColor(5, 8, 12, 40))
+        painter.fillRect(self.rect(), velo_horizontal)
+        velo_vertical = QLinearGradient(0, 0, 0, self.height())
+        velo_vertical.setColorAt(0.0, QColor(5, 8, 12, 20))
+        velo_vertical.setColorAt(0.56, QColor(5, 8, 12, 95))
+        velo_vertical.setColorAt(1.0, QColor(5, 8, 12, 210))
+        painter.fillRect(self.rect(), velo_vertical)
+
+    def _pintar_fondo_ocre(self) -> None:
+        """Pinta una atmósfera oscura con luz ocre para páginas utilitarias.
+
+        Parámetros: ninguno.
+        Retorno: None; no dibuja splash ni usa recursos de red o disco.
+        """
+        painter = QPainter(self)
+        if self._cache_fondo_ocre is not None:
+            pintado_tamano, pixmap = self._cache_fondo_ocre
+            painter.drawPixmap(self.rect(), pixmap)
+            if (
+                pintado_tamano == self.size()
+                or self._temporizador_redimension_fondo.isActive()
+            ):
+                return
+        self._dibujar_fondo_ocre(painter, self.width(), self.height())
 
 
 class TarjetaPartidaGuardada(QFrame):
@@ -365,7 +612,7 @@ class MainWindow(QMainWindow):
         self.item_catalog = item_catalog
         # Sidecar por vídeo: [(mtime_ns del JSON, metadatos)], consultado
         # en cada fila de «Partidas guardadas» y cada coincidencia de
-        # repaso; sin caché serían O(filas × vídeos) lecturas por refresco.
+        # repaso; sin caché serían O(filas Ã— vídeos) lecturas por refresco.
         self._recording_metadata_cache: dict[str, tuple[int, dict]] = {}
         # Listado de vídeos cacheado mientras el mtime de la carpeta no
         # cambie: video_files() hace iterdir+stat por fichero y se consulta
@@ -399,6 +646,8 @@ class MainWindow(QMainWindow):
             )
         self._home_sync_in_progress = False
         self._home_collection_generation = 0
+        self._home_sync_saved_match_ids: set[str] = set()
+        self._deferred_saved_match_unlinks: set[str] = set()
         self.riot_api_key = self.settings.get(
             "riot_api_key",
             "",
@@ -492,6 +741,8 @@ class MainWindow(QMainWindow):
         )
         self.saved_live_sessions: list[dict] = []
         self.live_session_finished = False
+        self._pending_worker_completed_session: dict[str, Any] | None = None
+        self._persisting_session_ids: set[str] = set()
         #: Sondeos seguidos sin respuesta de la API local estando en partida.
         self.live_snapshots_lost = 0
 
@@ -502,6 +753,7 @@ class MainWindow(QMainWindow):
         self.saved_games_refreshing = False
         #: Mientras el worker trabaja, otra petición de refresco queda en cola.
         self.saved_games_pending = False
+        self._saved_session_deletions: set[str] = set()
         #: ``session_id`` → vídeo de la grabación (resuelto en el worker).
         self.session_recordings: dict[str, str] = {}
 
@@ -515,6 +767,7 @@ class MainWindow(QMainWindow):
         # "Partida en vivo".
         self.pending_live_navigation = False
 
+        OverlayWindow.configurar_registro_diagnostico()
         self.overlay = OverlayWindow(
             item_catalog,
             settings_service=self.settings_service,
@@ -528,7 +781,10 @@ class MainWindow(QMainWindow):
 
         self.build_ui()
         self.data_dragon_assets = DataDragonAssetService(self)
+        self.meta_page.assets = self.data_dragon_assets
         self.overlay.set_assets(self.data_dragon_assets)
+        if hasattr(self, "overlay_settings_dashboard"):
+            self.overlay_settings_dashboard.set_assets(self.data_dragon_assets)
         self.overlay.state_changed.connect(self.sync_overlay_settings_ui)
         aplicar_tema(self)
         self.setup_live_data_worker()
@@ -577,9 +833,10 @@ class MainWindow(QMainWindow):
             self,
         )
         self.recordings_page.open_folder_requested.connect(self.open_recordings_folder)
-        self.recordings_page.start_recording_requested.connect(
-            self.start_recording_manually
-        )
+        if hasattr(self.recordings_page, "start_recording_requested"):
+            self.recordings_page.start_recording_requested.connect(
+                self.start_recording_manually
+            )
         self.recordings_page.stop_recording_requested.connect(
             self.stop_recording_manually
         )
@@ -590,6 +847,8 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.recordings_page)
         self.pages.addWidget(self.create_settings_page())
         self.pages.addWidget(QWidget())
+        self.meta_page = PaginaMeta(parent=self)
+        self.pages.addWidget(self.meta_page)
 
         contenido = QVBoxLayout()
         contenido.setSpacing(12)
@@ -613,6 +872,16 @@ class MainWindow(QMainWindow):
         self.connection_label = QLabel("Comprobando League...")
         self.connection_label.setObjectName("connectionLabel")
         layout.addWidget(self.connection_label)
+
+        self.overlay_edit_exit_button = QPushButton("Finalizar edición de overlay")
+        self.overlay_edit_exit_button.setObjectName("secondaryButton")
+        overlay = getattr(self, "overlay", None)
+        if overlay is not None:
+            self.overlay_edit_exit_button.clicked.connect(overlay.end_editing)
+        else:
+            self.overlay_edit_exit_button.setEnabled(False)
+        self.overlay_edit_exit_button.hide()
+        layout.addWidget(self.overlay_edit_exit_button)
 
         close_button = QPushButton("×")
         close_button.setObjectName("closeButton")
@@ -656,6 +925,7 @@ class MainWindow(QMainWindow):
 
         self.draft_nav_button = self.create_nav_button("Herramienta de Draft", 6)
         self.draft_nav_button.clicked.connect(self.open_draft_tool_dialog)
+        self.meta_nav_button = self.create_nav_button("Meta", 7)
 
         return BarraLateral(
             [
@@ -666,6 +936,7 @@ class MainWindow(QMainWindow):
                 self.recordings_button,
                 self.settings_button,
                 self.draft_nav_button,
+                self.meta_nav_button,
             ],
             self,
         )
@@ -724,17 +995,27 @@ class MainWindow(QMainWindow):
             self.recordings_button,
             self.settings_button,
             self.draft_nav_button,
+            self.meta_nav_button,
         )
         if 0 <= index < len(botones):
             botones[index].setChecked(True)
         if index == 0:
             self.refresh_home_dashboard("Cliente local · listo para sincronizar")
+            self.backdrop.establecer_modo_home(True)
+        else:
+            self.backdrop.establecer_modo_home(False)
 
     def refresh_home_dashboard(self, status: str) -> None:
-        """Actualiza Home desde la copia persistida sin realizar llamadas de red."""
+        """Actualiza Home y el splash global desde la analítica local.
+
+        Parámetros: estado de conexión que se presenta en el dashboard.
+        Retorno: None; no realiza llamadas de red desde esta actualización.
+        """
         if not hasattr(self, "home_dashboard"):
             return
         analytics = analyze_home_history(self.home_history.get("matches", []))
+        if self.pages.currentIndex() == 0:
+            self.backdrop.establecer_campeon_mas_jugado(analytics.get("top_champion"))
         self.home_dashboard.set_dashboard_data(
             self.home_profile,
             self.home_history,
@@ -749,7 +1030,7 @@ class MainWindow(QMainWindow):
                 self.home_dashboard.profile_icon,
                 self.data_dragon_assets.profile_icon_url(icon_id),
                 f"profileicon:{icon_id}:home",
-                62,
+                80,
             )
 
     def synchronize_home_history(self) -> None:
@@ -757,6 +1038,13 @@ class MainWindow(QMainWindow):
         if self._home_sync_in_progress:
             return
         self._home_sync_in_progress = True
+        self._home_sync_saved_match_ids = {
+            str(link.get("saved_match_id") or "")
+            for match in (self.home_history or {}).get("matches", [])
+            if isinstance(match, dict)
+            and isinstance((link := match.get("saved_match_link")), dict)
+            and link.get("saved_match_id")
+        }
         self.refresh_home_dashboard(
             "Historial incompatible o dañado · conservado sin cambios"
             if self.home_history_error
@@ -853,6 +1141,7 @@ class MainWindow(QMainWindow):
                 else "League cerrado · mostrando historial local"
             )
             self._revisar_sincronizaciones_lcu_pendientes(None)
+            self._flush_deferred_saved_match_unlinks()
             return
         self.home_profile = result["profile"]
         self.home_history = result["history"]
@@ -867,6 +1156,37 @@ class MainWindow(QMainWindow):
         self._revisar_sincronizaciones_lcu_pendientes(self.home_history)
         if result.get("saved_scores_updated") and hasattr(self, "saved_games_layout"):
             self.refresh_saved_games()
+        self._flush_deferred_saved_match_unlinks()
+
+    def _flush_deferred_saved_match_unlinks(self) -> None:
+        session_ids = set(self._deferred_saved_match_unlinks)
+        self._deferred_saved_match_unlinks.clear()
+        self._home_sync_saved_match_ids.clear()
+        if not session_ids:
+            return
+        repository = self.home_history_repository
+        profile = dict(self.home_profile or {})
+
+        def unlink() -> dict[str, Any] | None:
+            if not profile:
+                return None
+            for session_id in session_ids:
+                repository.unlink_saved_match(profile, session_id)
+            return repository.load(profile)
+
+        run_async(unlink, on_finished=self._deferred_saved_match_unlinks_finished)
+
+    def _deferred_saved_match_unlinks_finished(
+        self, _token: Any, history: Any, error: str | None
+    ) -> None:
+        if error:
+            logger.error("No se pudieron conciliar eliminaciones con Home: %s", error)
+            return
+        if isinstance(history, dict):
+            self.home_history = history
+            self.refresh_home_dashboard(
+                "Historial local actualizado tras borrar una partida guardada"
+            )
         if result.get("connection") == "offline":
             return
         profile = dict(self.home_profile)
@@ -1044,26 +1364,6 @@ class MainWindow(QMainWindow):
     ) -> None:
         return
 
-    def set_combo_value(
-        self,
-        combo: QComboBox,
-        value: str,
-    ) -> None:
-        index = combo.findData(value)
-
-        if index >= 0:
-            combo.setCurrentIndex(index)
-
-    def set_combo_value(
-        self,
-        combo: QComboBox,
-        value: str,
-    ) -> None:
-        index = combo.findData(value)
-
-        if index >= 0:
-            combo.setCurrentIndex(index)
-
     def create_live_page(self) -> QWidget:
         """Construye la página LIVE con una zona de equipos adaptable.
 
@@ -1161,7 +1461,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(16, 5, 16, 5)
         layout.setSpacing(0)
 
-        caption = QLabel("DURACIÓN")
+        caption = QLabel("DURACIÃ“N")
         caption.setObjectName("liveClockCaption")
         caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(caption)
@@ -1174,6 +1474,11 @@ class MainWindow(QMainWindow):
         return clock
 
     def create_saved_games_page(self) -> QWidget:
+        """Crea la página de partidas guardadas con fondo compartido.
+
+        Parámetros: ninguno.
+        Retorno: página Qt con cabecera, contador, acción de refresco y scroll.
+        """
         page = QWidget()
         page.setObjectName("savedGamesPage")
 
@@ -1182,7 +1487,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
 
         header = QFrame()
-        header.setObjectName("heroCard")
+        header.setObjectName("savedGamesHeader")
 
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(24, 20, 24, 20)
@@ -1210,24 +1515,30 @@ class MainWindow(QMainWindow):
 
         header_layout.addLayout(text_layout, 1)
 
+        layout.addWidget(header)
+
+        toolbar = QFrame()
+        toolbar.setObjectName("savedGamesToolbar")
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(12, 7, 8, 7)
+        self.saved_games_status = QLabel("Cargando partidas guardadas...")
+        self.saved_games_status.setObjectName("savedGamesStatus")
+        toolbar_layout.addWidget(self.saved_games_status, 1)
         self.refresh_saved_games_button = QPushButton("Actualizar lista")
         self.refresh_saved_games_button.setObjectName("secondaryButton")
         self.refresh_saved_games_button.clicked.connect(self.refresh_saved_games)
-        header_layout.addWidget(self.refresh_saved_games_button)
-
-        layout.addWidget(header)
-
-        self.saved_games_status = QLabel("Cargando partidas guardadas...")
-        self.saved_games_status.setObjectName("savedGamesStatus")
-        layout.addWidget(self.saved_games_status)
+        toolbar_layout.addWidget(self.refresh_saved_games_button)
+        layout.addWidget(toolbar)
 
         scroll = QScrollArea()
         scroll.setObjectName("savedGamesScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.viewport().setAutoFillBackground(False)
 
         self.saved_games_content = QWidget()
         self.saved_games_content.setObjectName("savedGamesContent")
+        self.saved_games_content.setAutoFillBackground(False)
         self.saved_games_layout = QVBoxLayout(self.saved_games_content)
         self.saved_games_layout.setContentsMargins(
             0,
@@ -1251,7 +1562,7 @@ class MainWindow(QMainWindow):
         """Pide en segundo plano las partidas guardadas y pinta al llegar.
 
         ``load_saved_sessions`` puede tener que analizar un JSON de cientos de
-        MB y el emparejamiento vídeo↔sesión recorre la carpeta de grabaciones
+        MB y el emparejamiento vídeoâ†”sesión recorre la carpeta de grabaciones
         leyendo un sidecar por vídeo: las dos cosas se hacen en un worker, y
         la interfaz solo construye las filas cuando llega el resultado. Se
         avisa al usuario con «Cargando…» de inmediato.
@@ -1276,7 +1587,7 @@ class MainWindow(QMainWindow):
 
         def collect() -> tuple:
             """Lee sesiones, vídeos y sidecars (todo I/O) fuera del hilo GUI."""
-            sessions = tracker.load_saved_sessions()
+            sessions = tracker.enforce_saved_session_limit()
             puntuaciones_actualizadas = False
             for session in sessions:
                 puntuaciones_actualizadas |= asegurar_puntuacion_guardada(session)
@@ -1404,23 +1715,14 @@ class MainWindow(QMainWindow):
         self.saved_games_layout.addStretch(1)
 
     def delete_saved_game_session(self, session_id: str) -> None:
-        if not session_id:
+        if not session_id or session_id in self._saved_session_deletions:
             return
-
-        # La grabación asociada se localiza antes de borrar la sesión:
-        # después ya no se podría resolver su vídeo. Se prefiere el vídeo que
-        # ya resolvió el worker del refresco (sin tocar el disco) y se cae al
-        # barrido con cachés si esta sesión aún no se ha listado.
-        session = self.find_saved_session(session_id)
-        video_path = self.session_recordings.get(str(session_id))
-
-        if not video_path and isinstance(session, dict):
-            video_path = self.find_recording_for_session(session)
-
-        self.live_match_tracker.delete_saved_session(session_id)
-        if isinstance(session, dict):
-            session.pop("ai_match_analysis", None)
-            session.pop("ai_analysis", None)
+        self._saved_session_deletions.add(session_id)
+        if (
+            self._home_sync_in_progress
+            and session_id in self._home_sync_saved_match_ids
+        ):
+            self._deferred_saved_match_unlinks.add(session_id)
         for dialogo in (
             getattr(self, "live_analysis_dialog", None),
             getattr(getattr(self, "replay_window", None), "live_view", None),
@@ -1428,17 +1730,52 @@ class MainWindow(QMainWindow):
             if dialogo is not None:
                 dialogo.invalidar_analisis_guardado(session_id)
 
-        if video_path:
-            self.delete_recording_file(video_path)
+        tracker = self.live_match_tracker
+        history_repository = self.home_history_repository
+        history_profile = dict(self.home_profile or {})
 
-        # La lista cambió (y puede que la carpeta): se reconstruyen las dos
-        # pestañas. El borrado del vídeo ya dispara ``recordings_changed``, que
-        # refresca las partidas guardadas; aquí basta con pedir la otra.
+        def delete() -> tuple[str, str | None]:
+            tracker.delete_saved_session(session_id)
+            if not history_profile:
+                return session_id, None
+            try:
+                history_repository.unlink_saved_match(history_profile, session_id)
+            except Exception as error:
+                logger.exception(
+                    "No se pudieron limpiar los derivados del historial para %s",
+                    session_id,
+                )
+                return session_id, str(error)
+            return session_id, None
+
+        run_async(delete, on_finished=self._saved_session_deleted, token=session_id)
+
+    def _saved_session_deleted(
+        self, _token: Any, result: Any, error: str | None
+    ) -> None:
+        session_id = str(_token or "")
+        derived_error = None
+        if isinstance(result, tuple) and len(result) == 2:
+            session_id = str(result[0] or session_id)
+            derived_error = result[1]
+        elif result:
+            session_id = str(result)
+        self._saved_session_deletions.discard(session_id)
+        if error:
+            logger.error("No se pudo borrar la partida %s: %s", session_id, error)
+            if hasattr(self, "saved_games_status"):
+                self.saved_games_status.setText(
+                    f"No se pudo borrar la partida: {error}"
+                )
+            return
         self.invalidate_recording_metadata_cache()
         self.refresh_saved_games()
-
-        if video_path and hasattr(self, "recordings_page"):
+        if hasattr(self, "recordings_page"):
             self.recordings_page.refresh()
+        if derived_error and hasattr(self, "saved_games_status"):
+            self.saved_games_status.setText(
+                f"Partida eliminada, pero el historial conserv? derivados: {derived_error}"
+            )
 
     def invalidate_recording_metadata_cache(self) -> None:
         """Olvida sidecars y listado de vídeos (tras borrar o grabar)."""
@@ -1495,7 +1832,7 @@ class MainWindow(QMainWindow):
         """Sidecar de un vídeo leído de disco una sola vez.
 
         ``refresh_saved_games`` consulta los sidecars de TODOS los vídeos
-        una vez por fila: sin caché son O(filas × vídeos) lecturas de
+        una vez por fila: sin caché son O(filas Ã— vídeos) lecturas de
         fichero por refresco. La clave incluye el ``mtime`` del JSON para
         detectar sidecars reescritos sin invalidar todo el lote.
         """
@@ -1618,7 +1955,7 @@ class MainWindow(QMainWindow):
         matchup_label.setObjectName("savedGameMatchup")
         title_row.addWidget(matchup_label)
 
-        if opponent_champ != "—":
+        if opponent_champ != "?":
             enemy_icon = IconoRedondeado(
                 str(opponent_champ or "?")[:1].upper(), radio=6
             )
@@ -2163,7 +2500,7 @@ class MainWindow(QMainWindow):
 
     def _settings_api_card(self) -> QWidget:
         card, card_layout = self._settings_card(
-            "Riot API — datos de invocador e historial"
+            "Riot API · datos de invocador e historial"
         )
 
         card_layout.addWidget(
@@ -2178,8 +2515,7 @@ class MainWindow(QMainWindow):
 
         steps = QLabel(
             "Cómo conseguir la clave:\n"
-            "1. Ve a developer.riotgames.com e inicia sesión con tu cuenta "
-            "Riot.\n"
+            "1. Ve a developer.riotgames.com e inicia sesión con tu cuenta Riot.\n"
             "2. En el panel de desarrollador, acepta las condiciones y pulsa "
             "«Generate API Key» para crear una clave de desarrollo.\n"
             "3. Pega aquí la clave (empieza por RGAPI-). Caduca cada 24 h, "
@@ -2249,8 +2585,7 @@ class MainWindow(QMainWindow):
 
         gemini_steps = QLabel(
             "Cómo conseguir la clave:\n"
-            "1. Ve a aistudio.google.com e inicia sesión con tu cuenta de "
-            "Google.\n"
+            "1. Ve a aistudio.google.com e inicia sesión con tu cuenta de Google.\n"
             "2. Pulsa «Get API key» → «Create API key» dentro de un proyecto.\n"
             "3. Copia la clave (empieza por AIzaSy…) y pégala aquí abajo. "
             "La capa gratuita es más que suficiente para el re-análisis."
@@ -2336,7 +2671,7 @@ class MainWindow(QMainWindow):
         for indice, pantalla in enumerate(QGuiApplication.screens()):
             geometria = pantalla.geometry()
             etiqueta = (
-                f"Monitor {indice + 1} · {geometria.width()}×{geometria.height()}"
+                f"Monitor {indice + 1} · {geometria.width()}Ã—{geometria.height()}"
             )
             self.recording_monitor_combo.addItem(etiqueta, indice)
         self.set_combo_value(
@@ -2516,7 +2851,7 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(
             self._settings_description(
                 "«Todo el resto» necesita un capturador de la mezcla del "
-                "sistema (Stereo Mix, VB-Cable, Voicemeeter…): si el sonido "
+                "sistema (Stereo Mix, VB-Cable, Voicemeeter): si el sonido "
                 "del juego ya sale de uno de esos, ese mismo ya incluye "
                 "Discord y YouTube y no se añade otro aparte."
             )
@@ -3262,7 +3597,7 @@ class MainWindow(QMainWindow):
         if service.is_recording:
             elapsed = service.elapsed_seconds()
             minutes, seconds = divmod(int(elapsed), 60)
-            pieces.append(f"● Grabando ({minutes:02d}:{seconds:02d})")
+            pieces.append(f"⏺ Grabando ({minutes:02d}:{seconds:02d})")
         elif service.is_starting_or_recording:
             pieces.append("Iniciando captura de vídeo…")
 
@@ -3277,14 +3612,14 @@ class MainWindow(QMainWindow):
     # -- grabación automática de la partida -----------------------------
 
     def start_recording_manually(self) -> None:
-        """Inicia una sesiÃ³n manual con el controlador compartido.
+        """Inicia una sesión manual con el controlador compartido.
 
         Retorno: None; asocia la partida viva solo con un identificador fiable.
         """
         if self.recording_service.is_starting_or_recording:
             return
 
-        session = self.live_match_tracker.get_live_session()
+        session = self.current_live_session
         sesion_valida = (
             session if isinstance(session, dict) and session.get("session_id") else None
         )
@@ -3370,13 +3705,15 @@ class MainWindow(QMainWindow):
         if not self.recording_service.is_starting_or_recording:
             return
 
-        session = self.live_match_tracker.get_live_session()
+        session = self.current_live_session
         self.stop_match_recording(
             "manual", session if isinstance(session, dict) else None
         )
         self.sync_recording_controls()
 
     def _on_recording_failed(self, message: str) -> None:
+        if hasattr(self, "overlay"):
+            self.overlay.notify_recording_error(message)
         if hasattr(self, "recording_status"):
             current = self.recording_status.text()
             self.recording_status.setText(f"{message} {current}".strip())
@@ -3475,197 +3812,15 @@ class MainWindow(QMainWindow):
         self.sync_recording_controls()
 
     def _settings_overlay_card(self) -> QWidget:
-        """Actualiza la presentación con los parámetros recibidos y devuelve el resultado existente."""
-        card, card_layout = self._settings_card("Overlay en partida")
+        """Construye el panel responsivo de ajustes de overlays.
 
-        self.show_overlay_button = QPushButton("Mostrar overlay")
-        self.show_overlay_button.setObjectName("primaryButton")
-        self.show_overlay_button.clicked.connect(self.toggle_overlay_visibility)
-        card_layout.addWidget(self.show_overlay_button)
-
-        overlay_group_title = QLabel("Paneles del overlay")
-        overlay_group_title.setObjectName("settingsGroupTitle")
-        card_layout.addWidget(overlay_group_title)
-
-        card_layout.addWidget(
-            self._settings_description(
-                "Tres paneles independientes sobre el juego, sin títulos: "
-                "oro por rol aliado contra rival, alertas de objetos "
-                "completos y objetivos inminentes, y el rival más fuerte y "
-                "el más débil. Se arrastran con el ratón y solo aparecen "
-                "durante una partida."
-            )
+        Parámetros: ninguno.
+        Retorno: dashboard conectado al gestor de overlays y al catálogo.
+        """
+        self.overlay_settings_dashboard = OverlaySettingsDashboard(
+            self.overlay, self.item_catalog
         )
-
-        panels_row = QHBoxLayout()
-        panels_row.setSpacing(10)
-
-        self.overlay_panel_buttons: dict[str, QPushButton] = {}
-        self.overlay_tab_only_checkboxes: dict[str, QCheckBox] = {}
-
-        for panel_key, panel_name in (
-            ("gold", "Oro"),
-            ("alerts", "Alertas"),
-            ("threat", "Rivales"),
-        ):
-            button = QPushButton(panel_name)
-            button.setObjectName("analysisSourceButton")
-            button.setCheckable(True)
-            button.clicked.connect(
-                lambda _checked=False, key=panel_key: self.toggle_overlay_panel(key)
-            )
-            panels_row.addWidget(button)
-            self.overlay_panel_buttons[panel_key] = button
-
-        panels_row.addStretch(1)
-        card_layout.addLayout(panels_row)
-
-        tab_only_title = QLabel("Mostrar solo con TAB pulsado")
-        tab_only_title.setObjectName("settingsLabel")
-        tab_only_title.setToolTip(
-            "Cada panel marcado solo se muestra mientras mantienes "
-            "pulsado TAB, como el marcador del juego."
-        )
-        card_layout.addWidget(tab_only_title)
-
-        tab_only_row = QHBoxLayout()
-        tab_only_row.setSpacing(10)
-
-        for panel_key, panel_name in (
-            ("gold", "Oro"),
-            ("alerts", "Alertas"),
-            ("threat", "Rivales"),
-        ):
-            checkbox = Interruptor(f"Solo TAB: {panel_name}")
-            checkbox.setChecked(self.overlay.is_tab_only(panel_key))
-            checkbox.setToolTip(
-                f"El panel {panel_name} solo aparece mientras mantienes pulsado TAB."
-            )
-            checkbox.toggled.connect(
-                lambda checked, key=panel_key: self.toggle_overlay_tab_only(
-                    key, checked
-                )
-            )
-            tab_only_row.addWidget(checkbox)
-            self.overlay_tab_only_checkboxes[panel_key] = checkbox
-
-        tab_only_row.addStretch(1)
-        card_layout.addLayout(tab_only_row)
-
-        self.lock_overlay_button = QPushButton("Bloquear clics: NO")
-        self.lock_overlay_button.setObjectName("secondaryButton")
-        self.lock_overlay_button.clicked.connect(self.toggle_overlay_click_through)
-        card_layout.addWidget(self.lock_overlay_button)
-
-        opacity_row, self.opacity_slider, self.opacity_value = (
-            self._settings_slider_row(
-                "Opacidad del overlay",
-                30,
-                100,
-                1,
-                self.overlay.opacity,
-            )
-        )
-        self.opacity_value.setText(f"{self.overlay.opacity}%")
-        self.opacity_slider.valueChanged.connect(self.change_overlay_opacity)
-        card_layout.addLayout(opacity_row)
-
-        lead_row, self.alert_lead_slider, self.alert_lead_value = (
-            self._settings_slider_row(
-                "Aviso de objetivos",
-                15,
-                180,
-                5,
-                self.overlay.alert_lead_seconds,
-            )
-        )
-        self.alert_lead_value.setText(f"{self.overlay.alert_lead_seconds} s")
-        self.alert_lead_slider.valueChanged.connect(self.change_overlay_alert_lead)
-        card_layout.addLayout(lead_row)
-
-        # Controles de sonido
-        sound_title = QLabel("Sonidos del overlay")
-        sound_title.setObjectName("settingsGroupTitle")
-        card_layout.addWidget(sound_title)
-
-        card_layout.addWidget(
-            self._settings_description(
-                "Cada aviso emite un pitido distinto: uno para Grumos, "
-                "Heraldo o Barón, otro para el Dragón y otro cuando un "
-                "rival completa un objeto. No se usan archivos de audio "
-                "externos."
-            )
-        )
-
-        self.sound_enabled_checkbox = Interruptor("Activar sonidos del overlay")
-        self.sound_enabled_checkbox.setChecked(self.overlay.is_sound_enabled())
-        self.sound_enabled_checkbox.toggled.connect(self.toggle_overlay_sound_enabled)
-        card_layout.addWidget(self.sound_enabled_checkbox)
-
-        self.sound_objective_checkbox = Interruptor(
-            "Pitido: objetivos (Grumos, Heraldo, Barón)"
-        )
-        self.sound_objective_checkbox.setChecked(
-            self.overlay.sound_service.kind_enabled("objective")
-        )
-        self.sound_objective_checkbox.toggled.connect(
-            lambda checked, kind="objective": self.toggle_overlay_sound_kind(
-                kind, checked
-            )
-        )
-        card_layout.addWidget(self.sound_objective_checkbox)
-
-        self.sound_dragon_checkbox = Interruptor("Pitido: Dragón")
-        self.sound_dragon_checkbox.setChecked(
-            self.overlay.sound_service.kind_enabled("dragon")
-        )
-        self.sound_dragon_checkbox.toggled.connect(
-            lambda checked, kind="dragon": self.toggle_overlay_sound_kind(kind, checked)
-        )
-        card_layout.addWidget(self.sound_dragon_checkbox)
-
-        self.sound_enemy_buy_checkbox = Interruptor("Pitido: compra de objeto rival")
-        self.sound_enemy_buy_checkbox.setChecked(
-            self.overlay.sound_service.kind_enabled("enemy_buy")
-        )
-        self.sound_enemy_buy_checkbox.toggled.connect(
-            lambda checked, kind="enemy_buy": self.toggle_overlay_sound_kind(
-                kind, checked
-            )
-        )
-        card_layout.addWidget(self.sound_enemy_buy_checkbox)
-
-        volume_row, self.sound_volume_slider, self.sound_volume_value = (
-            self._settings_slider_row(
-                "Volumen de los pitidos",
-                0,
-                100,
-                5,
-                int(round(self.overlay.sound_service.volume * 100)),
-            )
-        )
-        self.sound_volume_value.setText(
-            f"{int(round(self.overlay.sound_service.volume * 100))}%"
-        )
-        self.sound_volume_slider.valueChanged.connect(self.change_overlay_sound_volume)
-        card_layout.addLayout(volume_row)
-
-        self.overlay_status = QLabel()
-        self.overlay_status.setObjectName("apiKeyStatus")
-        self.overlay_status.setWordWrap(True)
-        card_layout.addWidget(self.overlay_status)
-
-        self.sync_overlay_settings_ui()
-
-        card_layout.addWidget(
-            self._settings_description(
-                "Los controles se aplican al overlay inmediatamente. "
-                "La lectura usa una frecuencia de un segundo y las tarjetas "
-                "se regeneran cada diez segundos."
-            )
-        )
-
-        return card
+        return self.overlay_settings_dashboard
 
     def update_api_key_status(self) -> None:
         if self.riot_api_key:
@@ -3747,7 +3902,7 @@ class MainWindow(QMainWindow):
     def update_gemini_api_key_status(self) -> None:
         if self.gemini_api_key:
             self.gemini_api_key_status.setText(
-                "Hay una Gemini API key guardada. Pulsa 'Guardar y comprobar' para validarla."
+                "Pulsa “Guardar y comprobar” para validarla."
             )
             self.gemini_api_key_status.setProperty("state", "saved")
         else:
@@ -3830,6 +3985,9 @@ class MainWindow(QMainWindow):
         self.live_data_worker.snapshot_ready.connect(self.receive_snapshot)
 
         self.live_data_worker.live_analysis_ready.connect(self.receive_live_analysis)
+        self.live_data_worker.game_finished.connect(
+            self.receive_worker_finished_session
+        )
 
         self.live_data_worker.read_failed.connect(self.show_read_error)
 
@@ -3900,11 +4058,19 @@ class MainWindow(QMainWindow):
         self,
         snapshot: dict | None,
     ) -> None:
+        """Actualiza la partida y conserva overlays durante fallos puntuales.
+
+        Parámetros: snapshot nuevo o None si el worker perdió una lectura.
+        Retorno: None; deja que el worker confirme el fin tras fallos sucesivos.
+        """
         try:
             self.last_snapshot = snapshot
 
             if snapshot is None:
-                self.show_no_game()
+                if self.was_in_game:
+                    self.count_lost_snapshot()
+                else:
+                    self.show_no_game()
             else:
                 self.show_game(snapshot)
         finally:
@@ -3939,13 +4105,16 @@ class MainWindow(QMainWindow):
         idempotente: si la sesión ya estaba cerrada y no hay grabación en
         curso, no hace nada.
         """
-        if self.live_session_finished and not self.recording_service.is_recording:
+        if getattr(self, "live_session_finished", False):
             return
 
         completed_session = None
 
-        if self.live_match_tracker.is_tracking:
-            completed_session = self.live_match_tracker.finish()
+        completed_session = getattr(self, "_pending_worker_completed_session", None)
+        self._pending_worker_completed_session = None
+        worker_session = isinstance(completed_session, dict)
+        if not worker_session and self.live_match_tracker.is_tracking:
+            completed_session = self.live_match_tracker.finish(persist=False)
 
         self.live_session_finished = True
         self.live_snapshots_lost = 0
@@ -3955,9 +4124,47 @@ class MainWindow(QMainWindow):
             completed_session if isinstance(completed_session, dict) else None,
         )
 
-        if isinstance(completed_session, dict):
-            self.schedule_postgame_sync(completed_session)
+        if isinstance(completed_session, dict) and not worker_session:
+            self._persist_completed_live_session(completed_session)
 
+        if hasattr(self, "saved_games_layout"):
+            self.refresh_saved_games()
+
+    def _persist_completed_live_session(self, session: dict[str, Any]) -> None:
+        tracker = self.live_match_tracker
+        session_copy = dict(session)
+        session_id = str(session_copy.get("session_id") or "")
+        if not session_id or session_id in self._persisting_session_ids:
+            return
+        self._persisting_session_ids.add(session_id)
+
+        def persist() -> str:
+            tracker.persist_completed_session(session_copy)
+            return str(session_copy.get("session_id") or "")
+
+        run_async(
+            persist,
+            on_finished=self._completed_live_session_persisted,
+            token=session_id,
+        )
+
+    @Slot(object)
+    def receive_worker_finished_session(self, session: Any) -> None:
+        if not isinstance(session, dict):
+            return
+        self._pending_worker_completed_session = session
+        self._persist_completed_live_session(session)
+
+    def _completed_live_session_persisted(
+        self, _token: Any, session_id: Any, error: str | None
+    ) -> None:
+        self._persisting_session_ids.discard(str(session_id or _token or ""))
+        if error:
+            logger.error("No se pudo persistir la partida terminada: %s", error)
+            return
+        session = self.find_saved_session(str(session_id or ""))
+        if isinstance(session, dict):
+            self.schedule_postgame_sync(session)
         if hasattr(self, "saved_games_layout"):
             self.refresh_saved_games()
 
@@ -4085,12 +4292,9 @@ class MainWindow(QMainWindow):
 
         self.overlay.update_snapshot(snapshot)
 
-        if not self.live_match_tracker.is_tracking:
-            self.live_match_tracker.start(snapshot)
+        if not self.was_in_game:
             self.live_session_finished = False
             self.start_match_recording(snapshot)
-        else:
-            self.live_match_tracker.update(snapshot)
 
         self.was_in_game = True
         self.live_snapshots_lost = 0
@@ -4118,6 +4322,7 @@ class MainWindow(QMainWindow):
             return
 
         self.current_live_session = session
+        self.overlay.update_recommendation_session(session)
 
         if hasattr(self, "open_live_analysis_button"):
             self.open_live_analysis_button.setEnabled(True)
@@ -4197,54 +4402,69 @@ class MainWindow(QMainWindow):
         self,
         session: dict,
     ) -> None:
-        """Persiste el fin de partida y programa Home LCU más Match-V5 opcional.
-
-        Args:
-            session: sesión finalizada y guardada por el tracker LIVE.
-
-        Returns:
-            ``None``; inicia los flujos asíncronos de conciliación.
-        """
-        session_id = str(
-            session.get(
-                "session_id",
-                "",
-            )
-        )
-
+        """Guarda el estado postpartida en segundo plano y programa sus sincron?as."""
+        session_id = str(session.get("session_id") or "")
         if not session_id:
+            return
+        if not hasattr(self, "_postgame_prepare_pending"):
+            self._postgame_prepare_pending: set[str] = set()
+        if session_id in self._postgame_prepare_pending:
             return
 
         self.pending_postgame_session_id = session_id
-        sesiones = self.live_match_tracker.load_saved_sessions()
-        for sesion in sesiones:
-            if str(sesion.get("session_id") or "") == session_id:
-                marcar_sincronizacion_lcu_pendiente(sesion)
-                break
-        self.live_match_tracker._save_sessions(sesiones)
-        self._programar_intento_sync_lcu(session_id, 2)
+        self._postgame_prepare_pending.add(session_id)
+        tracker = self.live_match_tracker
+        riot_ready = bool(
+            self.riot_api_key and self.riot_game_name and self.riot_tag_line
+        )
 
-        game_name = self.riot_game_name
-        tag_line = self.riot_tag_line
-        if not self.riot_api_key or not game_name or not tag_line:
+        def prepare() -> str:
+            sessions = tracker.load_saved_sessions()
+            target = next(
+                (
+                    item
+                    for item in sessions
+                    if str(item.get("session_id") or "") == session_id
+                ),
+                None,
+            )
+            if not isinstance(target, dict):
+                return ""
+            marcar_sincronizacion_lcu_pendiente(target)
+            if riot_ready:
+                actualizar_estado_sync_final(
+                    target,
+                    "pending",
+                    "Esperando a que Riot procese la partida?",
+                )
+            tracker._save_sessions(sessions)
+            return session_id
+
+        run_async(
+            prepare,
+            on_finished=self._postgame_sync_prepared,
+            token=session_id,
+        )
+
+    def _postgame_sync_prepared(
+        self, token: Any, result: Any, error: str | None
+    ) -> None:
+        session_id = str(token or result or "")
+        getattr(self, "_postgame_prepare_pending", set()).discard(session_id)
+        if error:
+            logger.error("No se pudo preparar la sincronizaci?n postpartida: %s", error)
+            return
+        if result != session_id or not session_id:
             return
 
-        self.update_saved_session_sync_status(
-            session_id,
-            "pending",
-            "Esperando a que Riot procese la partida…",
-        )
-
-        if hasattr(
-            self,
-            "saved_games_layout",
-        ):
+        self._programar_intento_sync_lcu(session_id, 2)
+        if self.riot_api_key and self.riot_game_name and self.riot_tag_line:
+            QTimer.singleShot(
+                20_000,
+                lambda value=session_id: self.start_postgame_sync(value),
+            )
+        if hasattr(self, "saved_games_layout"):
             self.refresh_saved_games()
-
-        QTimer.singleShot(
-            20_000,
-            lambda value=session_id: self.start_postgame_sync(value),
-        )
 
     def start_postgame_sync(
         self,
@@ -4903,6 +5123,13 @@ class MainWindow(QMainWindow):
 
     def sync_overlay_settings_ui(self) -> None:
         """Refresca los controles de overlay de Ajustes con el estado real."""
+        if hasattr(self, "overlay_edit_exit_button"):
+            self.overlay_edit_exit_button.setVisible(
+                self.overlay.editing_panel is not None
+            )
+        if hasattr(self, "overlay_settings_dashboard"):
+            self.overlay_settings_dashboard.sync()
+            return
         if not hasattr(self, "show_overlay_button"):
             return
 
@@ -5023,8 +5250,10 @@ class MainWindow(QMainWindow):
 
     def open_draft_tool_dialog(self) -> None:
         """Abre el draft como página única del shell y mantiene las señales LCU."""
+        navigation_started = time.perf_counter()
+        first_access = self.draft_tool_dialog is None
         if self.draft_tool_dialog is None:
-            self.draft_tool_dialog = DraftToolDialog(self)
+            self.draft_tool_dialog = DraftToolDialog(self, deferred_initialization=True)
             self.draft_tool_dialog.setWindowFlags(Qt.WindowType.Widget)
             self.draft_tool_dialog.setMinimumSize(0, 0)
             anterior = self.pages.widget(6)
@@ -5032,8 +5261,22 @@ class MainWindow(QMainWindow):
                 self.pages.removeWidget(anterior)
                 anterior.deleteLater()
             self.pages.insertWidget(6, self.draft_tool_dialog)
+        self.draft_tool_dialog.ensure_initialized()
         self.pages.setCurrentIndex(6)
         self.draft_tool_dialog.show()
+        elapsed_ms = (time.perf_counter() - navigation_started) * 1000
+        logging.getLogger(__name__).info(
+            "[draft-perf] navegacion_solicitada_a_show_ms=%.1f primer_acceso=%s",
+            elapsed_ms,
+            first_access,
+        )
+        QTimer.singleShot(
+            0,
+            lambda inicio=navigation_started: logging.getLogger(__name__).info(
+                "[draft-perf] primer_ciclo_eventos_ms=%.1f",
+                (time.perf_counter() - inicio) * 1000,
+            ),
+        )
 
     @Slot(dict)
     def _on_champ_select_started(self, session: dict) -> None:
@@ -5092,7 +5335,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
             self._pending_recording_snapshot = None
-            live_session = self.live_match_tracker.get_live_session()
+            live_session = self.current_live_session
             self._close_after_recording_finalizes = True
             self.recording_service.stop(
                 reason="app_close",

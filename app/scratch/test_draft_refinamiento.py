@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtWidgets import QApplication
 
+import app.ui.draft_tool_dialog as draft_module
 from app.services.rangos_campeones import RANGO_PREDETERMINADO
 from app.ui.draft_tool_dialog import DraftToolDialog
 
@@ -23,6 +24,31 @@ def herramienta(
     """Construye la herramienta sin red en iconos ni conexión LCU."""
     monkeypatch.setattr(DraftToolDialog, "_check_lcu_status", Mock())
     return DraftToolDialog()
+
+
+def test_inicio_diferido_no_construye_analizador_en_gui(
+    aplicacion: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first view shows the catalog without running the heavy engine."""
+    scheduled = []
+    monkeypatch.setattr(
+        draft_module,
+        "run_async",
+        lambda function, **kwargs: scheduled.append((function, kwargs)) or object(),
+    )
+
+    dialog = DraftToolDialog(deferred_initialization=True)
+
+    assert dialog.analyzer is None
+    assert dialog.all_champion_names
+    assert dialog._analyzer_task is not None
+    assert len(scheduled) == 2  # motor de anÃ¡lisis y sonda LCU
+    dialog.ensure_initialized()
+    assert len(scheduled) == 2  # repeated visits do not duplicate workers
+    dialog._on_analyzer_initialized("draft-analyzer", None, "simulated failure")
+    dialog.ensure_initialized()
+    assert len(scheduled) == 3  # failed initialization can be retried
+    dialog.deleteLater()
 
 
 def _sesion_baneos(aliados: list[int], enemigos: list[int]) -> dict[str, object]:

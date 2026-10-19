@@ -33,7 +33,7 @@ def fuentes(aplicacion: QApplication) -> None:
 
 def test_iconos_y_plegado(aplicacion: QApplication) -> None:
     """Verifica iconos, señales, selección y reversibilidad de la transición."""
-    botones = [QPushButton(str(i)) for i in range(7)]
+    botones = [QPushButton(str(i)) for i in range(8)]
     botones[1].setCheckable(True)
     botones[1].setChecked(True)
     accion = Mock()
@@ -111,7 +111,7 @@ def test_estructura_global(
     cuerpo = ventana.backdrop.layout().itemAt(0).layout()
     assert isinstance(cuerpo.itemAt(0).widget(), BarraLateral)
     assert cuerpo.itemAt(1).layout().itemAt(1).widget() is ventana.pages
-    assert ventana.pages.count() == 7
+    assert ventana.pages.count() == 8
     ventana.deleteLater()
 
 

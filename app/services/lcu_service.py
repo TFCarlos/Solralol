@@ -5,6 +5,7 @@ import itertools
 import logging
 import re
 import subprocess
+import threading
 import unicodedata
 from pathlib import Path
 from typing import Any
@@ -211,6 +212,7 @@ class LCUService:
         self.auth_token: str | None = None
         self.session = requests.Session()
         self.session.verify = False
+        self._rune_import_lock = threading.Lock()
 
     def refresh_connection(self) -> bool:
         """Intenta localizar el lockfile del cliente de League y configurar la sesión."""
@@ -320,6 +322,41 @@ class LCUService:
         secondary_slot_ids: list[int] | None = None,
         shard_ids: list[int] | None = None,
     ) -> tuple[bool, str]:
+        """Serializa importaciones para evitar que se pisen selecciones simultáneas.
+
+        Parámetros: página recomendada y selecciones opcionales por ID.
+        Retorno: resultado confirmado de la importación LCU.
+        """
+        with self._rune_import_lock:
+            return self._import_rune_page_unlocked(
+                name,
+                primary_tree,
+                secondary_tree,
+                keystone_name,
+                slots,
+                secondary_slots,
+                shards,
+                keystone_id=keystone_id,
+                slot_ids=slot_ids,
+                secondary_slot_ids=secondary_slot_ids,
+                shard_ids=shard_ids,
+            )
+
+    def _import_rune_page_unlocked(
+        self,
+        name: str,
+        primary_tree: str | int,
+        secondary_tree: str | int,
+        keystone_name: str | int,
+        slots: list[str | int],
+        secondary_slots: list[str | int],
+        shards: list[str | int],
+        *,
+        keystone_id: int | None = None,
+        slot_ids: list[int] | None = None,
+        secondary_slot_ids: list[int] | None = None,
+        shard_ids: list[int] | None = None,
+    ) -> tuple[bool, str]:
         """Valida, guarda y comprueba una página completa usando reglas LCU.
 
         Parámetros: recomendación de runas, incluyendo IDs canónicos opcionales.
@@ -356,7 +393,6 @@ class LCUService:
                     False,
                     "El cliente devolvió definiciones de runas con formato no válido.",
                 )
-
             perks_by_id = {
                 int(item["id"]): item
                 for item in perks
@@ -377,13 +413,9 @@ class LCUService:
 
             raw_perks: list[str | int] = [
                 keystone_id if keystone_id is not None else keystone_name,
-                *(slot_ids if slot_ids is not None else slots),
-                *(
-                    secondary_slot_ids
-                    if secondary_slot_ids is not None
-                    else secondary_slots
-                ),
-                *(shard_ids if shard_ids is not None else shards),
+                *(slot_ids if slot_ids else slots),
+                *(secondary_slot_ids if secondary_slot_ids else secondary_slots),
+                *(shard_ids if shard_ids else shards),
             ]
             perk_ids = [
                 self._resolve_rune_id(value, perks_by_id) for value in raw_perks
@@ -437,7 +469,7 @@ class LCUService:
                 )
                 return False, error
 
-            page_name = f"Solralol - {name}"[:30]
+            page_name = self._managed_rune_page_name(name)
             payload = {
                 "name": page_name,
                 "primaryStyleId": primary_style_id,
@@ -446,19 +478,28 @@ class LCUService:
                 "current": True,
             }
             _LOGGER.debug("[LCU][Runas] Payload validado: %s", payload)
-            matching_pages = [
+            managed = [
                 page
                 for page in pages
-                if isinstance(page, dict) and page.get("name") == page_name
+                if isinstance(page, dict)
+                and str(page.get("name", "")).casefold().startswith("solralol")
+                and page.get("isEditable")
+                and page.get("id") is not None
             ]
-            existing = next(
-                (page for page in matching_pages if page.get("isEditable")),
-                None,
+            existing = self._seleccionar_pagina_runa(managed, pages, name)
+            huella_paginas = tuple(
+                (str(page.get("id", "")), str(page.get("name", "")))
+                for page in pages
+                if isinstance(page, dict)
             )
-            if matching_pages and existing is None:
+            if (
+                existing is None
+                and getattr(self, "_rune_capacity_full_fingerprint", None)
+                == huella_paginas
+            ):
                 return (
                     False,
-                    "Ya existe una página con ese nombre que el cliente no permite editar.",
+                    "El cliente alcanzó el límite de páginas y no hay una página editable disponible.",
                 )
             if existing and existing.get("id") is not None:
                 page_id = existing["id"]
@@ -486,10 +527,96 @@ class LCUService:
                     response.status_code,
                     response.text[:500],
                 )
-                return (
-                    False,
-                    f"El cliente rechazó la página de runas (HTTP {response.status_code}).",
+                cuerpo = {}
+                try:
+                    cuerpo = response.json()
+                except (ValueError, TypeError):
+                    pass
+                mensaje_lcu = (
+                    str(cuerpo.get("message", "")) if isinstance(cuerpo, dict) else ""
                 )
+                if accion == "PUT" and response.status_code == 404:
+                    refresh = self.session.get(f"{base}/pages", timeout=3)
+                    actualizadas = refresh.json() if refresh.status_code == 200 else []
+                    self._rune_capacity_full_fingerprint = tuple(
+                        (str(page.get("id", "")), str(page.get("name", "")))
+                        for page in actualizadas
+                        if isinstance(page, dict)
+                    )
+                    administradas_actualizadas = [
+                        page
+                        for page in actualizadas
+                        if isinstance(page, dict)
+                        and str(page.get("name", "")).casefold().startswith("solralol")
+                        and page.get("isEditable")
+                        and page.get("id") is not None
+                    ]
+                    destino = self._seleccionar_pagina_runa(
+                        administradas_actualizadas, actualizadas, name
+                    )
+                    if destino is None:
+                        return (
+                            False,
+                            "La página elegida ya no existe y no hay otra editable.",
+                        )
+                    response = self.session.put(
+                        f"{base}/pages/{destino['id']}", json=payload, timeout=3
+                    )
+                    existing = destino
+                if (
+                    accion == "POST"
+                    and response.status_code == 400
+                    and "max pages reached" in mensaje_lcu.casefold()
+                ):
+                    refresh = self.session.get(f"{base}/pages", timeout=3)
+                    actualizadas = refresh.json() if refresh.status_code == 200 else []
+                    self._rune_capacity_full_fingerprint = tuple(
+                        (str(page.get("id", "")), str(page.get("name", "")))
+                        for page in actualizadas
+                        if isinstance(page, dict)
+                    )
+                    administradas_actualizadas = [
+                        page
+                        for page in actualizadas
+                        if isinstance(page, dict)
+                        and str(page.get("name", "")).casefold().startswith("solralol")
+                        and page.get("isEditable")
+                        and page.get("id") is not None
+                    ]
+                    reutilizable = self._seleccionar_pagina_runa(
+                        administradas_actualizadas, actualizadas, name
+                    )
+                    if reutilizable is not None:
+                        response = self.session.put(
+                            f"{base}/pages/{reutilizable['id']}",
+                            json=payload,
+                            timeout=3,
+                        )
+                        accion = "PUT"
+                        if response.status_code in (200, 201, 204):
+                            _LOGGER.info(
+                                "[LCU][Runas] Límite alcanzado; se actualiza la página "
+                                "administrada %s (id=%s)",
+                                reutilizable.get("name", ""),
+                                reutilizable["id"],
+                            )
+                        else:
+                            return (
+                                False,
+                                "Se alcanzó el límite y la página SOLRALOL editable "
+                                "no pudo actualizarse. No se modificaron otras páginas.",
+                            )
+                    else:
+                        mensaje_capacidad = (
+                            "El cliente alcanzó el límite de páginas de runas. "
+                            "No hay una página editable que Solralol pueda reutilizar."
+                        )
+                        return False, mensaje_capacidad
+                elif response.status_code not in (200, 201, 204):
+                    return (
+                        False,
+                        f"El cliente rechazó la página de runas (HTTP {response.status_code}): {mensaje_lcu or response.text[:180]}",
+                    )
 
             verify_response = self.session.get(f"{base}/pages", timeout=3)
             if verify_response.status_code != 200:
@@ -520,15 +647,78 @@ class LCUService:
                 "[LCU][Runas] Página confirmada tras lectura: %s",
                 self._safe_rune_page(saved),
             )
+            accion_confirmada = "actualizada" if accion == "PUT" else "creada"
             return (
                 True,
-                "¡Página completa de runas importada y verificada en el cliente!",
+                f"¡Página SOLRALOL {accion_confirmada} y verificada: {page_name}!",
             )
         except requests.RequestException as exc:
             return False, f"Error de comunicación con LCU: {exc}"
         except (KeyError, TypeError, ValueError):
             _LOGGER.exception("[LCU][Runas] Respuesta o definición inválida")
             return False, "El cliente devolvió datos de runas incompletos o no válidos."
+
+    @classmethod
+    def _seleccionar_pagina_runa(
+        cls,
+        paginas_solralol: list[dict[str, Any]],
+        paginas: list[dict[str, Any]],
+        nombre_recomendacion: str,
+    ) -> dict[str, Any] | None:
+        """Elige una página Solralol compatible o la última página editable.
+
+        Parámetros: páginas gestionadas, colección LCU ordenada y nombre recomendado.
+        Retorno: página editable elegida o None si no hay ninguna.
+        """
+        ranura = cls._rune_page_slot(nombre_recomendacion)
+        if paginas_solralol:
+            if ranura is not None:
+                coincidente = next(
+                    (
+                        pagina
+                        for pagina in paginas_solralol
+                        if cls._rune_page_slot(str(pagina.get("name", ""))) == ranura
+                    ),
+                    None,
+                )
+                if coincidente is not None:
+                    return coincidente
+            return paginas_solralol[0]
+        editables = [
+            pagina
+            for pagina in paginas
+            if isinstance(pagina, dict)
+            and pagina.get("isEditable")
+            and pagina.get("id") is not None
+        ]
+        return editables[-1] if editables else None
+
+    @staticmethod
+    def _rune_page_slot(nombre: str) -> int | None:
+        """Obtiene la ranura 1 o 2 de un nombre en inglés o español.
+
+        Parámetros: nombre de campeón o página LCU.
+        Retorno: número de ranura o None cuando no está indicado.
+        """
+        coincidencia = re.search(r"(?:page|página)\s*([12])\b", nombre, re.IGNORECASE)
+        return int(coincidencia.group(1)) if coincidencia else None
+
+    @classmethod
+    def _managed_rune_page_name(cls, nombre: str) -> str:
+        """Normaliza el nombre gestionado y conserva el número de página.
+
+        Parámetros: nombre recomendado, posiblemente con número de página.
+        Retorno: nombre con prefijo Solralol y ranura en formato Page N.
+        """
+        texto = str(nombre or "").strip()
+        ranura = cls._rune_page_slot(texto)
+        campeon = re.sub(
+            r"\s+(?:page|página)\s*[12]\b", "", texto, flags=re.IGNORECASE
+        ).strip()
+        sufijo = f" - Page {ranura}" if ranura is not None else ""
+        prefijo = "Solralol - "
+        limite_campeon = max(1, 30 - len(prefijo) - len(sufijo))
+        return f"{prefijo}{campeon[:limite_campeon].rstrip()}{sufijo}"
 
     @staticmethod
     def _normalize_rune_text(value: str) -> str:
@@ -855,18 +1045,20 @@ class LCUService:
         name = str(champion_name or "").strip()
         if champion_id <= 0 or not name:
             return False, "Se necesita un campeón válido para crear la página de build."
-        if len(item_ids) != 6 or len(set(item_ids)) != 6:
-            return False, "Se necesitan seis objetos distintos para la página de build."
+        ids_principales = [str(item).strip() for item in item_ids]
+        if not 1 <= len(ids_principales) <= 6:
+            return (
+                False,
+                "La build necesita entre uno y seis objetos principales válidos.",
+            )
+        if len(set(ids_principales)) != len(ids_principales):
+            return False, "La build contiene objetos principales duplicados."
         starter_ids = (
             list(self.JUNGLE_STARTER_IDS)
             if str(role or "").strip().casefold() in self.JUNGLE_ROLES
             else []
         )
-        ids = (
-            [str(i) for i in item_ids]
-            + ([str(boots_id)] if boots_id else [])
-            + starter_ids
-        )
+        ids = ids_principales + ([str(boots_id)] if boots_id else []) + starter_ids
         if not all(i.isdigit() and int(i) > 0 for i in ids):
             return False, "La build contiene IDs de objetos inválidos."
         if not self.is_connected():
@@ -912,8 +1104,8 @@ class LCUService:
                 )
             blocks.append(
                 {
-                    "type": "Objetos principales (6; última compra alternativa)",
-                    "items": [{"id": str(i), "count": 1} for i in item_ids],
+                    "type": f"Objetos principales ({len(ids_principales)})",
+                    "items": [{"id": i, "count": 1} for i in ids_principales],
                 }
             )
             if boots_id:

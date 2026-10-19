@@ -15,7 +15,7 @@ from app.services.champion_variant_service import ChampionVariantService
 from app.services.curador_recomendaciones_build import CuradorRecomendacionesBuild
 from app.services.elegibilidad_objetos import MODO_SOLOQ
 from app.services.preparador_datos_campeon import combinar_perfil
-from app.services.rangos_campeones import normalizar_rango
+from app.services.rangos_campeones import RANGO_ANALISIS_LOCAL
 from app.services.repositorio_campeones import EstadoDatos
 from app.services.synergy_recommendation_service import ItemRecommendation
 
@@ -135,7 +135,7 @@ class AnalisisLocalService:
         Retorna:
             An?lisis preparado con perfiles separados por identidad de runas."""
         inicio = perf_counter()
-        rango = normalizar_rango(rango) or rango
+        rango = RANGO_ANALISIS_LOCAL
         campeon = str(perfil.get("character", ""))
         consulta = self.variantes.repositorio.consultar(campeon, linea, rango)
         variante = copy.deepcopy(consulta.datos)

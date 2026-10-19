@@ -19,12 +19,14 @@ class ChampionScraperWorker(QThread):
         champions_path: Path | None = None,
         rank: str = RANGO_PREDETERMINADO,
         parent: QObject | None = None,
+        solo_rango_analisis_local: bool = False,
     ) -> None:
-        """Recibe selección y raíz para actualizar matrices completas fuera de Qt; retorna None."""
+        """Recibe campeón, ruta, rango y modo local estricto para actualizar fuera de Qt; retorna None."""
         super().__init__(parent)
         self.target_champion_name = target_champion_name
         self.champions_path = champions_path
         self.rank = rank
+        self.solo_rango_analisis_local = solo_rango_analisis_local
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -35,7 +37,9 @@ class ChampionScraperWorker(QThread):
         """Genera datos con progreso y comunica resultado o error por señales; retorna None."""
         try:
             service = ChampionScraperService(
-                champions_path=self.champions_path, rank=self.rank
+                champions_path=self.champions_path,
+                rank=self.rank,
+                solo_rango_analisis_local=self.solo_rango_analisis_local,
             )
             total, updated = service.actualizar_todo(
                 target_champion_name=self.target_champion_name,

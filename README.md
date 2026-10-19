@@ -12,7 +12,7 @@ La interfaz está en español. SOLRALOL es un proyecto independiente; no está a
 
 ### Inicio e historial
 
-Consulta el perfil y el historial disponibles en el cliente local de League (LCU). SOLRALOL conserva un historial propio por cuenta y puede enlazar partidas guardadas, mostrar estadísticas y recuperar datos de colección cuando el cliente los ofrece. Los datos guardados localmente pueden seguir consultándose con League cerrado.
+Consulta el perfil y el historial disponibles en el cliente local de League (LCU). SOLRALOL conserva un historial propio por cuenta y puede enlazar partidas guardadas y mostrar estadísticas. El panel **Colección y progreso** muestra maestrías destacadas, skins en propiedad, progreso de desafíos y título activo. No consulta ni muestra un contador de campeones en propiedad. Los datos guardados localmente pueden seguir consultándose con League cerrado.
 
 ### Análisis de campeones
 
@@ -26,13 +26,17 @@ Las actualizaciones de datos son explícitas y se ejecutan en segundo plano. Se 
 
 Planifica composiciones manualmente o consulta la selección de campeón activa del cliente. Muestra comparativas y recomendaciones de campeones, runas, objetos y hechizos. La importación de una preparación y la lectura de picks o bans requieren que el cliente de League esté disponible mediante LCU.
 
+### Meta
+
+Consulta la tier list de LoLalytics para Esmeralda+ en EUW, NA, KR o World, filtrada por posición, y las notas oficiales de actualización de Riot. La página conserva datos en caché para cada combinación de filtros y puede mostrar la última copia coincidente si falla la consulta; comprueba siempre el parche y la fecha de los datos.
+
 ### Partida en vivo y overlay
 
-Durante una partida, la aplicación consulta la Live Client Data API local para mostrar los datos que publica el juego. Puede guardar eventos y telemetría local, ofrecer recomendaciones y mostrar un overlay opcional con alertas. Los campos disponibles dependen del modo y de la respuesta del juego.
+Durante una partida, la aplicación consulta la Live Client Data API local para mostrar los datos que publica el juego. Puede guardar eventos y telemetría local, ofrecer recomendaciones y mostrar hasta cuatro paneles de overlay: oro estimado, alertas, amenazas por BattleScore y compras recomendadas. Los paneles se pueden configurar y escalar por separado. El oro mostrado es una estimación basada en inventario, asesinatos, asistencias y súbditos; no es una lectura del oro real del jugador. Los campos disponibles dependen del modo y de la respuesta del juego.
 
 ### Partidas guardadas y revisión
 
-Las sesiones pueden conservar eventos, instantáneas, cronologías y datos finales disponibles. La ventana de revisión relaciona los eventos guardados con una grabación cuando existe. La sincronización posterior con Riot y los análisis con Gemini son funciones opcionales.
+Las sesiones pueden conservar eventos, instantáneas, cronologías, datos finales disponibles y resúmenes de rendimiento. La sección **Partidas guardadas** permite revisar las sesiones persistidas y abrir sus análisis. La ventana de revisión relaciona los eventos guardados con una grabación cuando existe. La sincronización posterior con Riot y los análisis con Gemini son funciones opcionales.
 
 ### Grabaciones
 
@@ -120,10 +124,18 @@ Las pruebas con mocks no sustituyen la verificación con el cliente, la GPU, los
 
 ## Crear un ejecutable
 
-El proyecto incluye una especificación de PyInstaller para Windows. Con PyInstaller instalado en `.venv`:
+El proyecto incluye una especificación de PyInstaller para Windows. `main.spec` configura un ejecutable de un solo archivo e incluye el directorio completo `data/` (catálogos, metadatos, iconos, recursos visuales, configuraciones de overlays y datos locales necesarios), además de los módulos Qt multimedia, SVG y WebEngine requeridos. El primer inicio del ejecutable copia los recursos incluidos a `~/.solralol/data/` para que la aplicación pueda mantener allí cachés y datos actualizados; el historial, ajustes y archivos del usuario permanecen en su ubicación local.
+
+Con PyInstaller instalado en `.venv`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m PyInstaller main.spec
+```
+
+El ejecutable de un solo archivo se genera en `dist\Solralol.exe`. Para limpiar la caché de PyInstaller y reconstruirlo sin confirmaciones:
+
+```powershell
+.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm main.spec
 ```
 
 El resultado depende de las versiones instaladas de Python, PyInstaller y Qt. El repositorio no incluye un instalador firmado ni un canal de actualización publicado.

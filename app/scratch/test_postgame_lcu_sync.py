@@ -235,6 +235,13 @@ def test_game_finish_schedules_one_persisted_lcu_home_sync(
         "singleShot",
         lambda demora, callback: llamadas.append((demora, callback)),
     )
+    tareas = []
+    monkeypatch.setattr(
+        "app.ui.main_window.run_async",
+        lambda function, *, on_finished, token: tareas.append(
+            (function, on_finished, token)
+        ),
+    )
     sesion = {"session_id": "session-finished"}
     tracker = Mock()
     tracker.load_saved_sessions.return_value = [sesion]
@@ -248,14 +255,18 @@ def test_game_finish_schedules_one_persisted_lcu_home_sync(
 
     ventana.schedule_postgame_sync(sesion)
     ventana.schedule_postgame_sync(sesion)
+    assert len(tareas) == 1
+    function, callback, token = tareas[0]
+    resultado = function()
+    callback(token, resultado, None)
 
     assert sesion["lcu_postgame_sync"]["state"] == "pending"
-    assert tracker._save_sessions.call_count == 2
+    assert tracker._save_sessions.call_count == 1
     assert len(llamadas) == 1
     assert llamadas[0][0] == 2_000
 
 
-def test_live_session_finish_is_idempotent_after_active_to_postgame_transition(
+def test_live_session_finish_queues_persistence_once_after_active_transition(
     monkeypatch,
 ) -> None:
     """Finaliza telemetría y programa sincronización una sola vez por partida."""
@@ -270,12 +281,13 @@ def test_live_session_finish_is_idempotent_after_active_to_postgame_transition(
         finish=Mock(return_value={"session_id": "session-finished"}),
     )
     ventana.stop_match_recording = Mock()
-    ventana.schedule_postgame_sync = Mock()
+    ventana._persisting_session_ids = set()
+    ventana._persist_completed_live_session = Mock()
 
     ventana.finish_live_session("game_end")
     ventana.finish_live_session("game_end")
 
     ventana.stop_match_recording.assert_called_once()
-    ventana.schedule_postgame_sync.assert_called_once_with(
+    ventana._persist_completed_live_session.assert_called_once_with(
         {"session_id": "session-finished"}
     )

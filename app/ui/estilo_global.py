@@ -259,6 +259,40 @@ QPushButton#matchupChampionButton {background:$superficie; color:$texto; border:
 QPushButton#matchupChampionButton:checked {border-color:$oro; color:$marfil; background:$activo;}
 QScrollArea {background:$superficie; border:none;}
 QFrame#savedGameRow {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $elevada,stop:1 $superficie); border:1px solid $borde; border-top:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
+QStackedWidget#mainPages, QWidget#savedGamesPage, QWidget#savedGamesContent,
+QWidget#paginaDesplazable, QWidget#homeDashboard, QWidget#homeSummaryHost {background:transparent; border:none;}
+QStackedWidget#mainPages > QWidget#analysisPage,
+QStackedWidget#mainPages > QWidget#livePage,
+QStackedWidget#mainPages > QWidget#settingsPage,
+QStackedWidget#mainPages > QWidget#recordingsPage {background:transparent; border:none;}
+QStackedWidget#mainPages > QWidget#metaPage {background:transparent; border:none;}
+QStackedWidget#mainPages QScrollArea {background:transparent; border:none;}
+QStackedWidget#mainPages QScrollArea > QWidget#qt_scrollarea_viewport {background:transparent; border:none;}
+QScrollArea#savedGamesScroll, QScrollArea#homeHistoryScroll, QScrollArea#paginaDesplazable {background:transparent; border:none;}
+QScrollArea#savedGamesScroll > QWidget > QWidget,
+QScrollArea#homeHistoryScroll > QWidget > QWidget,
+QScrollArea#paginaDesplazable > QWidget > QWidget {background:transparent; border:none;}
+QScrollArea#savedGamesScroll > QWidget#qt_scrollarea_viewport,
+QScrollArea#homeHistoryScroll > QWidget#qt_scrollarea_viewport,
+QScrollArea#paginaDesplazable > QWidget#qt_scrollarea_viewport {background:transparent; border:none;}
+QFrame#savedGamesHeader {background:transparent; border:none;}
+QFrame#savedGamesToolbar {background:rgba(13,18,24,205); border:1px solid $oro_oscuro; border-radius:12px;}
+QLabel#savedGamesStatus {color:$secundario; background:transparent; border:none; padding:0 12px;}
+QFrame#sectionCard {background:rgba(14,19,25,222); border:1px solid rgba(200,167,90,125); border-radius:15px;}
+QFrame#homeProfileFrame {background:#0b1118; border:2px solid $oro; border-radius:19px;}
+QLabel#homeProfilePortrait {background:#0b1118; border:none; border-radius:13px; color:$oro_suave; font-size:${seccion}px; font-weight:800;}
+QLabel#homeRankEmblem {color:$teal; font-size:48px; font-weight:700;}
+QLabel#homeRankInlineEmblem {color:$teal; font-size:22px; font-weight:700;}
+QLabel#homeRankValue {color:$marfil; font-size:${seccion}px; font-weight:800;}
+QLabel#homeRankLp {color:$oro_suave; font-size:${metadatos}px; font-weight:700;}
+QLabel#homeConnectionStatus {color:$secundario; background:transparent; border:none; padding:0 4px; font-size:${metadatos}px;}
+QLabel#homeProfileMeta {color:$secundario; font-size:${metadatos}px;}
+QLabel#homeWinLegend {color:$ventaja; font-size:${metadatos}px; font-weight:600;}
+QLabel#homeLossLegend {color:$desventaja; font-size:${metadatos}px; font-weight:600;}
+QLabel#homeTopChampionPortrait {background:#0b1118; border:1px solid $oro; border-radius:13px;}
+QLabel#homeTopChampionName {color:$marfil; font-size:${metadatos}px; font-weight:700;}
+QLabel#homeTopChampionWinrate {color:$ventaja; font-size:${metadatos}px; font-weight:700;}
+QLabel#homeChampionsSource {color:$secundario; font-size:${metadatos}px;}
 QFrame#savedGameRow[result="win"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_victoria,stop:1 $superficie_victoria_fin); border-color:#354840; border-top-color:$teal;}
 QFrame#savedGameRow[result="loss"] {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 $superficie_derrota,stop:1 $superficie_derrota_fin); border-color:#4a3637; border-top-color:$desventaja;}
 QFrame#savedGameRow[result="win"]:hover {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #1b2924,stop:1 #162225); border-color:$teal;}
@@ -462,7 +496,62 @@ QMessageBox QLabel {min-width:180px;}
 QWidget#startupWindow {border:1px solid $oro_oscuro; border-radius:${modal}px;}
 QLabel#emptyItemSlot {background:rgba(5,7,12,100); border:1px dashed $borde_sutil; border-radius:${pequeno}px;}
 QWidget#recordingVideo, QWidget#postgameVideo {background:$base;}
-QFrame#overlayCard {background:$superficie; border:1px solid $oro_oscuro; border-radius:${compacto}px;}
+QFrame#overlayCard {background:transparent; border:none;}
+QFrame#overlaySettingsCard, QFrame#overlayGeneralCard {background:#0D1623; border:1px solid #5a4829; border-radius:12px;}
+QLabel#overlaySettingsTitle {color:#F4F6FA; font-size:11pt; font-weight:700;}
+QLabel#overlayInfoBanner {background:#111D2B; color:#A7B6C9; border:1px solid #344256; border-radius:10px; padding:10px 13px;}
+QLabel#overlayNewBadge {background:#D4AA56; color:#11151c; border-radius:8px; padding:3px 7px; font-size:7pt; font-weight:800;}
+QGraphicsView#overlayPreviewViewport {background:#15251f; border:1px solid #344256; border-radius:9px;}
+QFrame#overlayGoldSummary {background:#172434; border:1px solid #806638; border-radius:8px;}
+QLabel#overlayGoldSummaryLabel {color:#A7B6C9; font-size:7pt; font-weight:700; letter-spacing:1px;}
+QLabel#overlayGoldSummaryValue {color:#F0C96B; font-size:12pt; font-weight:800; font-family:'Segoe UI';}
+QLabel#overlayGoldSummaryValue[state="ahead"] {color:#35E49A;}
+QLabel#overlayGoldSummaryValue[state="behind"] {color:#FF6268;}
+QLabel#overlayGoldSummaryValue[state="even"] {color:#CED5E0;}
+QWidget#overlayGoldRow {background:#111D2B; border:1px solid #263549; border-radius:7px; min-height:30px; max-height:30px;}
+QWidget#overlayGoldColumnHeader {background:transparent; border:none; min-height:15px; max-height:15px;}
+QWidget#overlayGoldColumnHeader QLabel {color:#A7B6C9; font-size:7pt; font-weight:700;}
+QWidget#overlayThreatCard {background:#111D2B; border:1px solid #344256; border-radius:8px;}
+QWidget#overlayThreatCard[ranking="strongest"] {background:#21191f; border:1px solid #a7444c;}
+QWidget#overlayThreatCard[ranking="weakest"] {background:#111c2b; border:1px solid #3e70b8;}
+QLabel#overlayThreatHeading {color:#F0C96B; font-size:7pt; font-weight:800; letter-spacing:1px;}
+QLabel#overlayThreatCard[ranking="strongest"] QLabel#overlayThreatHeading {color:#FF777B;}
+QLabel#overlayThreatCard[ranking="weakest"] QLabel#overlayThreatHeading {color:#69a5ff;}
+QLabel#overlayThreatMarker {color:#F0C96B; font-size:16pt; font-weight:800;}
+QLabel#overlayThreatName {color:#F4F6FA; font-size:10pt; font-weight:700;}
+QLabel#overlayThreatRole, QLabel#overlayThreatScoreLabel {color:#A7B6C9; font-size:7pt;}
+QLabel#overlayThreatScore {color:#F0C96B; font-size:14pt; font-weight:800;}
+QWidget#overlayThreatCard[ranking="strongest"] QLabel#overlayThreatScore {color:#FF6268;}
+QWidget#overlayThreatCard[ranking="weakest"] QLabel#overlayThreatScore {color:#5497FF;}
+QLabel#overlayPanelTitle {color:$marfil; font-weight:700; font-size:10pt;}
+QLabel#overlayPanelSubtitle {color:$secundario; font-size:8pt;}
+QLabel#overlayPurchaseStatus {color:$secundario; font-size:8pt; padding:2px 3px;}
+QFrame#overlayAlertRow, QFrame#overlayRecordingRow {background:transparent; border:none;}
+QLabel#overlayAlertText {color:#F4F6FA; font-size:10pt; font-weight:700;}
+QLabel#overlayAlertSecondary {color:#A7B6C9; font-size:8pt;}
+QLabel#overlayClock {color:#F0C96B; font-size:11pt; font-weight:800; background:transparent; border:none;}
+QLabel#overlayRole {color:#A7B6C9; font-size:8pt; font-weight:700;}
+QLabel#overlayGold {color:#F4F6FA; font-size:9pt; font-weight:600;}
+QLabel#overlayGold[side="ally"] {color:#A7B6C9;}
+QLabel#overlayGold[side="enemy"] {color:#A7B6C9;}
+QLabel#overlayDelta {color:#CED5E0; font-size:10pt; font-weight:800;}
+QLabel#overlayDelta[state="ahead"] {color:#35E49A;}
+QLabel#overlayDelta[state="behind"] {color:#FF6268;}
+QLabel#overlayDelta[state="even"] {color:#CED5E0;}
+QLabel#overlayIcon[state="filled"] {background:#172434; border:1px solid #344256; border-radius:7px;}
+QLabel#overlayIcon[team="ally"] {border:1px solid #5497FF;}
+QLabel#overlayIcon[team="enemy"] {border:1px solid #FF6268;}
+QFrame#overlayAccent[kind="objective"] {background:#D4AA56; border-radius:2px;}
+QFrame#overlayAccent[side="enemy"] {background:#FF6268; border-radius:2px;}
+QLabel#overlayRecordingText {color:$marfil; font-weight:600;}
+QLabel#overlayRecordingDot {color:$oro_suave;}
+QFrame#overlayPurchaseCard {background:#111D2B; border:1px solid #344256; border-radius:8px; min-width:94px; max-width:112px;}
+QFrame#overlayPurchaseCard[rank="1"] {border:1px solid #D4AA56; background:#1b2028;}
+QLabel#overlayPurchaseRank {color:#F0C96B; background:#172434; border:1px solid #806638; border-radius:8px; min-width:17px; max-width:17px; min-height:17px; max-height:17px; text-align:center; font-size:8pt; font-weight:800;}
+QLabel#overlayPurchaseName {color:#F4F6FA; font-size:7pt; font-weight:600;}
+QLabel#overlayPurchaseScore {color:#35E49A; font-size:8pt; font-weight:800;}
+QProgressBar#overlayPurchaseBar {background:#263549; border:none; border-radius:3px;}
+QProgressBar#overlayPurchaseBar::chunk {background:#35E49A; border-radius:3px;}
 QFrame#performanceHeader, QFrame#performanceSummary {background:$superficie; border:1px solid $oro_oscuro; border-radius:${tarjeta}px;}
 QFrame#performanceCategoryCard {background:$elevada; border:1px solid $borde; border-left:3px solid $oro; border-radius:${compacto}px;}
 QFrame#performanceCategoryCard[category="combate"] {border-left-color:$rendimiento_combate;}

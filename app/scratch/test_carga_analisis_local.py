@@ -266,7 +266,7 @@ def dialogo(
 def test_estilos_compartidos(dialogo: LocalAnalysisDialog) -> None:
     """Verifica los cinco selectores y que comparten el tema del popup."""
     selectores = dialogo.findChildren(QComboBox)
-    assert len(selectores) == 5
+    assert len(selectores) == 4
     for selector in selectores:
         assert selector.view().window().objectName() == "localSelectorPopup"
         assert selector.view().window().styleSheet() == dialogo.styleSheet()
@@ -350,24 +350,15 @@ def test_muestra_reducida_en_resoluciones_de_escritorio(
     dialogo.hide()
 
 
-def test_selector_seis_rangos(dialogo: LocalAnalysisDialog) -> None:
-    """Verifica las seis etiquetas reales y el rango inicial del selector Qt."""
-    from app.services.rangos_campeones import OPCIONES_RANGO, RANGO_PREDETERMINADO
-
-    selector = dialogo.analysis_rank_combo
-    assert selector.count() == 6
-    assert (
-        tuple(
-            (selector.itemData(indice), selector.itemText(indice))
-            for indice in range(selector.count())
-        )
-        == OPCIONES_RANGO
-    )
-    assert selector.currentData() == RANGO_PREDETERMINADO
+def test_rango_fijo_esmeralda_plus(dialogo: LocalAnalysisDialog) -> None:
+    """Verifica el indicador estático y el rango exclusivo de Local Analysis."""
+    assert not hasattr(dialogo, "analysis_rank_combo")
+    assert dialogo.analysis_rank_label.text() == "Esmeralda+"
+    assert dialogo.analysis_rank == "emerald_plus"
 
 
 def test_obsoletos_y_errores(dialogo: LocalAnalysisDialog) -> None:
-    """Comprueba generaciones, errores vigentes y selección de campeón/rango."""
+    """Comprueba generaciones, errores vigentes y selección de campeón."""
     generacion = dialogo._generacion_analisis
     clave = dialogo._active_variant_key
     dialogo._recibir_analisis(generacion - 1, clave, {})
@@ -378,12 +369,9 @@ def test_obsoletos_y_errores(dialogo: LocalAnalysisDialog) -> None:
     assert "No se pudieron" in dialogo.status.text()
     assert dialogo.analysis_loading_bar.isHidden()
     dialogo.champion_combo.setCurrentIndex(dialogo.champion_combo.findText("Otro"))
-    dialogo.analysis_rank_combo.setCurrentIndex(
-        dialogo.analysis_rank_combo.findData("diamond")
-    )
     assert dialogo._generacion_analisis > generacion
-    assert dialogo._active_variant_key == "otro|support|diamond"
-    assert dialogo.analysis_rank_combo.isEnabled()
+    assert dialogo._active_variant_key == "otro|support|emerald_plus"
+    assert dialogo.analysis_rank_label.isEnabled()
     assert not dialogo.analysis_loading_bar.isHidden()
 
 
@@ -432,9 +420,6 @@ def test_heartbeat_y_ultima_seleccion(
     dialogo.analysis_lane_combo.setCurrentIndex(
         dialogo.analysis_lane_combo.findData("jungle")
     )
-    dialogo.analysis_rank_combo.setCurrentIndex(
-        dialogo.analysis_rank_combo.findData("diamond")
-    )
     despacho_ms = (perf_counter() - inicio) * 1000
     for _ in range(100):
         aplicacion.processEvents()
@@ -450,7 +435,7 @@ def test_heartbeat_y_ultima_seleccion(
         aplicacion.processEvents()
     reloj.stop()
     assert dialogo._active_variant["role"] == "jungle"
-    assert dialogo._active_variant["rank"] == "diamond"
+    assert dialogo._active_variant["rank"] == "emerald_plus"
     assert dialogo.status.text() == "Análisis actualizado"
     assert len(hilos) == 2
     assert all(hilo != threading.get_ident() for hilo in hilos)
@@ -643,7 +628,7 @@ def test_error_manual_y_render(
     """Comprueba restauración manual y cierre de carga si el renderizado falla."""
     dialogo._on_winrate_error("detalle técnico")
     assert dialogo.champion_combo.isEnabled()
-    assert dialogo.analysis_rank_combo.isEnabled()
+    assert dialogo.analysis_rank_label.isEnabled()
     assert dialogo.analysis_lane_combo.isEnabled()
     monkeypatch.setattr(
         dialogo, "_renderizar_analisis", Mock(side_effect=ValueError("fallo interno"))
