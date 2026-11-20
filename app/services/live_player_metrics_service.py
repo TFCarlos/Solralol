@@ -7,7 +7,6 @@ estimación que ya emplea ``LiveMatchTracker``: valor del inventario + 300 por
 asesinato + 75 por asistencia + 20 por CS. Así el panel mide la build y no el
 oro sin gastar, que baja al comprar.
 
-El módulo no depende de Qt, de modo que puede probarse sin interfaz.
 """
 
 from __future__ import annotations
@@ -51,6 +50,24 @@ ROLE_ALIASES = {
     "SUP": "UTILITY",
     "SUPPORT": "UTILITY",
 }
+
+ANALYSIS_ROLES = {"TOP": "top", "JUNGLE": "jungle", "MIDDLE": "mid", "BOTTOM": "adc", "UTILITY": "support"}
+
+
+def normalize_analysis_role(value: Any) -> str | None:
+    """Map Live Client and localized lane labels to Local Analysis keys."""
+    raw = str(value or "").strip().upper()
+    if raw in {"JUNGLA", "JG", "JGL"}:
+        raw = "JUNGLE"
+    elif raw in {"MEDIO", "CENTRO"}:
+        raw = "MIDDLE"
+    elif raw in {"APOYO", "SOPORTE"}:
+        raw = "UTILITY"
+    elif raw in {"TIRADOR", "INFERIOR"}:
+        raw = "BOTTOM"
+    elif raw in {"SUPERIOR"}:
+        raw = "TOP"
+    return ANALYSIS_ROLES.get(ROLE_ALIASES.get(raw, raw))
 
 GOLD_PER_KILL = 300
 GOLD_PER_ASSIST = 75
@@ -415,41 +432,54 @@ def build_gold_report(
     }
 
 
-def build_rival_ranking(
-    snapshot: dict,
-    item_catalog: dict,
-) -> dict:
-    """Rival más fuerte y más débil del equipo enemigo."""
-    if not isinstance(snapshot, dict):
-        return {"strongest": None, "weakest": None}
+def build_inventory_value(player: dict, item_catalog: dict) -> int | None:
+    """Value only the current inventory slots at full Data Dragon prices."""
+    from app.services.enemy_inventory_tracker import normalized_inventory
 
-    _, enemies = _team_players(snapshot, item_catalog)
+    inventory = normalized_inventory(player.get("items"))
+    if inventory is None:
+        return None
+    catalog = item_catalog.get("items", item_catalog)
+    if not isinstance(catalog, dict):
+        return None
+    total = 0
+    for ident, count in inventory.items():
+        item = catalog.get(ident)
+        if not isinstance(item, dict):
+            return None
+        tags = item.get("tags") or []
+        gold = item.get("gold") or {}
+        if "Trinket" in tags or "Consumable" in tags or "Vision" in tags or ident in {"2055", "2056", "2057", "2420", "2421", "2422"}:
+            continue
+        price = gold.get("total") if isinstance(gold, dict) else None
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or price < 0:
+            return None
+        total += int(price) * count
+    return total
 
-    if not enemies:
-        return {"strongest": None, "weakest": None}
 
-    ranked = sorted(
-        (entry for entry in enemies if entry.get("score") is not None),
-        key=lambda entry: (
-            -int(entry["score"]),
-            str(entry.get("champion", "")),
-            str(entry.get("role", "")),
-        ),
-    )
-
-    if not ranked:
-        return {
-            "strongest": None,
-            "weakest": None,
-            "strongest_tie_count": 0,
-            "weakest_tie_count": 0,
-        }
-
-    mayor = ranked[0]["score"]
-    menor = ranked[-1]["score"]
-    return {
-        "strongest": ranked[0],
-        "weakest": ranked[-1] if len(ranked) > 1 else None,
-        "strongest_tie_count": sum(entry["score"] == mayor for entry in ranked),
-        "weakest_tie_count": sum(entry["score"] == menor for entry in ranked),
-    }
+def build_inventory_report(snapshot: dict, item_catalog: dict) -> dict:
+    """Unique same-role pairs only; an incomplete five-role team has no total."""
+    empty = {"team": {"ally": None, "enemy": None, "delta": None}, "lanes": []}
+    players = snapshot.get("all_players") if isinstance(snapshot, dict) else None
+    team = snapshot.get("local_team") or (snapshot.get("local_player") or {}).get("team") if isinstance(snapshot, dict) else None
+    if not isinstance(players, list) or not team:
+        return empty
+    sides: dict[str, list[dict]] = {"ally": [], "enemy": []}
+    for player in players:
+        if not isinstance(player, dict) or not player.get("team"):
+            continue
+        sides["ally" if player["team"] == team else "enemy"].append({
+            "champion": player_champion(player), "role": player_role(player),
+            "gold": build_inventory_value(player, item_catalog),
+        })
+    lanes = []
+    for role in ROLE_ORDER:
+        ally_rows = [row for row in sides["ally"] if row["role"] == role]
+        enemy_rows = [row for row in sides["enemy"] if row["role"] == role]
+        lanes.append(_lane_row(role, ally_rows[0] if len(ally_rows) == 1 else None,
+                               enemy_rows[0] if len(enemy_rows) == 1 else None))
+    complete = all(row["paired"] for row in lanes) and len(sides["ally"]) == len(sides["enemy"]) == 5
+    ally = sum(row["ally"]["gold"] for row in lanes) if complete else None
+    enemy = sum(row["enemy"]["gold"] for row in lanes) if complete else None
+    return {"team": {"ally": ally, "enemy": enemy, "delta": ally - enemy if complete else None}, "lanes": lanes}

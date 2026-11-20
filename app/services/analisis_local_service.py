@@ -1,4 +1,4 @@
-"""Prepara variantes, recomendaciones y recursos fuera del hilo gráfico."""
+"""Prepare champion variants, recommendations, and assets on demand."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ REGISTRO = logging.getLogger(__name__)
 
 
 class AnalisisLocalService:
-    """Mantiene cachés acotadas dentro de una cola secuencial de trabajos Qt."""
+    """Maintain bounded caches for serialized backend analysis jobs."""
 
     def __init__(
         self, catalogo: CatalogoAnalisisLocal, ruta_campeones: Path, version: str
@@ -85,15 +85,14 @@ class AnalisisLocalService:
                 for caracter in data_dragon.champion_asset_name(nombre)
                 if caracter.isalnum()
             )
+            from app.services.storage_manager import get_storage_manager
+            splash_directories = (get_storage_manager().cache_dir / "champion_splashes", data_dragon.DATA_DIR / "champion_splashes")
             ruta = next(
                 (
-                    candidata
+                    directory / f"{identificador}_0.{extension}"
+                    for directory in splash_directories
                     for extension in ("jpg", "png", "webp")
-                    if (
-                        candidata := data_dragon.DATA_DIR
-                        / "champion_splashes"
-                        / f"{identificador}_0.{extension}"
-                    ).is_file()
+                    if (directory / f"{identificador}_0.{extension}").is_file()
                 ),
                 None,
             )

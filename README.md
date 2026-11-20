@@ -1,165 +1,128 @@
-# SOLRALOL
+# Solralol
 
-<p align="center">
-  <img src="data/LogoApp.png" alt="Logotipo de SOLRALOL" width="96">
-</p>
+Solralol es una aplicación de escritorio para **Windows** que acompaña a jugadores de League of Legends. Reúne historial local, estadísticas clasificatorias, análisis de campeones y partidas, preparación de selección, seguimiento en vivo y grabaciones para ayudar a revisar decisiones y mejorar el juego. Es un proyecto independiente de Riot Games y sigue en desarrollo activo.
 
-**SOLRALOL es una aplicación de escritorio para Windows que acompaña partidas de League of Legends.** Está desarrollada en Python y PySide6. Reúne análisis de campeones y draft, datos en directo, historial, revisión de partidas y grabaciones locales.
+## Funciones principales
 
-La interfaz está en español. SOLRALOL es un proyecto independiente; no está afiliado ni respaldado por Riot Games.
+| Sección | Función disponible y límites |
+| --- | --- |
+| **Inicio** | Perfil e historial sincronizados con el cliente, métricas por posición, actividad, campeones frecuentes, enfrentamientos, aliados identificables y evolución del porcentaje de victorias. Los agregados clasificatorios usan partidas únicas de **Solo/Dúo, cola 420**; las muestras incompletas se indican. |
+| **Análisis local** | Perfiles por campeón y posición con variantes de runas, builds, hechizos, orden de habilidades, enfrentamientos y recomendaciones de objetos. La preparación usa datos locales y estadísticas externas cuando están disponibles; el rango de preparación es Esmeralda+. Puede actualizarse por campeón o en lote. |
+| **Draft** | Selección manual y seguimiento de selección de campeones mediante LCU. Muestra composiciones, baneos y preparación; puede importar páginas de runas y conjuntos de objetos al cliente cuando la conexión lo permite. Las estimaciones históricas no son probabilidades directas de ganar. |
+| **Partida en vivo** | Estado de partida, jugadores, inventarios, eventos con hora observada, recomendaciones de compra y preparación. Usa Live Client Data API y LCU; muestra estados parciales o no disponibles. El contador de regreso enemigo se basa en cambios de inventario o reapariciones observadas: **no confirma un Recall**. |
+| **Partidas guardadas** | Biblioteca y detalle de partidas, revisión de eventos, indicadores positivos y oportunidades de mejora. El análisis profundo con Match-V5, cronología y **BattleScore v2.7** se activa para partidas Solo/Dúo de cola 420 con datos verificables; existe un límite configurable de análisis activos. Inicio reutiliza BattleScore solo cuando hay un resultado final guardado. |
+| **Análisis con IA** | Generación bajo petición para partidas analizables, asociada a la partida y guardada localmente. Requiere una clave de Gemini; su contenido depende de la telemetría disponible. |
+| **Grabaciones** | Captura automática o manual, biblioteca, reproducción y revisión con marcadores cuando existen datos asociados. La captura usa FFmpeg y DXGI sobre el monitor. La reproducción depende de que el archivo final sea válido y compatible. El audio aislado por proceso de League no está disponible. |
+| **Meta y notas** | Clasificaciones por posición y región procedentes de LoLalytics, con estado parcial cuando faltan filas; notas de parche de fuentes oficiales y recursos Data Dragon. La disponibilidad depende de las fuentes y la red. |
+| **Ajustes** | Credenciales Riot/Gemini, grabación, audio, overlays, análisis y ubicación de datos. Las claves se conservan en el backend y la interfaz solo recibe indicadores de configuración. El traslado de almacenamiento conserva el origen y valida la copia antes de cambiar la ubicación activa. |
 
-## Funciones
+Hay **cinco paneles flotantes** configurables: diferencia de oro, alertas, compra recomendada, último regreso enemigo estimado y orden de habilidades. Se pueden previsualizar y colocar desde Ajustes. Su visibilidad depende del modo de pantalla y de otras ventanas; la pantalla completa exclusiva puede impedir mostrar ventanas externas. Los avisos de objetivos e inhibidores requieren eventos e identificadores suficientes y no afirman reapariciones no confirmadas.
 
-### Inicio e historial
+## Arquitectura y tecnologías
 
-Consulta el perfil y el historial disponibles en el cliente local de League (LCU). SOLRALOL conserva un historial propio por cuenta y puede enlazar partidas guardadas y mostrar estadísticas. El panel **Colección y progreso** muestra maestrías destacadas, skins en propiedad, progreso de desafíos y título activo. No consulta ni muestra un contador de campeones en propiedad. Los datos guardados localmente pueden seguir consultándose con League cerrado.
+La aplicación de producto usa **Electron, React 19, TypeScript y Vite**. Electron crea la ventana principal y los overlays, supervisa un único proceso Python y restringe las operaciones IPC. El preload expone `window.solralol` mediante `contextBridge`; el renderer funciona con aislamiento de contexto, sandbox y Node deshabilitado.
 
-### Análisis de campeones
+El backend **Python** recibe solicitudes JSON Lines por `stdin` y devuelve exclusivamente respuestas de protocolo por `stdout`; los diagnósticos van a `stderr`. No abre un servidor local ni usa Qt. Python gestiona LCU/Live Client, Riot Match-V5, normalización, analítica, recomendaciones, persistencia y grabación. El contrato compartido está tipado en TypeScript y validado en Python.
 
-Consulta perfiles y estadísticas locales por campeón, línea y rango: Esmeralda, Esmeralda+, Diamante, Diamante+, Master y Master+. Esmeralda+ es el filtro inicial. El análisis puede incluir enfrentamientos, páginas de runas, hechizos, orden de habilidades, objetos iniciales, núcleo, build completa y recomendaciones situacionales.
+Las fuentes incluyen los catálogos y recursos **Riot Data Dragon**, el cliente local de League, **Riot Match-V5** cuando hay clave válida, LoLalytics para Meta, fuentes estadísticas de análisis de campeones y **Gemini** para análisis opcional. La captura emplea FFmpeg, localizado por configuración, sistema o `imageio-ffmpeg`. Los proveedores externos pueden cambiar o no estar disponibles.
 
-Las páginas de runas disponibles pueden definir perfiles de build distintos. Al seleccionar otra página, el análisis usa el perfil de build asociado si está disponible. La selección no inventa estadísticas: las tasas y muestras mostradas proceden de los datos guardados o de la fuente identificada.
+| Ruta | Responsabilidad |
+| --- | --- |
+| `frontend/src/` | Pantallas React, componentes, overlays y contratos del renderer. |
+| `frontend/electron/main/` y `frontend/electron/preload/` | Ventanas, proceso Python, IPC limitado y protocolos de recursos. |
+| `backend/` | Protocolo JSONL, fachada de operaciones y adaptadores de funciones. |
+| `app/services/` | Servicios de dominio, repositorios e integraciones compartidas. |
+| `data/` | Catálogos y recursos incluidos con la aplicación. |
+| `tests/`, `frontend/scripts/`, `docs/` | Pruebas, verificaciones del renderer y documentación técnica. |
 
-Las actualizaciones de datos son explícitas y se ejecutan en segundo plano. Se consultan U.GG, OP.GG, Lolalytics y Data Dragon según la operación. La disponibilidad y el formato de esos servicios pueden cambiar.
+`solralol_dev.py` es un panel **opcional de desarrollo** basado en PySide6. No es la interfaz del producto.
 
-### Herramienta de Draft
+## Requisitos e instalación para desarrollo
 
-Planifica composiciones manualmente o consulta la selección de campeón activa del cliente. Muestra comparativas y recomendaciones de campeones, runas, objetos y hechizos. La importación de una preparación y la lectura de picks o bans requieren que el cliente de League esté disponible mediante LCU.
-
-### Meta
-
-Consulta la tier list de LoLalytics para Esmeralda+ en EUW, NA, KR o World, filtrada por posición, y las notas oficiales de actualización de Riot. La página conserva datos en caché para cada combinación de filtros y puede mostrar la última copia coincidente si falla la consulta; comprueba siempre el parche y la fecha de los datos.
-
-### Partida en vivo y overlay
-
-Durante una partida, la aplicación consulta la Live Client Data API local para mostrar los datos que publica el juego. Puede guardar eventos y telemetría local, ofrecer recomendaciones y mostrar hasta cuatro paneles de overlay: oro estimado, alertas, amenazas por BattleScore y compras recomendadas. Los paneles se pueden configurar y escalar por separado. El oro mostrado es una estimación basada en inventario, asesinatos, asistencias y súbditos; no es una lectura del oro real del jugador. Los campos disponibles dependen del modo y de la respuesta del juego.
-
-### Partidas guardadas y revisión
-
-Las sesiones pueden conservar eventos, instantáneas, cronologías, datos finales disponibles y resúmenes de rendimiento. La sección **Partidas guardadas** permite revisar las sesiones persistidas y abrir sus análisis. La ventana de revisión relaciona los eventos guardados con una grabación cuando existe. La sincronización posterior con Riot y los análisis con Gemini son funciones opcionales.
-
-### Grabaciones
-
-La biblioteca administra archivos de vídeo y sus metadatos locales, permite reproducirlos y saltar a marcadores relacionados con eventos. La grabación usa FFmpeg y el filtro `ddagrab` de Desktop Duplication (DXGI) para capturar un monitor. Al iniciar, se elige el monitor que contiene la ventana visible de League; si no se detecta el juego, se usa el monitor configurado. El monitor elegido permanece fijo durante esa sesión.
-
-La salida usa H.264 mediante el codificador `h264_amf` y los ajustes configurados de resolución, FPS y bitrate. La disponibilidad depende de que FFmpeg incluya ese filtro y codificador y de que el equipo pueda inicializar AMF. La aplicación no debe interpretarse como compatible con todos los fabricantes de GPU por el mero hecho de que tengan codificación por hardware.
-
-El audio se configura por separado. **Solo juego** requiere una fuente de entrada de audio disponible que pueda capturar la salida del juego; el backend actual no implementa loopback por proceso de Windows. Si no hay una fuente compatible, la grabación puede quedar sin audio de juego. No se requiere micrófono para grabar vídeo, y el modo de audio del sistema puede incluir sonido de otras aplicaciones según el dispositivo elegido.
-
-La grabación puede iniciarse manualmente desde **Grabaciones** o automáticamente según la configuración y los eventos de partida. No se debe considerar validada una captura solo porque se haya creado un archivo: revisa el estado y reproduce el resultado para confirmar imagen y sonido en tu equipo.
-
-### Ajustes
-
-Configura claves y Riot ID, preferencias de grabación, carpeta y límite de almacenamiento, dispositivos de audio, overlay y alertas. Las claves se guardan en el archivo local de ajustes como valores JSON sin cifrado; protege ese archivo y no lo compartas con secretos incluidos.
-
-## Requisitos
-
-- Windows, la plataforma objetivo del proyecto.
-- Python 3.11 o posterior.
-- Dependencias de `requirements.txt`.
-- FFmpeg utilizable para las funciones de grabación. `imageio-ffmpeg` proporciona un binario cuando está disponible; también se puede configurar o detectar una instalación compatible.
-- Cliente de League instalado para las funciones que usan LCU o datos de partida. El cliente no es necesario para abrir la aplicación y consultar datos locales ya guardados.
-- Conexión a Internet para actualizar catálogos y datos externos.
-
-Algunas funciones requieren configuración adicional: una clave de Riot para operaciones compatibles con Riot Games API y una clave de Google AI Studio para solicitar análisis de Gemini. Ninguna de ellas es necesaria para las funciones locales básicas.
-
-## Instalación y ejecución
+- **Windows** para la aplicación y sus integraciones nativas de captura y ventanas.
+- **Python 3.11** disponible mediante `py -3.11`, según el procedimiento de desarrollo del proyecto.
+- **Node.js 22.12 o superior** y npm (requisito del Electron incluido en el lockfile).
+- Cliente de League of Legends para LCU, Draft y datos en vivo. Las pruebas de escritorio pueden ejecutarse sin una partida activa.
+- Acceso a Internet para instalar dependencias y actualizar datos externos.
 
 Desde PowerShell, en la raíz del repositorio:
 
 ```powershell
 py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe main.py
+npm --prefix frontend ci
+npm run dev
 ```
 
-También se puede iniciar con `run.bat` después de crear `.venv` e instalar las dependencias. La aplicación intenta actualizar el catálogo de objetos Data Dragon al arrancar y usa la copia local si la actualización falla.
-
-## Datos y privacidad
-
-La configuración se guarda en `~/.solralol/settings.json` (en Windows, dentro del perfil del usuario). Los datos locales pueden incluir historial, sesiones, grabaciones, metadatos, preferencias y claves configuradas. Las credenciales de LCU se obtienen del lockfile local del cliente; no hace falta copiarlas a los ajustes.
-
-Las solicitudes a LCU y a Live Client permanecen en el equipo. Las funciones de actualización consultan Data Dragon y proveedores públicos de estadísticas. La sincronización solicitada envía peticiones a Riot Games API. Cuando se solicita un análisis de Gemini, el contenido de análisis correspondiente se envía a Google AI Studio. El usuario controla cuándo ejecutar estas funciones externas.
-
-Los endpoints LCU y Live Client son interfaces locales del juego y pueden cambiar. Los datos de estadísticas dependen de la cobertura, parche y muestra de cada proveedor; la aplicación puede mostrar información parcial o no disponible.
-
-## Arquitectura del repositorio
-
-```text
-SOLRALOL/
-|-- main.py                 # Entrada de la aplicación
-|-- _paths.py               # Rutas de desarrollo y empaquetado
-|-- data_dragon.py          # Catálogos y recursos de Data Dragon
-|-- requirements.txt        # Dependencias de Python
-|-- run.bat                 # Lanzador de Windows
-|-- main.spec               # Configuración de PyInstaller
-|-- app/
-|   |-- ui/                 # Ventanas, páginas, widgets y workers de Qt
-|   |-- services/           # Lógica, datos, integraciones y grabación
-|   |-- models/             # Modelos compartidos
-|   |-- utils/              # Utilidades
-|   `-- scratch/            # Pruebas y recursos de validación
-`-- data/
-    |-- champion_data/      # Datos locales por campeón y variante
-    |-- champion_metadata/  # Metadatos estáticos de campeones
-    |-- champion_abilities/ # Datos de habilidades
-    `-- ...                 # Catálogos e iconos locales
-```
-
-La interfaz delega adquisición de datos y cálculos a `app/services/`. Las tareas bloqueantes usan workers o mecanismos asíncronos para no detener el hilo de Qt. El análisis habitual lee el repositorio local; las consultas a proveedores se inician mediante acciones de actualización o funciones que las requieren.
-
-## Pruebas y comprobaciones
-
-Las pruebas y fixtures sin servicios externos se guardan en `app/scratch/`. `pytest` y `ruff` no están incluidos en `requirements.txt`; instálalos por separado en el entorno virtual si vas a ejecutar las comprobaciones:
+`npm run dev` inicia Vite y Electron; Electron arranca y cierra el backend Python privado. `SOLRALOL_PYTHON` permite elegir otro intérprete si no se usa `.venv\Scripts\python.exe`. `npm run dev:debug` habilita los puertos de depuración locales definidos por el proyecto. La herramienta opcional `solralol_dev.py`, la depuración Python y el empaquetado requieren:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install pytest ruff
-.\.venv\Scripts\python.exe -m pytest app/scratch/
-.\.venv\Scripts\python.exe -m ruff check app/
-.\.venv\Scripts\python.exe -m ruff format --check app/
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
 
-Las pruebas con mocks no sustituyen la verificación con el cliente, la GPU, los controladores, los proveedores externos o una partida real. En particular, comprueba la captura de vídeo y audio en el equipo donde se usará la aplicación.
+No hace falta crear un archivo de entorno para arrancar. Configura las claves **desde Ajustes**: Riot para descargas Match-V5 y Gemini solo si deseas análisis con IA. La conexión LCU se detecta desde el cliente local en ejecución; no copies el `lockfile` ni claves al repositorio. Para Live Match, inicia una partida compatible y mantén el cliente y el juego abiertos.
 
-## Crear un ejecutable
-
-El proyecto incluye una especificación de PyInstaller para Windows. `main.spec` configura un ejecutable de un solo archivo e incluye el directorio completo `data/` (catálogos, metadatos, iconos, recursos visuales, configuraciones de overlays y datos locales necesarios), además de los módulos Qt multimedia, SVG y WebEngine requeridos. El primer inicio del ejecutable copia los recursos incluidos a `~/.solralol/data/` para que la aplicación pueda mantener allí cachés y datos actualizados; el historial, ajustes y archivos del usuario permanecen en su ubicación local.
-
-Con PyInstaller instalado en `.venv`:
+## Compilación y empaquetado
 
 ```powershell
-.\.venv\Scripts\python.exe -m PyInstaller main.spec
+npm run build
+npm run dist:win
 ```
 
-El ejecutable de un solo archivo se genera en `dist\Solralol.exe`. Para limpiar la caché de PyInstaller y reconstruirlo sin confirmaciones:
+El primer comando ejecuta TypeScript y Vite. El segundo construye el backend con PyInstaller y genera un instalador Windows NSIS mediante electron-builder en `frontend/release/`; requiere `requirements-dev.txt` y las dependencias npm instaladas. Los artefactos de build no se publican como código fuente. El funcionamiento del instalador y de las integraciones con el juego requiere verificación en una instalación limpia.
+
+## Uso y datos locales
+
+Abre **Inicio** para consultar el historial en caché y sincronizar con LCU cuando el cliente esté conectado. Desde una partida Solo/Dúo de cola 420 puedes activar el análisis profundo; **Partidas guardadas** permite revisar detalles, cronología, BattleScore y análisis con IA cuando existan datos y credenciales suficientes. Usa **Análisis local** para preparar un campeón, **Draft** durante la selección y **Partida en vivo** durante el juego. En **Grabaciones** puedes revisar clips finalizados y en **Ajustes** controlar captura, overlays y almacenamiento.
+
+Los ajustes, sesiones, historial, análisis y vídeos se guardan en la carpeta de datos activa (por defecto `%USERPROFILE%\.solralol`). `%APPDATA%\Solralol\storage.json` apunta a esa ubicación si se cambia. `data/` contiene recursos del proyecto; no es la biblioteca personal. No subas la carpeta de usuario, claves, partidas privadas ni grabaciones a GitHub.
+
+## Estado del desarrollo y tareas pendientes
+
+**Solralol sigue en desarrollo activo.** Esta lista separa fallos reproducidos de comprobaciones que aún requieren League, hardware o datos reales. Las pruebas con fixtures no acreditan compatibilidad con una partida real.
+
+### Bugs pendientes de solucionar
+
+- [x] Corregida la pérdida de `position` al normalizar participantes LCU; las pruebas de resolución del rival de línea vuelven a pasar. Las otras expectativas que fallaban se ajustaron a los contratos actuales de métricas, BattleScore y logros.
+- [x] El banco de pruebas cierra los monitores de grabación que crea; antes pytest terminaba las aserciones pero quedaba esperando hilos de tests.
+- [ ] Comprobar con LCU real que la posición y el rival de línea se resuelven correctamente en los formatos que entrega el cliente actual. **No hay un defecto adicional confirmado** por esta comprobación pendiente.
+
+### Funcionalidades pendientes de completar
+
+- [ ] Obtener una fuente fiable de eventos de **Recall** antes de presentar contadores enemigos como regresos confirmados; el estado actual solo ofrece observaciones e inferencias identificadas.
+- [ ] Las categorías de mejora deshabilitadas por falta de atribución individual fiable, como `unattended_objectives`, deben seguir deshabilitadas hasta contar con datos verificables. `forgotten_dragons` solo evalúa cronología suficiente; no convierte la ausencia de datos en un hallazgo.
+- [ ] Evaluar la consistencia del análisis con IA y ampliar la calibración independiente de BattleScore v2.7 antes de interpretar las puntuaciones como una medida general validada. La calibración local disponible es limitada.
+- [ ] Definir una política explícita para identificar y retirar datos heredados realmente obsoletos tras una migración; conservar siempre historial, ajustes, análisis y grabaciones sin borrado implícito.
+
+### Mejoras de rendimiento y optimización
+
+- [ ] Dividir la carga del renderer: el build actual avisa de un bloque JavaScript de **610,58 kB** minificado, mayor que el umbral de 500 kB.
+- [ ] Medir tiempos de inicio, cambios de sección, volumen de actualizaciones del renderer, consumo en segundo plano y búsqueda/salto en vídeos largos con bibliotecas reales; no hay medición de release en este equipo.
+- [ ] Medir el coste de captura durante una partida real antes de afirmar impacto aceptable en FPS, CPU, GPU o disco.
+
+### Mejoras visuales y de experiencia de usuario
+
+- [ ] Revisar en Windows real escalado DPI, varios monitores, tamaños mínimos, navegación y disposición de paneles flotantes. Las vistas con datos parciales y los mensajes de proveedor externo requieren revisión de legibilidad.
+- [ ] Ajustar el anclaje del indicador de habilidad al HUD real; la API Live Client no proporciona coordenadas exactas del HUD.
+
+### Pruebas y validaciones pendientes
+
+- [x] Pasar la suite Python, las pruebas Node de cierre/BattleScore y los checks con fixtures de Electron/Chromium para timeline, preparación y overlays.
+- [ ] Ejecutar `test:home-layout` con Electron de desarrollo, puerto DevTools 9230 y suficientes partidas locales; verificar el diseño con los datos del usuario sin modificar su biblioteca.
+- [ ] Probar inicio/cierre con cliente League y grabación activos, pérdida y recuperación de LCU/Live Client, importación real de runas/builds para Aurelion Sol y Wukong, y actualización de recomendaciones tras compras. La normalización de ambos campeones y la importación simulada tienen pruebas, pero no sustituyen LCU real.
+- [ ] Probar eventos atribuidos a campeones, torres y súbditos, temporizadores de objetivos/inhibidores, alertas, sonido y órdenes de habilidades en partidas reales y diferentes parches. Hay cobertura automatizada de normalización, temporizadores y estados; falta comprobar la fuente en juego.
+- [ ] Probar overlays al alternar juego/otras ventanas, parpadeos, tiempos de notificación, clic transparente y limpieza al salir, en ventana, sin bordes, varios monitores y pantalla completa exclusiva. La lógica de oclusión tiene pruebas de fixtures; el modo exclusivo puede bloquear ventanas externas.
+- [ ] Verificar en partidas guardadas de distintos parches iconos de objetos, runas y hechizos, cronología, disponibilidad de BattleScore y reutilización de puntuaciones en Inicio. Hay pruebas de resolución con caché simulada; faltan fuentes reales y archivos antiguos.
+- [ ] Probar grabación, audio, reproducción, salto y borrado con FFmpeg/hardware reales, además del límite de almacenamiento y recuperación de `.lock` heredados. Las rutas de recuperación están cubiertas por pruebas temporales, no por una biblioteca de usuario real.
+- [ ] Validar el instalador Windows en una máquina limpia y una migración de almacenamiento real entre unidades; las pruebas automatizadas de migración usan datos temporales y conservan el origen.
+- [ ] Revisar manualmente la historia anterior de Git antes de una publicación pública: contiene material histórico de pruebas y referencias locales. Excluirlo del árbol actual no elimina los commits anteriores.
+
+## Desarrollo y pruebas
 
 ```powershell
-.\.venv\Scripts\python.exe -m PyInstaller --clean --noconfirm main.spec
+.\.venv\Scripts\python.exe -m pytest tests -q
+node --test tests/electron_shutdown_coordinator.test.cjs tests/frontend/battleScoreTimeline.test.mjs
+npm --prefix frontend run build
 ```
 
-El resultado depende de las versiones instaladas de Python, PyInstaller y Qt. El repositorio no incluye un instalador firmado ni un canal de actualización publicado.
-
-## Solución de problemas
-
-| Problema | Qué revisar |
-| --- | --- |
-| No aparecen datos de perfil, selección o historial LCU | Abre el cliente de League, espera a que termine de cargar y comprueba que el proceso y su lockfile estén disponibles. |
-| Partida en vivo sin datos | Confirma que hay una partida activa y que Live Client Data API responde en el equipo. |
-| Falta el análisis de campeón o una variante | Comprueba campeón, línea, rango y caché local; después usa la acción de actualización con conexión. |
-| No se inicia la grabación | Revisa FFmpeg, el filtro `ddagrab`, el encoder `h264_amf`, la carpeta de salida y los permisos. Consulta los diagnósticos de la aplicación. |
-| El vídeo no muestra el monitor esperado | Verifica qué monitor contiene League al iniciar y el índice de monitor configurado. La selección no cambia al cambiar el foco. |
-| La grabación no contiene sonido | Comprueba el modo, la fuente/dispositivo disponible y los diagnósticos. El backend no ofrece captura de audio por proceso; no asumas que «Solo juego» equivale a loopback exclusivo. |
-| Falla la sincronización o Gemini | Comprueba la clave, configuración de cuenta, conexión, permisos y límites del proveedor correspondiente. |
-
-## Limitaciones conocidas
-
-- La interfaz está disponible en español y Windows es el único sistema operativo objetivo documentado.
-- LCU es una interfaz interna y no estable del cliente de League; sus rutas y respuestas pueden cambiar.
-- La compatibilidad de la grabación depende de las capacidades presentes en el FFmpeg y el hardware instalados. La captura selecciona un monitor completo y no excluye otras ventanas visibles en él.
-- El backend actual no proporciona captura de audio por proceso de League. Las fuentes de audio tradicionales dependen de Windows y de los dispositivos configurados.
-- Las estadísticas de campeones y objetos no garantizan resultados de partida y pueden quedar desactualizadas entre parches.
-
-## Licencia y marcas
-
-El repositorio no incluye un archivo de licencia. No presupongas que el código puede redistribuirse o reutilizarse sin autorización del titular. League of Legends, sus personajes, objetos y recursos pertenecen a Riot Games y sus respectivos propietarios. SOLRALOL es un proyecto independiente y no está respaldado por Riot Games.
+La suite frontend no tiene un runner único. Los scripts visuales de `frontend/package.json` usan Chromium/Electron de desarrollo y requisitos propios; consulta `docs/` para sus límites. Los comandos de arriba verifican lógica y compilación, pero no sustituyen las validaciones con League, LCU, audio, DXGI o fullscreen.

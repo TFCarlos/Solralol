@@ -821,6 +821,8 @@ class MatchReviewAIService:
         """
         if not isinstance(scoring, dict):
             return None
+        if scoring.get("version") != "battlescore_v2_0" or scoring.get("calibration_version") != "battlescore_v2_0":
+            return None
         jugadores = scoring.get("players")
         if isinstance(jugadores, dict):
             jugador = jugadores.get(player_key)

@@ -1,8 +1,10 @@
 import json
+import hashlib
 import logging
 import os
 import re
 import unicodedata
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,9 +19,11 @@ ICON_DIR = DATA_DIR / "item_icons"
 CHAMPION_ICON_DIR = DATA_DIR / "champion_icons"
 CHAMPION_DATA_DIR = DATA_DIR / "champion_metadata"
 CHAMPION_MEMORY_CACHE: dict[str, dict] = {}
-RUNE_ICON_CATALOG_CACHE: dict[str, str] = {}
+RUNE_ICON_CATALOG_CACHE: dict[str, dict[str, str]] = {}
+_RUNE_ICON_CATALOG_STAMPS: dict[str, tuple] = {}
+_RUNE_ICON_CATALOG_LOCK = threading.RLock()
 #: La descarga del catálogo de runas ya falló en esta ejecución (sin red).
-RUNE_ICON_CATALOG_FAILED = False
+RUNE_ICON_CATALOG_FAILED: set[str] = set()
 
 
 def get_latest_version() -> str:
@@ -589,8 +593,37 @@ def get_rune_icon_path(
         "Phase Rush": "Stormraider's Surge",
     }
     lookup_name = aliases.get(rune_name, rune_name)
+    catalog = _rune_icon_catalog(version, download=download)
+    metadata_path = next((catalog[key] for name in (rune_name, lookup_name)
+                          for key in (str(name).casefold(), _normalize_rune_key(name).replace("_", ""))
+                          if key in catalog), None)
+    if metadata_path:
+        from app.services.storage_manager import atomic_write_bytes, get_storage_manager
+        local_path = rune_icon_cache_path(version, metadata_path, get_storage_manager().ddragon_dir)
+        try:
+            if local_path.is_file() and local_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+                return local_path
+        except OSError:
+            pass
+        miss_key = f"{version}:{metadata_path}"
+        if not download or miss_key in _RUNE_ICON_MISSES:
+            return None
+        try:
+            response = requests.get(f"{DD_BASE_URL}/cdn/img/{metadata_path}", timeout=10)
+            response.raise_for_status()
+            if response.content.startswith(b"\x89PNG\r\n\x1a\n") and len(response.content) <= 2_000_000:
+                atomic_write_bytes(local_path, response.content)
+                return local_path
+        except (requests.RequestException, OSError):
+            pass
+        _RUNE_ICON_MISSES.add(miss_key)
+        return None
     cache_key = _normalize_rune_key(lookup_name)
     asset_path = paths.get(rune_name) or paths.get(lookup_name)
+    # Retired ordinary perks must not override the current catalog. Shards
+    # are maintained separately because Riot omits them from runesReforged.
+    if catalog and asset_path and asset_path.startswith("Styles/") and f"perk-images/{asset_path}" not in catalog.values():
+        return None
     local_name = re.sub(r"[^A-Za-z0-9._-]+", "_", lookup_name).strip("_")
     local_path = RUNE_ICON_DIR / f"{local_name}.png"
     if local_path.exists():
@@ -649,38 +682,73 @@ def get_rune_icon_path(
     return None
 
 
-def _rune_icon_catalog(version: str) -> dict[str, str]:
-    """Catálogo oficial de runas del CDN (una sola petición por ejecución).
+def rune_icon_cache_path(version: str, icon: str, root: Path) -> Path:
+    """A reused ID never reuses artwork from another patch or icon definition."""
+    relative = icon.lstrip("/")
+    digest = hashlib.sha256(relative.casefold().encode("utf-8")).hexdigest()[:12]
+    name = re.sub(r"[^A-Za-z0-9_-]", "_", Path(relative).stem)
+    return root / "runes" / version / f"{name}-{digest}.png"
 
-    Si la primera petición falla se recuerda el fallo: sin conexión, este
-    método se llamaba una vez por cada runa que había que pintar y cada
-    llamada volvía a esperar el timeout de red.
-    """
-    global RUNE_ICON_CATALOG_FAILED
 
-    if RUNE_ICON_CATALOG_CACHE or RUNE_ICON_CATALOG_FAILED:
-        return RUNE_ICON_CATALOG_CACHE
-
-    try:
-        response = requests.get(
-            f"{DD_BASE_URL}/cdn/{version}/data/en_US/runesReforged.json",
-            timeout=10,
-        )
-        response.raise_for_status()
-        for style in response.json():
-            RUNE_ICON_CATALOG_CACHE[str(style.get("name", "")).lower()] = style.get(
-                "icon", ""
-            )
-            for slot in style.get("slots", []):
-                for rune in slot.get("runes", []):
-                    name = str(rune.get("name", "")).lower()
-                    if name:
-                        RUNE_ICON_CATALOG_CACHE[name] = rune.get("icon", "")
-    except (requests.RequestException, ValueError, TypeError):
-        RUNE_ICON_CATALOG_FAILED = True
-        return RUNE_ICON_CATALOG_CACHE
-
-    return RUNE_ICON_CATALOG_CACHE
+def _rune_icon_catalog(version: str, *, download: bool = True) -> dict[str, str]:
+    """One patch-scoped Riot catalog shared by the legacy and Electron UIs."""
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        return {}
+    from app.services.storage_manager import atomic_write_json, get_storage_manager
+    paths = [DATA_DIR / f"runes_reforged_{version}.json",
+             get_storage_manager().ddragon_dir / f"runes_reforged_{version}.json"]
+    with _RUNE_ICON_CATALOG_LOCK:
+        source = None
+        stamp = ()
+        for path in paths:
+            try:
+                stat = path.stat()
+                stamp = (str(path), stat.st_mtime_ns, stat.st_size)
+                if _RUNE_ICON_CATALOG_STAMPS.get(version) == stamp:
+                    return RUNE_ICON_CATALOG_CACHE[version]
+                candidate = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(candidate, list) and candidate:
+                    source = candidate
+                    break
+            except (OSError, ValueError):
+                continue
+        if source is None:
+            if version in RUNE_ICON_CATALOG_CACHE and not stamp:
+                return RUNE_ICON_CATALOG_CACHE[version]
+            if not download or version in RUNE_ICON_CATALOG_FAILED:
+                return {}
+            try:
+                response = requests.get(f"{DD_BASE_URL}/cdn/{version}/data/en_US/runesReforged.json", timeout=8)
+                response.raise_for_status()
+                source = response.json()
+                if not isinstance(source, list) or not source:
+                    raise ValueError("Empty rune catalog")
+                try:
+                    atomic_write_json(paths[1], source)
+                    stat = paths[1].stat()
+                    stamp = (str(paths[1]), stat.st_mtime_ns, stat.st_size)
+                except OSError:
+                    stamp = ()
+            except (requests.RequestException, ValueError, TypeError):
+                RUNE_ICON_CATALOG_FAILED.add(version)
+                return {}
+        result: dict[str, str] = {}
+        for style in source:
+            if not isinstance(style, dict):
+                continue
+            entries = [style] + [rune for slot in style.get("slots", []) if isinstance(slot, dict)
+                                 for rune in slot.get("runes", []) if isinstance(rune, dict)]
+            for rune in entries:
+                icon = str(rune.get("icon", ""))
+                if not icon.startswith("perk-images/") or ".." in icon.split("/"):
+                    continue
+                for value in (rune.get("id"), rune.get("key"), rune.get("name")):
+                    if value is not None:
+                        result[str(value).casefold()] = icon
+                        result[_normalize_rune_key(str(value)).replace("_", "")] = icon
+        RUNE_ICON_CATALOG_CACHE[version] = result
+        _RUNE_ICON_CATALOG_STAMPS[version] = stamp
+        return result
 
 
 def download_all_rune_icons(version: str) -> int:
@@ -688,7 +756,7 @@ def download_all_rune_icons(version: str) -> int:
     catalog = _rune_icon_catalog(version)
     downloaded = 0
     # El catálogo cubre runas y árboles; los fragmentos no figuran en él.
-    names = set(catalog) | {
+    names = set({icon: name for name, icon in catalog.items()}.values()) | {
         "Adaptive Force",
         "Attack Speed",
         "Ability Haste",

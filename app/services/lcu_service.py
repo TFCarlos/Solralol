@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from collections import Counter
 import itertools
 import logging
 import re
@@ -273,14 +274,28 @@ class LCUService:
         if not self.port or not self.auth_token:
             if not self.refresh_connection():
                 return False
-        try:
-            resp = self.session.get(
-                f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner",
-                timeout=1.5,
-            )
-            return resp.status_code == 200
-        except requests.RequestException:
-            return False
+        for attempt in range(2):
+            try:
+                resp = self.session.get(
+                    f"https://127.0.0.1:{self.port}/lol-summoner/v1/current-summoner",
+                    timeout=1.5,
+                )
+                if resp.status_code == 200:
+                    return True
+            except requests.RequestException:
+                pass
+            if attempt == 0:
+                # The client may have restarted with a new lockfile while this
+                # long-lived service still holds its previous port and token.
+                previous_connection = (self.port, self.auth_token)
+                self.port = None
+                self.auth_token = None
+                self.session.headers.pop("Authorization", None)
+                if not self.refresh_connection():
+                    return False
+                if (self.port, self.auth_token) == previous_connection:
+                    return False
+        return False
 
     def is_champ_select_active(self) -> bool:
         if not self.is_connected():
@@ -1025,6 +1040,7 @@ class LCUService:
         item_ids: list[str],
         boots_id: str | None = None,
         situational: list[dict[str, Any]] | None = None,
+        starter_ids: list[str] | None = None,
     ) -> tuple[bool, str]:
         """Crea la página general «Solralol - <Campeón> Build» sin tocar los conjuntos del usuario.
 
@@ -1038,9 +1054,8 @@ class LCUService:
         se añade como un bloque adicional después de los objetos principales y las
         botas. Los grupos vacíos o con IDs inválidos se omiten.
 
-        Si ``role`` es jungla, el primer bloque (el hueco de starter) reúne los
-        tres compañeros de jungla (``JUNGLE_STARTER_IDS``) para que la partida
-        empiece eligiendo uno; el resto de líneas no llevan bloque starter.
+        El primer bloque reutiliza la compra inicial del analizador, incluidas
+        sus cantidades. Los compañeros de jungla son opciones excluyentes.
         """
         name = str(champion_name or "").strip()
         if champion_id <= 0 or not name:
@@ -1053,14 +1068,28 @@ class LCUService:
             )
         if len(set(ids_principales)) != len(ids_principales):
             return False, "La build contiene objetos principales duplicados."
-        starter_ids = (
-            list(self.JUNGLE_STARTER_IDS)
-            if str(role or "").strip().casefold() in self.JUNGLE_ROLES
-            else []
-        )
+        role_key = str(role or "").strip().casefold()
+        from app.services.draft_analyzer_service import DraftAnalyzerService
+        analyzer = getattr(self, "_starter_analyzer", None)
+        if analyzer is None:
+            analyzer = self._starter_analyzer = DraftAnalyzerService()
+        if not starter_ids:
+            starter_ids = [item["id"] for item in analyzer.get_starter_items(name, role)
+                           for _ in range(item.get("count", 1))]
+        starter_ids = [str(item).strip() for item in starter_ids]
         ids = ids_principales + ([str(boots_id)] if boots_id else []) + starter_ids
         if not all(i.isdigit() and int(i) > 0 for i in ids):
             return False, "La build contiene IDs de objetos inválidos."
+        if not starter_ids or not all(analyzer.curador.catalogo.validar_objeto_inicial(i, name).elegible for i in starter_ids):
+            return False, "No hay una compra inicial válida para este parche."
+        if sum(analyzer.items[i]["gold"]["total"] for i in starter_ids) > 500:
+            return False, "Los objetos iniciales superan los 500 de oro disponibles."
+        companions = sum(i in self.JUNGLE_STARTER_IDS for i in starter_ids)
+        if (role_key in self.JUNGLE_ROLES and companions != 1) or (role_key not in self.JUNGLE_ROLES and companions):
+            return False, "Los objetos iniciales de jungla no corresponden a esta posición."
+        support = role_key in {"support", "utility", "apoyo", "sup"}
+        if (support and "3865" not in starter_ids) or (not support and "3865" in starter_ids):
+            return False, "El objeto inicial de apoyo no corresponde a esta posición."
         if not self.is_connected():
             return False, "Cliente de League of Legends no está conectado."
         try:
@@ -1095,13 +1124,7 @@ class LCUService:
             )
             blocks: list[dict[str, Any]] = []
             if starter_ids:
-                # En jungla el hueco de starter lo ocupan los tres compañeros.
-                blocks.append(
-                    {
-                        "type": "Objetos iniciales (starter): elige un compañero de jungla",
-                        "items": [{"id": str(i), "count": 1} for i in starter_ids],
-                    }
-                )
+                blocks.append({"type": "Objetos iniciales", "items": [{"id": i, "count": count} for i, count in Counter(starter_ids).items()]})
             blocks.append(
                 {
                     "type": f"Objetos principales ({len(ids_principales)})",
@@ -1149,10 +1172,7 @@ class LCUService:
                     else ""
                 )
                 if starter_ids:
-                    extra += (
-                        " El bloque inicial ocupa el hueco de starter con los "
-                        "3 compañeros de jungla."
-                    )
+                    extra += " Incluye el bloque de objetos iniciales."
                 return True, (
                     f"Página general «{title}» creada en el cliente "
                     f"(disponible para cualquier campeón).{extra}"

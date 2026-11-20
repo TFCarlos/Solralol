@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+import json
 import re
+import logging
 from typing import Any
 
 VERSION_ESQUEMA_ANALISIS = 3
 VERSIONES_COMPATIBLES = {1, 2, VERSION_ESQUEMA_ANALISIS}
 TIPO_ANALISIS_GENERAL = "general_match_analysis"
+MAX_DETERMINISTIC_KEY_EVENTS = 120
+logger = logging.getLogger(__name__)
+
+
+def _limpiar_disclaimer_cronologia(value: Any) -> str:
+    text = str(value or "")
+    for pattern in (
+        r"(?i)La secuencia y los participantes est[aá]n confirmados;\s*no demuestra causalidad\.?",
+        r"(?i)La secuencia y los participantes compartidos est[aá]n confirmados;\s*no demuestra causalidad\.?",
+        r"(?i)La secuencia y los participantes est[aá]n confirmados;\s*no demuestra que la baja causara el objetivo\.?",
+        r"(?i)La secuencia confirma participantes y orden temporal;\s*no demuestra causalidad\.?",
+    ):
+        text = re.sub(pattern, "", text)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def _texto_opcional(valor: Any, ruta: str) -> str | None:
@@ -88,6 +104,52 @@ def validar_analisis_partida(payload: Any) -> dict[str, Any]:
                 if dato is not None:
                     fases[clave][propiedad] = dato
         resultado[campo] = fases
+    eventos_clave = payload.get("key_events")
+    if eventos_clave is not None:
+        # Optional provider output must not invalidate an otherwise usable report.
+        # Invalid event lists are reconstructed from deterministic timeline evidence.
+        if not isinstance(eventos_clave, list):
+            logger.warning("[AI timeline] provider key_events was not a list; rebuilding from evidence")
+            eventos_clave = []
+        elif len(eventos_clave) > 40:
+            logger.warning("[AI timeline] provider key_events capped from %d to 40", len(eventos_clave))
+            eventos_clave = eventos_clave[:40]
+        resultado["key_events"] = []
+        for indice, evento in enumerate(eventos_clave):
+            ruta = f"key_events[{indice}]"
+            if not isinstance(evento, dict):
+                logger.debug("[AI timeline] skipped malformed %s", ruta)
+                continue
+            refs = evento.get("event_ids")
+            # Teamfight summaries can legitimately cite more than six kills.
+            # Keep a bounded list, but do not discard the whole fight for that.
+            if not isinstance(refs, list) or not 1 <= len(refs) <= 40:
+                continue
+            ids = [str(ref).strip()[:100] for ref in refs if isinstance(ref, str) and ref.strip()]
+            try:
+                titulo = _texto_opcional(evento.get("title"), f"{ruta}.title") or ""
+                descripcion = _texto_opcional(evento.get("description"), f"{ruta}.description") or ""
+                impacto = _texto_opcional(evento.get("why_it_matters"), f"{ruta}.why_it_matters") or ""
+            except (TypeError, ValueError):
+                logger.debug("[AI timeline] skipped invalid text in %s", ruta)
+                continue
+            if ids and titulo and descripcion and impacto:
+                normalized_event = {
+                    "event_ids": list(dict.fromkeys(ids)), "title": titulo,
+                    "description": descripcion, "why_it_matters": impacto,
+                }
+                event_kind = evento.get("event_kind")
+                if isinstance(event_kind, str) and event_kind.strip()[:80]:
+                    normalized_event["event_kind"] = event_kind.strip()[:80]
+                for optional_field in ("player_contribution", "recommendation"):
+                    try:
+                        optional_text = _texto_opcional(evento.get(optional_field), f"{ruta}.{optional_field}")
+                    except (TypeError, ValueError):
+                        optional_text = None
+                        logger.debug("[AI timeline] ignored malformed optional %s.%s", ruta, optional_field)
+                    if optional_text:
+                        normalized_event[optional_field] = optional_text
+                resultado["key_events"].append(normalized_event)
     for campo in (
         "farming",
         "itemization",
@@ -299,14 +361,25 @@ def enriquecer_analisis_partida(
     )
     build = _inferir_build(contexto)
     contexto["model_item_alternatives"] = payload.get("item_alternatives", [])
+    contexto["model_rune_alternatives"] = payload.get("rune_alternatives", [])
     resultado["item_reviews"] = _incorporar_evaluaciones_modelo(
         payload.get("item_reviews"),
         build["item_reviews"],
         build["item_alternatives"],
         contexto,
     )
-    resultado["item_alternatives"] = build["item_alternatives"]
+    resultado["item_alternatives"] = _validar_alternativas_objetos_modelo(
+        contexto, build["item_alternatives"], compatible=bool(build.get("catalog_compatible"))
+    )
     resultado["rune_evaluation"] = build.get("rune_evaluation")
+    if isinstance(resultado.get("rune_evaluation"), dict):
+        alternativa_runa = _validar_alternativa_runa(
+            contexto, resultado["rune_evaluation"], compatible=bool(build.get("catalog_compatible"))
+        )
+        if alternativa_runa:
+            resultado["rune_evaluation"]["alternative"] = alternativa_runa
+    if isinstance(resultado.get("rune_evaluation"), dict) and resultado["rune_comments"]:
+        resultado["rune_evaluation"]["matchup_assessment"] = resultado["rune_comments"][:3]
     resultado["build_archetype"] = build.get("archetype")
     resultado["build_assessment"] = (
         resultado.get("build_assessment") or build["assessment"]
@@ -407,6 +480,331 @@ def enriquecer_analisis_partida(
     if not punto or "event-" in punto.casefold():
         resumen["main_turning_point"] = _punto_inflexion(contexto)
     resumen["decisive_events"] = _eventos_decisivos(contexto)
+    raw_key_events = resultado.get("key_events", [])
+    if not isinstance(raw_key_events, list):
+        raw_key_events = []
+    evidencia = contexto.get("analysis_evidence", {})
+    notable = evidencia.get("notable_timeline", []) if isinstance(evidencia, dict) else []
+    por_id = {
+        str(evento.get("event_id")): evento
+        for evento in notable
+        if isinstance(evento, dict) and evento.get("event_id")
+    }
+    momentos_filtrados = []
+    for evento in raw_key_events:
+        referencias = list(dict.fromkeys(evento.get("event_ids", [])))
+        hechos = [por_id.get(str(referencia)) for referencia in referencias]
+        if (
+            not referencias
+            or any(hecho is None for hecho in hechos)
+            or len(evento.get("why_it_matters", "")) < 18
+        ):
+            continue
+        referenced = {str(ref) for ref in referencias}
+        referenced_kills = {
+            ref for ref in referenced
+            if por_id[ref].get("category") == "kill"
+        }
+        referenced_objectives = {
+            ref for ref in referenced
+            if por_id[ref].get("category") in {"objective", "structure"}
+        }
+        if referenced_kills and referenced_objectives:
+            personal_selection_for_pairs = evidencia.get("personal_event_selection", {})
+            positive_relations = (
+                personal_selection_for_pairs.get("kill_objective_correlations", [])
+                if isinstance(personal_selection_for_pairs, dict)
+                and personal_selection_for_pairs.get("version") in {1, 2}
+                else evidencia.get("kill_objective_correlations", [])
+            )
+            accepted_pairs = {
+                (str(item.get("kill_event_id") or ""), str(item.get("objective_event_id") or ""))
+                for item in positive_relations
+                if isinstance(item, dict) and item.get("status") == "accepted"
+            }
+            inverse_relations = (
+                personal_selection_for_pairs.get("player_death_objective_correlations", [])
+                if isinstance(personal_selection_for_pairs, dict)
+                and personal_selection_for_pairs.get("version") in {1, 2}
+                else evidencia.get("player_death_objective_correlations", [])
+            )
+            accepted_pairs.update(
+                (str(item.get("death_event_id") or ""), str(item.get("objective_event_id") or ""))
+                for item in inverse_relations
+                if isinstance(item, dict) and item.get("status") == "accepted"
+            )
+            if any(
+                not any((kill_ref, objective_ref) in accepted_pairs for kill_ref in referenced_kills)
+                for objective_ref in referenced_objectives
+            ):
+                logger.info("[AI timeline] discarded unverified kill-objective relationship refs=%d", len(referencias))
+                continue
+        evento["event_ids"] = [str(ref) for ref in referencias]
+        evento["why_it_matters"] = _limpiar_disclaimer_cronologia(evento.get("why_it_matters"))
+        momentos_filtrados.append(evento)
+    personal_selection = evidencia.get("personal_event_selection", {}) if isinstance(evidencia, dict) else {}
+    personal_ids = {
+        str(ref) for ref in personal_selection.get("personal_event_ids", []) if ref
+    } if isinstance(personal_selection, dict) else set()
+    if isinstance(personal_selection, dict) and personal_selection.get("version") in {1, 2}:
+        before_personal = len(momentos_filtrados)
+        momentos_filtrados = [
+            event for event in momentos_filtrados
+            if event.get("event_ids") and set(event["event_ids"]).issubset(personal_ids)
+        ]
+        if before_personal != len(momentos_filtrados):
+            logger.info("[AI timeline] discarded non-personal interpretations=%d", before_personal - len(momentos_filtrados))
+    ids_usados = {
+        str(ref) for evento in momentos_filtrados for ref in evento.get("event_ids", [])
+    }
+    candidatos = evidencia.get("key_event_candidates", []) if isinstance(evidencia, dict) else []
+    candidatos = [candidate for candidate in candidatos if isinstance(candidate, dict)]
+    relevance_rank = {"low": 0, "medium": 1, "high": 2}
+    for momento in momentos_filtrados:
+        event_refs = set(str(ref) for ref in momento.get("event_ids", []))
+        matched = [
+            candidate for candidate in candidatos
+            if event_refs.intersection(str(ref) for ref in candidate.get("event_ids", []))
+        ]
+        if matched:
+            momento["relevance"] = max(
+                (candidate.get("relevance", "low") for candidate in matched),
+                key=lambda level: relevance_rank.get(str(level), 0),
+            )
+    candidatos.sort(key=lambda candidate: (
+        0 if candidate.get("candidate_type") == "teamfight_cluster" else
+        1 if candidate.get("candidate_type") in {"combat_then_objective", "single_kill_before_objective", "validated_kills_before_objective"} else
+        2 if candidate.get("candidate_type") == "player_death_to_enemy_objective" else
+        3 if candidate.get("candidate_type") in {"objective_trade_candidate", "consecutive_structure_captures"} else 4,
+        float(candidate.get("seconds_between_last_kill_and_objective") or 0),
+    ))
+    retained_fallbacks = 0
+    merged_cluster_events = 0
+    for candidate in candidatos:
+        if len(momentos_filtrados) >= MAX_DETERMINISTIC_KEY_EVENTS:
+            break
+        refs = list(dict.fromkeys(
+            str(ref) for ref in candidate.get("event_ids", []) if str(ref) in por_id
+        ))
+        kind = candidate.get("candidate_type")
+        if not refs:
+            continue
+        if kind == "player_death_to_enemy_objective":
+            death_refs = [ref for ref in refs if por_id[ref].get("category") == "kill" and por_id[ref].get("victim_key") == "player_local"]
+            objective_refs = [ref for ref in refs if por_id[ref].get("category") in {"objective", "structure"}]
+            existing = next((
+                item for item in momentos_filtrados
+                if death_refs and set(str(ref) for ref in item.get("event_ids", [])).intersection(death_refs)
+            ), None)
+            if existing is not None and objective_refs:
+                already_linked_conversion = existing.get("event_kind") == "player_death_to_enemy_objective"
+                existing_refs = list(dict.fromkeys(map(str, existing.get("event_ids", []))))
+                missing_objective_refs = [ref for ref in objective_refs if ref not in existing_refs]
+                existing["event_ids"] = list(dict.fromkeys(
+                    [*existing_refs, *missing_objective_refs]
+                ))
+                objective_facts = [str(por_id[ref].get("label") or "") for ref in missing_objective_refs]
+                if objective_facts:
+                    existing["description"] = (str(existing.get("description") or "").rstrip() + " " + " ".join(item for item in objective_facts if item)).strip()
+                existing["event_kind"] = "player_death_to_enemy_objective"
+                existing["relevance"] = "high"
+                objective_name = str(candidate.get("objective") or "un objetivo")
+                existing["title"] = (
+                    "Tu muerte precedió a varias capturas rivales"
+                    if already_linked_conversion
+                    else f"Tu muerte precedió al objetivo rival: {objective_name}"
+                )
+                existing["why_it_matters"] = (str(existing.get("why_it_matters") or "").rstrip() + " " +
+                    f"{candidate.get('death_killer') or 'Un rival'} participó en tu eliminación y {candidate.get('objective_finisher') or 'un rival'} aseguró {objective_name} {candidate.get('seconds_between_death_and_objective', 0)} s después.").strip()
+                duplicate_events = [
+                    item for item in momentos_filtrados
+                    if item is not existing
+                    and set(map(str, item.get("event_ids", []))).intersection(death_refs)
+                    and set(map(str, item.get("event_ids", []))).intersection(objective_refs)
+                ]
+                for duplicate in duplicate_events:
+                    existing["event_ids"] = list(dict.fromkeys([
+                        *map(str, existing.get("event_ids", [])),
+                        *map(str, duplicate.get("event_ids", [])),
+                    ]))
+                    momentos_filtrados.remove(duplicate)
+                ids_usados.update(refs)
+                merged_cluster_events += 1
+                continue
+        if kind in {"combat_then_objective", "single_kill_before_objective", "validated_kills_before_objective"}:
+            objective_refs = [
+                ref for ref in refs
+                if por_id[ref].get("category") in {"objective", "structure"}
+            ]
+            existing = next((
+                item for item in momentos_filtrados
+                if set(str(ref) for ref in item.get("event_ids", [])).intersection(objective_refs)
+            ), None)
+            if existing is not None:
+                existing_refs = list(dict.fromkeys(
+                    str(ref) for ref in existing.get("event_ids", []) + refs
+                ))
+                missing = [por_id[ref] for ref in refs if ref not in ids_usados]
+                existing["event_ids"] = existing_refs
+                if missing:
+                    details = " ".join(str(item.get("label") or "") for item in missing).strip()
+                    if details:
+                        existing["description"] = (
+                            str(existing.get("description") or "").rstrip() + " " + details
+                        ).strip()
+                    shared = candidate.get("shared_participants") or [
+                        candidate.get("shared_participant") or candidate.get("objective_finisher") or "El rematador"
+                    ]
+                    shared_text = ", ".join(str(value) for value in shared)
+                    objective = str(candidate.get("objective") or "el objetivo")
+                    gap = int(candidate.get("seconds_between_last_kill_and_objective") or 0)
+                    existing["why_it_matters"] = (
+                        str(existing.get("why_it_matters") or "").rstrip()
+                        + f" La cronologia confirma que {shared_text} participo en la baja y que despues se registro {objective}, {gap} s mas tarde."
+                    )
+                ids_usados.update(refs)
+                merged_cluster_events += 1
+                continue
+        if kind == "teamfight_cluster":
+            existing = next((
+                item for item in momentos_filtrados
+                if set(str(ref) for ref in item.get("event_ids", [])).intersection(refs)
+            ), None)
+            if existing is not None:
+                existing_refs = list(dict.fromkeys(
+                    str(ref) for ref in existing.get("event_ids", []) + refs
+                ))
+                missing = [por_id[ref] for ref in refs if ref not in ids_usados]
+                existing["event_ids"] = existing_refs
+                if missing:
+                    details = " ".join(str(item.get("label") or "") for item in missing).strip()
+                    if details:
+                        existing["description"] = (str(existing.get("description") or "").rstrip() + " " + details).strip()
+                    count = int(candidate.get("combat_kill_count") or len(refs))
+                    existing["why_it_matters"] = (
+                        str(existing.get("why_it_matters") or "").rstrip()
+                        + f" La detección determinista agrupa {count} bajas en esta secuencia; los eventos se conservan aunque la interpretación de IA citara solo parte de ellos."
+                    )
+                ids_usados.update(refs)
+                merged_cluster_events += 1
+                continue
+        if all(ref in ids_usados for ref in refs):
+            continue
+        facts = [por_id[ref] for ref in refs]
+        kills = int(candidate.get("combat_kill_count") or 0)
+        times = list(dict.fromkeys(
+            str(fact.get("time_label") or "") for fact in facts if fact.get("time_label")
+        ))
+        labels = [str(fact.get("label") or "") for fact in facts if fact.get("label")]
+        if kind == "teamfight_cluster":
+            if kills < 4 or not candidate.get("local_player_involved"):
+                continue
+            title = f"Combate agrupado con {kills} bajas"
+            description = " ".join(labels)
+            allied, enemy = candidate.get("allied_deaths"), candidate.get("enemy_deaths")
+            distribution = (
+                f" Se registraron {allied} bajas aliadas y {enemy} rivales."
+                if isinstance(allied, int) and isinstance(enemy, int) else ""
+            )
+            reason = (
+                f"El combate agrupado se extendio de {times[0] if times else 'hora no disponible'} "
+                f"a {times[-1] if times else 'hora no disponible'} y registro {kills} bajas.{distribution} "
+                f"Tu contribucion confirmada: {candidate.get('player_kills', 0)} "
+                f"{'baja' if candidate.get('player_kills', 0) == 1 else 'bajas'}, "
+                f"{candidate.get('player_assists', 0)} "
+                f"{'asistencia' if candidate.get('player_assists', 0) == 1 else 'asistencias'} y "
+                f"{candidate.get('player_deaths', 0)} "
+                f"{'muerte' if candidate.get('player_deaths', 0) == 1 else 'muertes'}."
+            )
+        elif kind in {"combat_then_objective", "single_kill_before_objective", "validated_kills_before_objective"}:
+            objective = str(candidate.get("objective") or "el objetivo")
+            title = f"Combate previo a {objective}" if kills > 1 else f"Eliminacion previa a {objective}"
+            description = " ".join(labels)
+            gap = int(candidate.get("seconds_between_last_kill_and_objective") or 0)
+            shared = candidate.get("shared_participants") or [candidate.get("shared_participant") or "El rematador"]
+            shared_text = ", ".join(str(value) for value in shared)
+            team = str(candidate.get("objective_team") or "el equipo beneficiado")
+            kill_word = "eliminacion" if kills == 1 else "eliminaciones"
+            title = f"{kill_word.capitalize()} seguida de {objective}" if kills == 1 else f"{kills} {kill_word} seguidas de {objective}"
+            reason = (
+                f"{shared_text} participo en {kill_word} y despues {candidate.get('objective_finisher') or 'el rematador'} "
+                f"aseguro {objective} para {team}, {gap} s despues de la ultima baja."
+            )
+        elif kind == "player_death_to_enemy_objective":
+            objective = str(candidate.get("objective") or "el objetivo")
+            finisher = str(candidate.get("objective_finisher") or "Un campeon rival")
+            killer = str(candidate.get("death_killer") or "Un campeon rival")
+            assisters = [str(item) for item in candidate.get("death_assisters", []) if item]
+            death_description = str(facts[0].get("label") or "Tu personaje fue eliminado")
+            title = f"Tu muerte precedió al objetivo rival: {objective}"
+            description = f"{death_description}"
+            if assisters:
+                description += f" Con la asistencia de {', '.join(assisters)}."
+            description += f" Posteriormente, {finisher} aseguró {objective}."
+            gap = int(candidate.get("seconds_between_death_and_objective") or 0)
+            contributors = list(dict.fromkeys([killer, *assisters]))
+            contributor_text = ", ".join(contributors)
+            participation_verb = "participó" if len(contributors) == 1 else "participaron"
+            reason = (
+                f"{contributor_text} {participation_verb} en tu eliminación; "
+                f"{finisher} aseguró {objective} {gap} s después. Es una secuencia potencialmente costosa para tu equipo. "
+                "En una situacion similar, sopesa el riesgo de exponerte cuando una baja pueda dejar al rival en condiciones de disputar objetivos."
+            )
+        elif kind == "objective_capture":
+            objective = str(candidate.get("objective") or (labels[-1] if labels else "objetivo"))
+            team = str(candidate.get("objective_team") or "equipo no identificado")
+            title = f"Objetivo asegurado: {objective}"
+            description = " ".join(labels) or objective
+            reason = f"El registro confirma que {team} aseguro {objective} en {candidate.get('time') or (times[0] if times else 'un momento sin hora disponible')}."
+        elif kind == "objective_trade_candidate":
+            objectives = candidate.get("objectives", [])
+            title = "Capturas cercanas de equipos distintos"
+            description = " ".join(labels)
+            reason = (
+                f"Se registraron {', '.join(str(item) for item in objectives)} con {candidate.get('seconds_apart', 0)} s de diferencia. "
+                "La secuencia puede reflejar un intercambio de mapa; no confirma que fuera intencional."
+            )
+        elif kind == "consecutive_structure_captures":
+            count = int(candidate.get("structure_count") or len(facts))
+            title = f"{count} estructuras en una secuencia"
+            description = " ".join(labels)
+            reason = (
+                f"La cronologia registra estas estructuras entre {times[0] if times else 'horas no disponibles'} "
+                f"y {times[-1] if times else 'horas no disponibles'}, dentro de una ventana de 120 s."
+            )
+        elif kind == "potential_swing_kill":
+            signals = candidate.get("recorded_signals", [])
+            if not any(signal in signals for signal in ("recorded_shutdown_or_bounty", "late_game_kill")):
+                continue
+            title = "Baja con senal de impacto registrada"
+            description = " ".join(labels)
+            signal_text = "una recompensa o shutdown registrada" if "recorded_shutdown_or_bounty" in signals else "una baja en los ultimos 120 segundos"
+            reason = f"La telemetria marca {signal_text}. La cronologia no mide por si sola el cambio de oro o la consecuencia posterior."
+        elif kind == "confirmed_700_shutdown":
+            participation = candidate.get("player_participation")
+            title = "Shutdown conseguido" if participation == "secured" else "Participacion en shutdown"
+            description = " ".join(labels)
+            action = "conseguiste" if participation == "secured" else "participaste con una asistencia en"
+            reason = f"El registro confirma una recompensa de shutdown de 700 de oro y que {action} la eliminacion de {candidate.get('victim_champion') or 'un campeon rival'}."
+        else:
+            continue
+        momentos_filtrados.append({
+            "event_ids": refs,
+            "title": title,
+            "description": description or title,
+            "why_it_matters": reason,
+            "source": "deterministic_fallback",
+            "relevance": candidate.get("relevance", "medium"),
+            "event_kind": kind,
+        })
+        ids_usados.update(refs)
+        retained_fallbacks += 1
+    resultado["key_events"] = momentos_filtrados
+    logger.info(
+        "[AI timeline] model_events=%d deterministic_candidates=%d retained_fallbacks=%d merged_cluster_events=%d final_events=%d limit=%d",
+        len(raw_key_events), len(candidatos), retained_fallbacks, merged_cluster_events, len(momentos_filtrados),
+        MAX_DETERMINISTIC_KEY_EVENTS,
+    )
     from app.services.match_analysis_grading import calcular_grados_rendimiento
 
     evidencia_puntuacion = resultado.get("match_evidence", {}).get(
@@ -888,12 +1286,18 @@ def _inferir_build(contexto: dict[str, Any]) -> dict[str, Any]:
             {
                 "item_id": objetivo,
                 "name": item_objetivo.get("name_es") or item_objetivo.get("name"),
+                "description": re.sub(r"<[^>]+>", " ", str(item_objetivo.get("description_es") or item_objetivo.get("description") or "")).strip(),
+                "stats": item_objetivo.get("stats", {}),
+                "gold_total": costo_objetivo,
                 "component_id": componente,
                 "component_name": item_componente.get("name_es")
                 or item_componente.get("name"),
                 "replace_or_delay_item_id": reemplazo,
                 "replace_or_delay_item": item_reemplazo.get("name_es")
                 or item_reemplazo.get("name"),
+                "replace_or_delay_item_description": re.sub(r"<[^>]+>", " ", str(item_reemplazo.get("description_es") or item_reemplazo.get("description") or "")).strip(),
+                "replace_or_delay_item_stats": item_reemplazo.get("stats", {}),
+                "replace_or_delay_item_gold_total": item_reemplazo.get("gold", {}).get("total"),
                 "target_item_id": objetivo,
                 "target_item_name": item_objetivo.get("name_es")
                 or item_objetivo.get("name"),
@@ -925,7 +1329,150 @@ def _inferir_build(contexto: dict[str, Any]) -> dict[str, Any]:
             "La partida no conserva una configuración de runas identificable; no se recomienda cambiarla."
         ],
         "rune_evaluation": rune_eval,
+        "catalog_compatible": compatible,
     }
+
+
+def _validar_alternativas_objetos_modelo(
+    contexto: dict[str, Any], inferidas: list[dict[str, Any]], *, compatible: bool
+) -> list[dict[str, Any]]:
+    """Keep model item alternatives only when IDs, patch, slot replacement and threat are verified."""
+    resultado = list(inferidas)
+    if not compatible:
+        return resultado
+    from _paths import DATA_DIR
+
+    try:
+        documento = json.loads((DATA_DIR / "items.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return resultado
+    catalogo = documento.get("items", {}) if isinstance(documento, dict) else {}
+    usuario = contexto.get("user_stats", {})
+    usuario = usuario if isinstance(usuario, dict) else {}
+    inventario = {str(item) for item in usuario.get("items", []) if str(item).isdigit()}
+    jugadores = contexto.get("all_players", [])
+    amenazas = {
+        str(jugador.get("champion") or "").casefold(): str(jugador.get("champion") or "")
+        for jugador in jugadores
+        if isinstance(jugador, dict) and not jugador.get("is_ally") and jugador.get("champion")
+    }
+    evidencia = contexto.get("analysis_evidence", {})
+    eventos = evidencia.get("notable_timeline", []) if isinstance(evidencia, dict) else []
+    cobertura = evidencia.get("coverage", {}) if isinstance(evidencia, dict) else {}
+    gold_on_hand_confirmed = bool(cobertura.get("gold_on_hand_available")) if isinstance(cobertura, dict) else False
+    event_ids = {str(event.get("event_id")) for event in eventos if isinstance(event, dict)}
+    modelos = contexto.get("model_item_alternatives", [])
+    if not isinstance(modelos, list):
+        return resultado
+    existing = {(str(item.get("item_id")), str(item.get("replace_or_delay_item_id"))) for item in resultado}
+    for candidate in modelos:
+        if not isinstance(candidate, dict):
+            continue
+        item_id = str(candidate.get("item_id") or "")
+        replace_id = str(candidate.get("replace_or_delay_item_id") or "")
+        item = catalogo.get(item_id) if isinstance(catalogo, dict) else None
+        threat = amenazas.get(str(candidate.get("threat_champion_id") or "").casefold())
+        if not item_id.isdigit() or not replace_id.isdigit() or replace_id not in inventario:
+            continue
+        if not isinstance(item, dict) or item_id in inventario:
+            continue
+        if item.get("maps", {}).get("11") is not True or item.get("gold", {}).get("purchasable") is not True:
+            continue
+        advantage = str(candidate.get("mechanical_advantage") or "").strip()
+        tradeoff = str(candidate.get("tradeoff") or "").strip()
+        if not threat or not advantage or not tradeoff or (item_id, replace_id) in existing:
+            continue
+        refs = candidate.get("evidence_refs")
+        valid_refs = [str(ref) for ref in refs if str(ref) in event_ids][:8] if isinstance(refs, list) else []
+        resultado.append({
+            "item_id": item_id,
+            "name": item.get("name_es") or item.get("name") or f"Objeto {item_id}",
+            "description": re.sub(r"<[^>]+>", " ", str(item.get("description_es") or item.get("description") or "")).strip(),
+            "stats": item.get("stats", {}),
+            "gold_total": item.get("gold", {}).get("total"),
+            "replace_or_delay_item_id": replace_id,
+            "replace_or_delay_item": (catalogo.get(replace_id) or {}).get("name_es") or (catalogo.get(replace_id) or {}).get("name") or f"Objeto {replace_id}",
+            "replace_or_delay_item_description": re.sub(r"<[^>]+>", " ", str((catalogo.get(replace_id) or {}).get("description_es") or (catalogo.get(replace_id) or {}).get("description") or "")).strip(),
+            "replace_or_delay_item_stats": (catalogo.get(replace_id) or {}).get("stats", {}),
+            "replace_or_delay_item_gold_total": (catalogo.get(replace_id) or {}).get("gold", {}).get("total"),
+            "threat_champion_id": threat,
+            "threat_champion": threat,
+            "mechanical_advantage": advantage,
+            "tradeoff": tradeoff,
+            "timing": str(candidate.get("timing") or "Considera el cambio al elegir la siguiente ranura de objetos."),
+            "affordability": str(candidate.get("affordability") or "Asequibilidad confirmada con el oro disponible al comprar." if gold_on_hand_confirmed else "El oro disponible al comprar no se puede confirmar con estos datos."),
+            "gold_on_hand_confirmed": gold_on_hand_confirmed,
+            "evidence_refs": valid_refs,
+            "evidence_type": "ai_advice_validated_against_local_patch_catalog",
+            "catalog_patch": documento.get("version"),
+        })
+        existing.add((item_id, replace_id))
+    return resultado
+
+
+def _validar_alternativa_runa(
+    contexto: dict[str, Any], evaluacion: dict[str, Any], *, compatible: bool
+) -> dict[str, str] | None:
+    """Allow only a catalogued keystone swap within the player's recorded primary tree."""
+    if not compatible:
+        return None
+    from _paths import DATA_DIR
+
+    runas = contexto.get("user_stats", {})
+    runas = runas.get("runes") if isinstance(runas, dict) else None
+    if not isinstance(runas, dict):
+        return None
+    styles = runas.get("styles")
+    if not isinstance(styles, list) or not styles or not isinstance(styles[0], dict):
+        return None
+    style = styles[0]
+    tree_id = str(style.get("style") or style.get("primary_tree_id") or "")
+    selections = style.get("selections")
+    current_id = ""
+    if isinstance(selections, list) and selections and isinstance(selections[0], dict):
+        current_id = str(selections[0].get("perk") or "")
+    if not current_id:
+        current_id = str((evaluacion.get("current") or {}).get("id") or "")
+    if not tree_id or not current_id:
+        return None
+    try:
+        documento = json.loads((DATA_DIR / f"runes_reforged_{evaluacion.get('patch')}.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    tree = next((entry for entry in documento if isinstance(entry, dict) and str(entry.get("id")) == tree_id), None)
+    if not tree:
+        return None
+    slots = tree.get("slots")
+    if not isinstance(slots, list) or not slots or not isinstance(slots[0], dict):
+        return None
+    keystones = slots[0].get("runes", [])
+    if not isinstance(keystones, list):
+        return None
+    if not any(str(entry.get("id")) == current_id for entry in keystones if isinstance(entry, dict)):
+        return None
+    models = contexto.get("model_rune_alternatives", [])
+    if not isinstance(models, list):
+        return None
+    for candidate in models[:1]:
+        if not isinstance(candidate, dict) or str(candidate.get("replaces_rune_id") or "") != current_id:
+            continue
+        replacement_id = str(candidate.get("rune_id") or "")
+        replacement = next((entry for entry in keystones if isinstance(entry, dict) and str(entry.get("id")) == replacement_id), None)
+        reason = str(candidate.get("reason") or "").strip()
+        tradeoff = str(candidate.get("tradeoff") or "").strip()
+        if not replacement or replacement_id == current_id or not reason or not tradeoff:
+            continue
+        return {
+            "id": replacement_id,
+            "name": str(replacement.get("name") or "Runa alternativa"),
+            "icon_ref": str(replacement.get("icon") or ""),
+            "mechanics": re.sub(r"<[^>]+>", " ", str(replacement.get("shortDesc") or "")).strip(),
+            "reason": reason,
+            "tradeoff": tradeoff,
+            "tree_id": tree_id,
+            "replaces_rune_id": current_id,
+        }
+    return None
 
 
 def _componente_de_objetivo(
@@ -951,6 +1498,13 @@ def _evaluar_runas(runas: Any, parche: str, arquetipo: str) -> dict[str, Any] | 
     if not isinstance(runas, dict):
         return None
     identificador = runas.get("keystone_id") or runas.get("keystoneId")
+    estilos = runas.get("styles")
+    if not identificador and isinstance(estilos, list) and estilos:
+        estilo_principal = estilos[0]
+        if isinstance(estilo_principal, dict):
+            selecciones = estilo_principal.get("selections")
+            if isinstance(selecciones, list) and selecciones and isinstance(selecciones[0], dict):
+                identificador = selecciones[0].get("perk")
     keystone = runas.get("keystone")
     if isinstance(keystone, dict):
         identificador = identificador or keystone.get("id")
@@ -983,6 +1537,28 @@ def _evaluar_runas(runas: Any, parche: str, arquetipo: str) -> dict[str, Any] | 
     )
     if not actual:
         return None
+    catalog_by_id = {str(runa.get("id")): runa for runa in runas_catalogo}
+    selected_runes: list[dict[str, str]] = []
+    if isinstance(estilos, list):
+        for style_index, style in enumerate(estilos[:2]):
+            if not isinstance(style, dict):
+                continue
+            selections = style.get("selections")
+            if not isinstance(selections, list):
+                continue
+            for selection_index, selection in enumerate(selections[:4]):
+                if not isinstance(selection, dict):
+                    continue
+                rune = catalog_by_id.get(str(selection.get("perk") or ""))
+                if not rune:
+                    continue
+                selected_runes.append({
+                    "id": str(rune.get("id")),
+                    "name": str(rune.get("name") or "Runa"),
+                    "description": unescape(re.sub(r"<[^>]+>", " ", str(rune.get("longDesc") or rune.get("shortDesc") or ""))).strip(),
+                    "tree": "Principal" if style_index == 0 else "Secundaria",
+                    "kind": "Clave" if style_index == 0 and selection_index == 0 else "Menor",
+                })
     evaluacion = "Buena sinergia" if actual.get("id") == 9923 else "Situacional"
     mecanica_actual = unescape(
         re.sub(r"<[^>]+>", "", str(actual.get("shortDesc") or ""))
@@ -993,6 +1569,7 @@ def _evaluar_runas(runas: Any, parche: str, arquetipo: str) -> dict[str, Any] | 
         conclusion = "Ataque intensificado recompensa tres ataques consecutivos y mejora el daño mientras continúa el combate. Lluvia de cuchillas adelanta tres ataques y su daño de impacto, lo que puede encajar mejor con la ventana corta de una build de letalidad; se pierde la amplificación prolongada y el daño adaptable de Ataque intensificado. La ventaja depende de poder conectar esos ataques y no constituye una simulación de daño."
     return {
         "patch": parche,
+        "selected_runes": selected_runes,
         "current": {
             "id": str(actual["id"]),
             "name": actual["name"],

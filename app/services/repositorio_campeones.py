@@ -5,8 +5,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-import re
-import tempfile
 import threading
 from collections import OrderedDict
 from collections.abc import Callable
@@ -17,9 +15,11 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from _paths import DATA_DIR
+from app.services.storage_manager import atomic_write_bytes, atomic_write_json, get_storage_manager
 from app.services.calidad_muestra import UMBRAL_MUESTRA_NORMAL, EstadoMuestra
 from app.services.rangos_campeones import CLAVES_RANGOS as RANGOS
 from app.services.rangos_campeones import normalizar_rango
+from app.services.identidad_campeon import cargar_indice_campeones, normalizar_identidad_campeon
 
 VERSION_ESQUEMA = 2
 
@@ -53,7 +53,8 @@ class ConsultaCampeon:
 
 def identificador_campeon(nombre: str) -> str:
     """Normaliza nombre a identificador seguro y devuelve su clave de archivo."""
-    clave = re.sub(r"[^a-z0-9]+", "", nombre.strip().casefold())
+    identity = cargar_indice_campeones()
+    clave = normalizar_identidad_campeon(identity.display_name(nombre) or nombre)
     if not clave:
         raise ValueError("Identidad de campeón vacía")
     return clave
@@ -69,8 +70,31 @@ class RepositorioCampeones:
 
     def __init__(self, raiz: Path | None = None) -> None:
         """Inicializa raíz y caché limitada a ocho campeones, sin descargas."""
-        self.raiz = raiz or DATA_DIR / "champion_data"
-        self.raiz.mkdir(parents=True, exist_ok=True)
+        self.raiz = raiz or (get_storage_manager().cache_dir / "champions")
+        self.identidades = cargar_indice_campeones(self.raiz.parent / "champion_catalog.json")
+        legacy_root = DATA_DIR / "champion_data"
+        if raiz is None and legacy_root.is_dir() and legacy_root.resolve() != self.raiz.resolve():
+            import shutil
+            try:
+                self.raiz.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(legacy_root, self.raiz, dirs_exist_ok=True,
+                                copy_function=lambda source, target: target if Path(target).exists() else shutil.copy2(source, target))
+            except (OSError, shutil.Error):
+                # Keep the original cache intact; later reads can still use its source via normal fallback.
+                pass
+        try:
+            self.raiz.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Keep startup available so Settings can show the missing-drive state
+            # and let the user restore access or choose a new storage root.
+            pass
+        self._files_by_id: dict[str, list[Path]] = {}
+        for path in self.raiz.glob("*.json"):
+            champion_id = self.identidades.resolve(path.stem)
+            if champion_id:
+                self._files_by_id.setdefault(champion_id, []).append(path)
+        self.duplicate_identities = {champion_id: tuple(paths) for champion_id, paths in self._files_by_id.items()
+                                     if len(paths) > 1}
         self._cache: OrderedDict[str, tuple[tuple[int, int], dict[str, Any]]] = (
             OrderedDict()
         )
@@ -78,7 +102,11 @@ class RepositorioCampeones:
 
     def ruta(self, campeon: str) -> Path:
         """Devuelve ruta canónica del campeón recibido, sin abrir archivos."""
-        return self.raiz / f"{identificador_campeon(campeon)}.json"
+        champion_id = self.identidades.resolve(campeon)
+        display = self.identidades.display_name(campeon) or campeon
+        preferred = self.raiz / f"{identificador_campeon(display)}.json"
+        alternatives = self._files_by_id.get(champion_id, []) if champion_id else []
+        return preferred if preferred in alternatives or not alternatives else sorted(alternatives)[0]
 
     @staticmethod
     def depurar_rangos(documento: dict[str, Any]) -> dict[str, Any]:
@@ -373,24 +401,17 @@ class RepositorioCampeones:
     def guardar(self, campeon: str, documento: dict[str, Any]) -> None:
         """Valida documento, sincroniza archivo temporal y reemplaza destino; conserva anterior ante fallos."""
         self.validar(documento, campeon)
-        contenido = json.dumps(
-            documento, ensure_ascii=False, separators=(",", ":"), allow_nan=False
-        )
+        contenido = json.dumps(documento, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         self.validar(json.loads(contenido), campeon)
         with self._cerrojo:
-            descriptor, nombre = tempfile.mkstemp(
-                prefix=self.ruta(campeon).stem, suffix=".tmp", dir=self.raiz
-            )
-            temporal = Path(nombre)
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as archivo:
-                    archivo.write(contenido)
-                    archivo.flush()
-                    os.fsync(archivo.fileno())
-                os.replace(temporal, self.ruta(campeon))
-                self.invalidar(campeon)
-            finally:
-                temporal.unlink(missing_ok=True)
+            atomic_write_json(self.ruta(campeon), json.loads(contenido))
+            champion_id = self.identidades.resolve(campeon)
+            if champion_id:
+                path = self.ruta(campeon)
+                paths = self._files_by_id.setdefault(champion_id, [])
+                if path not in paths:
+                    paths.append(path)
+            self.invalidar(campeon)
 
     def guardar_perfil(self, perfil: dict[str, Any]) -> None:
         """Guarda perfil recibido conservando matriz existente; retorna None."""
@@ -425,6 +446,8 @@ class RepositorioCampeones:
         """Devuelve perfiles globales para catálogo, draft y live, sin cargar matrices en memoria simultáneamente."""
         perfiles = []
         for ruta in sorted(self.raiz.glob("*.json")):
+            if ruta != self.ruta(ruta.stem):
+                continue
             consulta = self.obtener_campeon(ruta.stem)
             if consulta.estado == EstadoDatos.DISPONIBLE:
                 perfiles.append((consulta.datos or {})["profile"])
@@ -456,6 +479,8 @@ class RepositorioCampeones:
         perfiles: list[dict[str, Any]] = []
         with self._cerrojo:
             for ruta in sorted(self.raiz.glob("*.json")):
+                if ruta != self.ruta(ruta.stem):
+                    continue
                 campeon = ruta.stem
                 try:
                     documento = json.loads(
@@ -535,7 +560,7 @@ class RepositorioCampeones:
                 destino.parent.mkdir(parents=True, exist_ok=True)
                 if destino.exists() and destino.read_bytes() != ruta.read_bytes():
                     raise ValueError("Colisión de metadatos estáticos")
-                destino.write_bytes(ruta.read_bytes())
+                atomic_write_bytes(destino, ruta.read_bytes())
                 if destino.read_bytes() != ruta.read_bytes():
                     raise ValueError("Verificación de metadatos fallida")
                 ruta.unlink()
@@ -559,7 +584,7 @@ class RepositorioCampeones:
                     destino.parent.mkdir(parents=True, exist_ok=True)
                     if destino.exists() and destino.read_bytes() != ruta.read_bytes():
                         raise ValueError("Colisión de metadatos estáticos")
-                    destino.write_bytes(ruta.read_bytes())
+                    atomic_write_bytes(destino, ruta.read_bytes())
                 else:
                     raise ValueError("Datos antiguos no reconocidos")
             documento = (

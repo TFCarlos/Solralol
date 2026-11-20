@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Solralol: Electron main",
+      "type": "node",
+      "request": "attach",
+      "address": "127.0.0.1",
+      "port": 9229,
+      "restart": true,
+      "timeout": 30000,
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Solralol: React renderer",
+      "type": "pwa-chrome",
+      "request": "attach",
+      "address": "127.0.0.1",
+      "port": 9230,
+      "webRoot": "${workspaceFolder}/frontend",
+      "sourceMaps": true,
+      "timeout": 30000
+    },
+    {
+      "name": "Solralol: Python backend",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5678 },
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Solralol: full stack (F5)",
+      "configurations": ["Solralol: Electron main", "Solralol: React renderer", "Solralol: Python backend"],
+      "preLaunchTask": "Solralol: start development app (debug)"
+    }
+  ]
+}

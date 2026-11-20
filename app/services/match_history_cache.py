@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from app.services.storage_manager import StorageWriteError, atomic_update_json, get_storage_manager
+
+_CACHE_FILE_LOCK = threading.RLock()
 
 
 class MatchHistoryCache:
@@ -13,11 +19,7 @@ class MatchHistoryCache:
     RATE_LIMIT_COOLDOWN_SECONDS = 120
 
     def __init__(self) -> None:
-        self.cache_path = (
-            Path.home()
-            / ".solralol"
-            / "match_history_cache.json"
-        )
+        self.cache_path = get_storage_manager().match_history_cache_path
         self.data = self._load()
 
     def _default_data(self) -> dict[str, Any]:
@@ -25,10 +27,16 @@ class MatchHistoryCache:
             "version": self.CACHE_VERSION,
             "accounts": {},
             "matches": {},
+            "raw_matches": {},
+            "timelines": {},
             "rate_limit_until": None,
         }
 
     def _load(self) -> dict[str, Any]:
+        with _CACHE_FILE_LOCK:
+            return self._load_unlocked()
+
+    def _load_unlocked(self) -> dict[str, Any]:
         try:
             with self.cache_path.open(
                 "r",
@@ -60,31 +68,36 @@ class MatchHistoryCache:
 
         if not isinstance(data["matches"], dict):
             data["matches"] = {}
+        if not isinstance(data.get("raw_matches"), dict):
+            data["raw_matches"] = {}
+        if not isinstance(data["timelines"], dict):
+            data["timelines"] = {}
 
         return data
 
-    def _save(self) -> None:
-        self.cache_path.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        temporary_path = self.cache_path.with_suffix(
-            ".tmp"
-        )
-
-        with temporary_path.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                self.data,
-                file,
-                ensure_ascii=False,
-                indent=2,
-            )
-
-        temporary_path.replace(self.cache_path)
+    def _save(self, *, clear_rate_limit: bool = False) -> None:
+        with _CACHE_FILE_LOCK:
+            try:
+                def merge(current: Any) -> dict[str, Any]:
+                    if not isinstance(current, dict):
+                        current = self._default_data()
+                    for key in ("accounts", "matches", "raw_matches", "timelines"):
+                        if not isinstance(current.get(key), dict):
+                            current[key] = {}
+                        current[key].update(self.data.get(key, {}))
+                    cooldowns = [value for value in (current.get("rate_limit_until"), self.data.get("rate_limit_until")) if value]
+                    current["rate_limit_until"] = None if clear_rate_limit else max(cooldowns) if cooldowns else None
+                    timelines = current.get("timelines", {})
+                    if len(timelines) > 50:
+                        ordered = sorted(timelines.items(), key=lambda item: str(item[1].get("cached_at", "")))
+                        for key, _value in ordered[:len(timelines) - 50]:
+                            timelines.pop(key, None)
+                    current["version"] = self.CACHE_VERSION
+                    return current
+                self.data = atomic_update_json(self.cache_path, merge, default=self._default_data())
+            except OSError as error:
+                logging.getLogger(__name__).exception("No se pudo actualizar la caché local de Riot")
+                raise StorageWriteError("No se pudo actualizar el historial local. Comprueba los permisos del directorio de datos.") from error
 
     @staticmethod
     def account_key(
@@ -148,6 +161,8 @@ class MatchHistoryCache:
         match_id: str,
         puuid: str = "",
     ) -> dict[str, Any] | None:
+        with _CACHE_FILE_LOCK:
+            self.data = self._load_unlocked()
         if puuid:
             key = f"{match_id}:{puuid.strip()}"
             match = self.data["matches"].get(key)
@@ -181,6 +196,77 @@ class MatchHistoryCache:
             self.data["matches"][match_id] = match.copy()
         self._save()
 
+    def get_raw_match(self, match_id: str) -> dict[str, Any] | None:
+        """Return a raw Match-V5 response retained for safe reprocessing."""
+        with _CACHE_FILE_LOCK:
+            self.data = self._load_unlocked()
+        entry = self.data.get("raw_matches", {}).get(str(match_id))
+        raw = entry.get("match") if isinstance(entry, dict) else None
+        return raw.copy() if isinstance(raw, dict) else None
+
+    def save_raw_match(self, match_id: str, match: dict[str, Any]) -> None:
+        """Cache a successful Match-V5 payload without marking processing complete."""
+        if not match_id or not isinstance(match, dict):
+            return
+        raw_matches = self.data.setdefault("raw_matches", {})
+        raw_matches[str(match_id)] = {"match": match.copy(), "cached_at": self._now_iso()}
+        if len(raw_matches) > 50:
+            ordered = sorted(raw_matches.items(), key=lambda item: str(item[1].get("cached_at", "")))
+            for key, _value in ordered[:len(raw_matches) - 50]:
+                raw_matches.pop(key, None)
+        self._save()
+
+    def get_timeline(self, match_id: str) -> dict[str, Any] | None:
+        with _CACHE_FILE_LOCK:
+            self.data = self._load_unlocked()
+        entry = self.data.get("timelines", {}).get(str(match_id))
+        if isinstance(entry, dict) and isinstance(entry.get("timeline"), dict):
+            return entry["timeline"].copy()
+        # Accept timeline entries written by the first cache format.
+        return entry.copy() if isinstance(entry, dict) else None
+
+    def save_timeline(self, match_id: str, timeline: dict[str, Any]) -> None:
+        if match_id and isinstance(timeline, dict):
+            timelines = self.data.setdefault("timelines", {})
+            timelines[str(match_id)] = {"timeline": timeline.copy(), "cached_at": self._now_iso()}
+            if len(timelines) > 50:
+                ordered = sorted(timelines.items(), key=lambda item: str(item[1].get("cached_at", "")))
+                for key, _value in ordered[:len(timelines) - 50]:
+                    timelines.pop(key, None)
+            self._save()
+
+    def delete_match_data(self, match_id: str) -> bool:
+        """Remove only Riot payloads and processed cache entries for one match."""
+        target = str(match_id or "").strip()
+        if not target:
+            return False
+        with _CACHE_FILE_LOCK:
+            changed = False
+            def remove(data: Any) -> dict[str, Any]:
+                nonlocal changed
+                if not isinstance(data, dict):
+                    data = self._default_data()
+                matches = data.get("matches", {})
+                if isinstance(matches, dict):
+                    for key in list(matches):
+                        if key == target or key.startswith(f"{target}:"):
+                            matches.pop(key, None)
+                            changed = True
+                for collection in ("raw_matches", "timelines"):
+                    values = data.get(collection, {})
+                    if isinstance(values, dict) and target in values:
+                        values.pop(target, None)
+                        changed = True
+                return data
+            try:
+                data = atomic_update_json(self.cache_path, remove, default=self._default_data(),
+                                          should_write=lambda _value, _previous: changed)
+            except OSError as error:
+                logging.getLogger(__name__).exception("No se pudo actualizar la caché local de Riot")
+                raise StorageWriteError("No se pudo actualizar el historial local. Comprueba los permisos del directorio de datos.") from error
+            self.data = data
+            return changed
+
     def get_matches(
         self,
         match_ids: list[str],
@@ -197,6 +283,8 @@ class MatchHistoryCache:
         return matches
 
     def rate_limit_remaining_seconds(self) -> int:
+        with _CACHE_FILE_LOCK:
+            self.data = self._load_unlocked()
         value = self.data.get("rate_limit_until")
 
         if not value:
@@ -243,7 +331,7 @@ class MatchHistoryCache:
             return
 
         self.data["rate_limit_until"] = None
-        self._save()
+        self._save(clear_rate_limit=True)
 
     @staticmethod
     def _now_iso() -> str:

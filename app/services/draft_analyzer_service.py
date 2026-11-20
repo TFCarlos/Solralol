@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import itertools
 import json
+import math
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from _paths import DATA_DIR
+from app.services.storage_manager import get_storage_manager
 from app.services.catalogo_analisis_local import CatalogoAnalisisLocal
 from app.services.champion_variant_service import ChampionVariantService
 from app.services.curador_recomendaciones_build import CuradorRecomendacionesBuild
 from app.services.repositorio_campeones import RepositorioCampeones
+from app.services.identidad_campeon import cargar_indice_campeones
 from app.services.synergy_recommendation_service import SynergyRecommendationService
 
 
@@ -45,8 +48,11 @@ class DraftAnalyzerService:
         Parámetros: raíz de campeones opcional y perfiles de prueba opcionales.
         Retorno: None; prepara índices, variantes y curador sin acceso remoto.
         """
-        self.path = ruta_campeones or DATA_DIR / "champion_data"
+        self.path = ruta_campeones or (get_storage_manager().cache_dir / "champions")
+        self.identities = cargar_indice_campeones(self.path.parent / "champion_catalog.json")
         self.champions: dict[str, dict[str, Any]] = {}
+        self.profiles_by_id: dict[str, dict[str, Any]] = {}
+        self.resolved_profiles: dict[tuple[str, str], dict[str, Any]] = {}
         self.champ_by_id: dict[int, str] = {}
         if perfiles is None:
             self._load_data()
@@ -56,10 +62,14 @@ class DraftAnalyzerService:
                 for perfil in perfiles
                 if perfil.get("character")
             }
+        for profile in self.champions.values():
+            champion_id = self.identities.resolve(profile.get("character"))
+            if champion_id:
+                self.profiles_by_id[champion_id] = profile
         self.version = "16.17.1"
         try:
             raw_items = json.loads(
-                (self.path.parent / "items.json").read_text(encoding="utf-8")
+                ((self.path.parent / "items.json") if (self.path.parent / "items.json").is_file() else (DATA_DIR / "items.json")).read_text(encoding="utf-8")
             )
             self.items = raw_items.get("items", {})
             self.version = str(raw_items.get("version") or self.version)
@@ -67,9 +77,9 @@ class DraftAnalyzerService:
             self.items = {}
         try:
             objetos_estrictos = json.loads(
-                (self.path.parent / "legendary_items_strict.json").read_text(
+                (((self.path.parent / "legendary_items_strict.json") if (self.path.parent / "legendary_items_strict.json").is_file() else (DATA_DIR / "legendary_items_strict.json")).read_text(
                     encoding="utf-8"
-                )
+                ))
             )
         except (OSError, ValueError):
             objetos_estrictos = []
@@ -105,6 +115,8 @@ class DraftAnalyzerService:
                 self.champions[name.casefold()] = entry
 
         catalog_path = self.path.parent / "champion_catalog.json"
+        if not catalog_path.is_file():
+            catalog_path = DATA_DIR / "champion_catalog.json"
         if catalog_path.exists():
             try:
                 cat = json.loads(catalog_path.read_text(encoding="utf-8"))
@@ -119,8 +131,35 @@ class DraftAnalyzerService:
     def get_champion_name_by_id(self, champ_id: int) -> str:
         return self.champ_by_id.get(champ_id, "")
 
-    def get_champion_profile(self, champion_name: str) -> dict[str, Any] | None:
-        return self.champions.get(champion_name.casefold())
+    def get_champion_profile(self, champion_name: str, role: str | None = None) -> dict[str, Any] | None:
+        champion_id = self.identities.resolve(champion_name)
+        if not champion_id:
+            return self.champions.get(str(champion_name).casefold())
+        role_key = {"bot": "adc", "bottom": "adc", "middle": "mid", "utility": "support"}.get(str(role or "").casefold(), str(role or "").casefold())
+        cache_key = (champion_id, role_key)
+        cached = self.resolved_profiles.get(cache_key)
+        if cached is not None:
+            return cached
+        profile = self.profiles_by_id.get(champion_id)
+        if not profile:
+            return None
+        fields = ("most_played_build", "situational_items", "matchups", "damage_breakdown", "win_rate_vs_game_length")
+        if all(profile.get(field) for field in fields):
+            self.resolved_profiles[cache_key] = profile
+            return profile
+        document = self.variantes.repositorio.obtener_campeon(champion_id).datos or {}
+        ranks = document.get("ranks", {})
+        rank = ranks.get("emerald_plus", {}) if isinstance(ranks, dict) else {}
+        roles = profile.get("basic_info", {}).get("flex_potential", [])
+        preferred = [role_key, *(str(value).casefold().replace("bot", "adc") for value in roles if value)]
+        available = [key for key in rank if key != "__lane_stats__"] if isinstance(rank, dict) else []
+        selected = next((role for role in preferred if role in available), available[0] if available else None)
+        variant = rank.get(selected, {}) if selected else {}
+        self.resolved_profiles[cache_key] = {
+            **profile,
+            **{field: variant[field] for field in fields if not profile.get(field) and variant.get(field)},
+        }
+        return self.resolved_profiles[cache_key]
 
     def get_likely_roles(self, champion_name: str) -> list[str]:
         """Devuelve los roles probables del campeón, ordenados por frecuencia.
@@ -219,7 +258,7 @@ class DraftAnalyzerService:
         return cls.ROLE_CONFIDENCE[-1]
 
     def calculate_team_damage_breakdown(
-        self, team_champions: list[str]
+        self, team_champions: list[str], roles: dict[str, str] | None = None
     ) -> dict[str, float]:
         """Calcula el desglose porcentual de daño físico, mágico y verdadero del equipo."""
         total_ad = 0.0
@@ -228,7 +267,7 @@ class DraftAnalyzerService:
         count = 0
 
         for champ in team_champions:
-            prof = self.get_champion_profile(champ)
+            prof = self.get_champion_profile(champ, (roles or {}).get(champ))
             if not prof:
                 continue
             breakdown = prof.get("damage_breakdown", {})
@@ -282,15 +321,15 @@ class DraftAnalyzerService:
         profile = self.get_champion_profile(champion_name)
         if not profile or not opponent_name:
             return 50.0
+        opponent_id = self.identities.resolve(opponent_name)
+        if not opponent_id:
+            return 50.0
         matchups = profile.get("matchups", {})
         for group_name in ("counters", "good_against"):
             for matchup in matchups.get(group_name, []):
                 if not isinstance(matchup, dict):
                     continue
-                if (
-                    str(matchup.get("champion", "")).casefold()
-                    != opponent_name.casefold()
-                ):
+                if self.identities.resolve(matchup.get("champion")) != opponent_id:
                     continue
                 try:
                     win_rate = float(matchup.get("win_rate", 0.5))
@@ -369,6 +408,48 @@ class DraftAnalyzerService:
             else:
                 result[bracket] = 50.0
         return result
+
+    def calculate_team_power_curve_with_samples(
+        self, team_champions: list[str]
+    ) -> dict[str, dict[str, float | int]]:
+        """Return observed bracket means and their actual sample counts.
+
+        Unlike the legacy comparison helper, this view does not fill missing
+        brackets with 50%; absent profile data remains absent in the Draft UI.
+        """
+        sums = {bracket: 0.0 for bracket in self.TIME_BRACKETS}
+        samples = {bracket: 0 for bracket in self.TIME_BRACKETS}
+        for champion in team_champions:
+            profile = self.get_champion_profile(champion)
+            if not isinstance(profile, dict):
+                continue
+            values = profile.get("win_rate_vs_game_length")
+            by_bracket: dict[str, Any] = {}
+            if isinstance(values, list):
+                by_bracket = {
+                    str(point.get("label", "")).replace("m", ""): point.get("winrate")
+                    for point in values if isinstance(point, dict)
+                }
+            elif isinstance(profile.get("win_rate_by_game_length"), dict):
+                by_bracket = profile["win_rate_by_game_length"]
+            for bracket in self.TIME_BRACKETS:
+                raw = by_bracket.get(bracket)
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(value):
+                    continue
+                if 0.0 <= value <= 1.0:
+                    value *= 100.0
+                if not 0.0 <= value <= 100.0:
+                    continue
+                sums[bracket] += value
+                samples[bracket] += 1
+        return {
+            "values": {b: round(sums[b] / samples[b], 2) for b in self.TIME_BRACKETS if samples[b]},
+            "samples": {b: samples[b] for b in self.TIME_BRACKETS if samples[b]},
+        }
 
     def analyze_power_spike_phase(
         self, my_curve: dict[str, float], enemy_curve: dict[str, float]
@@ -528,9 +609,13 @@ class DraftAnalyzerService:
         lineas_por_rol = {
             "top": "top",
             "jungle": "jungle",
+            "jung": "jungle",
+            "jgl": "jungle",
             "mid": "mid",
             "bot": "adc",
+            "adc": "adc",
             "support": "support",
+            "utility": "support",
         }
         roles = [rol] if rol else self.get_likely_roles(champion_name)
         linea_preferida = next(
@@ -551,8 +636,81 @@ class DraftAnalyzerService:
             candidatos = []
         return self.curador.curar(variante, perfil, candidatos, pagina_runas)
 
+    def get_starter_items(
+        self, champion_name: str, role: str, *, profile: dict | None = None,
+        variant: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        """Reuse curated starting purchases, retaining quantities and a 500g budget."""
+        profile = profile if profile is not None else self.get_champion_profile(champion_name) or {}
+        variant = variant if variant is not None else self._variante_recomendaciones_curada(champion_name, profile, rol=role or None)
+        source = next((data.get(key) for data in (variant, profile)
+                       for key in ("starter_item_entries", "starter_item_ids", "starter_items")
+                       if isinstance(data.get(key), list) and data[key]), [])
+        role_key = str(role).strip().casefold()
+        jungle = role_key in {"jungle", "jungla", "jung", "jgl"}
+        support = role_key in {"support", "utility", "apoyo", "sup"}
+        companions = {"1101", "1102", "1103"}
+        catalog = self.curador.catalogo
+
+        def eligible(item_id: str) -> bool:
+            if not catalog.validar_objeto_inicial(item_id, champion_name).elegible:
+                return False
+            if item_id in companions and not jungle:
+                return False
+            if "GoldPer" in self.items[item_id].get("tags", []) and not support:
+                return False
+            return 0 < self.items[item_id]["gold"]["total"] <= 500
+
+        entries: list[tuple[str, int]] = []
+        for raw in source:
+            value = str(raw.get("id") or raw.get("item_id") or raw.get("name") or "") if isinstance(raw, dict) else str(raw)
+            item_id = value if value in self.items else self.item_names.get(value.strip().casefold(), "")
+            try:
+                count = int(raw.get("count", raw.get("quantity", 1))) if isinstance(raw, dict) else 1
+            except (ValueError, TypeError, OverflowError):
+                continue
+            if eligible(item_id) and 1 <= count <= 6:
+                entries.append((item_id, count))
+
+        basic = profile.get("basic_info") or {}
+        damage = str(basic.get("damage_type", "")).casefold()
+        resource = str(basic.get("resource_type", "mana")).casefold()
+        ap = damage in {"ap", "magic", "mágico", "magical"}
+        fallback = "1056" if ap and resource in {"mana", "maná"} else "1054" if ap else "1055"
+        if jungle:
+            primary = next((item_id for item_id, _ in entries if item_id in companions), "1101")
+            entries = [(primary, 1)] + [(item_id, count) for item_id, count in entries if item_id not in companions and "Consumable" in self.items[item_id].get("tags", [])]
+        elif support:
+            primary = "3865"
+            entries = [(primary, 1)] + [(item_id, count) for item_id, count in entries if "Consumable" in self.items[item_id].get("tags", [])]
+        else:
+            # A profile scraped from another lane can contain only potions
+            # after its jungle/support item is removed. Restore a lane start.
+            primary = next((item_id for item_id, _ in entries if "Consumable" not in self.items[item_id].get("tags", [])), fallback)
+            if not any(item_id == primary for item_id, _ in entries):
+                entries.insert(0, (primary, 1))
+
+        selected: dict[str, int] = {}
+        spent = 0
+        for item_id, count in entries:
+            if not eligible(item_id):
+                continue
+            if item_id in {"1054", "1055", "1056"} and any(i in selected for i in {"1054", "1055", "1056"}):
+                continue
+            price = self.items[item_id]["gold"]["total"]
+            count = min(count, int((500 - spent) // price))
+            if count > 0:
+                selected[item_id] = selected.get(item_id, 0) + count
+                spent += price * count
+        if not any("Consumable" in self.items[item_id].get("tags", []) for item_id in selected) and eligible("2003"):
+            count = min(2, int((500 - spent) // self.items["2003"]["gold"]["total"]))
+            if count > 0 and not source:
+                selected["2003"] = count
+        return [{"id": item_id, "name": self.items[item_id].get("name", item_id), "count": count}
+                for item_id, count in selected.items()]
+
     def get_champion_build(
-        self, champion_name: str, enemies: list[str]
+        self, champion_name: str, enemies: list[str], role: str = ""
     ) -> dict[str, Any]:
         """Devuelve la progresión curada de seis objetos y las botas seleccionadas.
 
@@ -563,7 +721,7 @@ class DraftAnalyzerService:
         core = []
         boots_id = ""
         unresolved = []
-        variante = self._variante_recomendaciones_curada(champion_name, prof)
+        variante = self._variante_recomendaciones_curada(champion_name, prof, rol=role or None)
         recomendada = variante.get("recommended_build", [])
         secuencia = (
             [
@@ -611,6 +769,8 @@ class DraftAnalyzerService:
         def describe(item_id: str) -> dict[str, str]:
             return {"id": item_id, "name": self.items[item_id].get("name", item_id)}
 
+        starters = self.get_starter_items(champion_name, role, profile=prof, variant=variante)
+
         return {
             "items": [describe(i) for i in core[:6]],
             "boots": describe(boots_id) if boots_id in self.items else None,
@@ -620,12 +780,6 @@ class DraftAnalyzerService:
             else "",
             "unresolved": unresolved,
             "situational": situational,
-            "champion_id": next(
-                (
-                    i
-                    for i, name in self.champ_by_id.items()
-                    if name.casefold() == champion_name.casefold()
-                ),
-                0,
-            ),
+            "starter_items": starters,
+            "champion_id": self.identities.numeric_key(champion_name) or 0,
         }

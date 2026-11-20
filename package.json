@@ -1,0 +1,11 @@
+{
+  "name": "solralol",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "dev:debug": "node scripts/dev.cjs --debug",
+    "build": "npm --prefix frontend run build",
+    "dist:win": "npm --prefix frontend run dist:win"
+  }
+}

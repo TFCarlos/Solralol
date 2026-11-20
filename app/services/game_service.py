@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import requests
-import urllib3
-
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import time
 
 
 class GameService:
@@ -14,6 +11,11 @@ class GameService:
 
     def __init__(self) -> None:
         self.timeout = 2
+        self._runes_cache: dict | None = None
+        self._runes_cache_identity: tuple[str, str] | None = None
+        self._runes_loaded_at = 0.0
+        self._runes_retry_after = 0.0
+        self._last_game_time: float | None = None
 
     def request_data(
         self,
@@ -35,6 +37,106 @@ class GameService:
         response.raise_for_status()
 
         return response.json()
+
+    def get_live_snapshot(self) -> dict | None:
+        """Read only the documented lightweight Live Client endpoints.
+
+        The self-signed certificate exception is scoped to each loopback
+        request; certificate policy for any other connection is untouched.
+        """
+        try:
+            active = self.request_data("activeplayer")
+            players = self.request_data("playerlist")
+            stats = self.request_data("gamestats")
+        except requests.RequestException:
+            return None
+        if not isinstance(active, dict) or not isinstance(players, list) or not isinstance(stats, dict):
+            return None
+        try:
+            game_time = float(stats.get("gameTime", 0) or 0)
+        except (TypeError, ValueError, OverflowError):
+            game_time = 0.0
+        if self._last_game_time is not None and game_time + 5 < self._last_game_time:
+            # A new match can reuse the same player identity and champion but
+            # have a different rune page. Never carry the previous game's page.
+            self._runes_cache = None
+            self._runes_cache_identity = None
+            self._runes_loaded_at = 0.0
+            self._runes_retry_after = 0.0
+        self._last_game_time = game_time
+        events: list = []
+        try:
+            data = self.request_data("eventdata")
+            if isinstance(data, dict) and isinstance(data.get("Events"), list):
+                events = data["Events"]
+        except requests.RequestException:
+            pass
+        def identity_aliases(player: dict) -> set[str]:
+            values = [player.get("summonerName"), player.get("riotId"),
+                      player.get("riotIdGameName"),
+                      f"{player.get('riotIdGameName', '')}#{player.get('riotIdTagLine', '')}"]
+            aliases = set()
+            for value in values:
+                text = str(value or "").strip().casefold()
+                if text:
+                    aliases.add(text)
+                    aliases.add(text.split("#", 1)[0])
+            return aliases
+        active_aliases = identity_aliases(active)
+        matches = [p for p in players if isinstance(p, dict) and active_aliases.intersection(identity_aliases(p))]
+        # If identity cannot be matched, keep local ownership unknown. Picking
+        # the first non-bot can silently attribute the wrong champion/team.
+        local = matches[0] if len(matches) == 1 else {}
+        if local:
+            # This documented lightweight endpoint is the only supported
+            # source for the active player's full rune page (including shards).
+            identity = (str(local.get("riotId") or local.get("summonerName") or
+                             local.get("riotIdGameName") or "").casefold(),
+                        str(local.get("championName") or local.get("rawChampionName") or "").casefold())
+            if identity != self._runes_cache_identity:
+                self._runes_cache = None
+                self._runes_loaded_at = 0.0
+                self._runes_retry_after = 0.0
+                self._runes_cache_identity = identity
+            cached = (self._runes_cache if identity == self._runes_cache_identity else None)
+            now = time.monotonic()
+            runes = cached if cached and (now - self._runes_loaded_at < 120 or now < self._runes_retry_after) else None
+            if runes is None and now >= self._runes_retry_after:
+                try:
+                    response_runes = self.request_data("activeplayerrunes")
+                    if isinstance(response_runes, dict) and response_runes:
+                        runes = response_runes
+                        self._runes_cache = response_runes
+                        self._runes_cache_identity = identity
+                        self._runes_loaded_at = now
+                        self._runes_retry_after = 0.0
+                    else:
+                        self._runes_retry_after = now + 30
+                except requests.RequestException:
+                    # Retain a previous valid page through brief local API
+                    # failures instead of blanking it or retrying every tick.
+                    runes = cached
+                    self._runes_retry_after = now + 30
+            if isinstance(runes, dict):
+                local = {**local, "runes": runes}
+                local_index = next((index for index, player in enumerate(players)
+                                    if player is matches[0]), None)
+                if local_index is not None:
+                    players[local_index] = local
+        local_team = str(local.get("team") or "")
+        champion_stats = active.get("championStats") if isinstance(active.get("championStats"), dict) else {}
+        return {
+            "game_mode": str(stats.get("gameMode") or "UNKNOWN"),
+            "game_version": str(stats.get("gameVersion") or ""),
+            "map_number": stats.get("mapNumber"),
+            "game_status": "IN_PROGRESS", "game_time": stats.get("gameTime", 0),
+            "local_player": local, "local_team": local_team,
+            "all_players": players,
+            "enemies": [p for p in players if isinstance(p, dict) and local_team and p.get("team") != local_team],
+            "local_live_stats": {**champion_stats, **{k: active[k] for k in ("currentGold", "gold", "level") if k in active}},
+            "local_abilities": active.get("abilities") if isinstance(active.get("abilities"), dict) else None,
+            "game_events": events,
+        }
 
     def is_in_game(self) -> bool:
         """
@@ -95,23 +197,16 @@ class GameService:
             "",
         )
 
-        local_player = next(
-            (
-                player
-                for player in all_players
-                if (
-                    player.get("summonerName") == active_name
-                    or player.get("riotId") == active_name
-                )
-            ),
-            None,
-        )
+        def aliases(player: dict) -> set[str]:
+            return {str(player.get(key)).strip().casefold() for key in
+                    ("summonerName", "riotId", "riotIdGameName") if player.get(key)}
 
-        if local_player is None:
-            local_player = next(
-                (player for player in all_players if not player.get("isBot", False)),
-                {},
-            )
+        active_aliases = aliases(active_player)
+        if active_name:
+            active_aliases.add(str(active_name).strip().casefold())
+        matches = [player for player in all_players if isinstance(player, dict)
+                   and aliases(player).intersection(active_aliases)]
+        local_player = matches[0] if len(matches) == 1 else {}
 
         local_team = local_player.get(
             "team",
@@ -175,5 +270,6 @@ class GameService:
             "enemies": enemies,
             "all_players": all_players,
             "local_live_stats": local_live_stats,
+            "local_abilities": active_player.get("abilities") if isinstance(active_player.get("abilities"), dict) else None,
             "game_events": events,
         }

@@ -8,7 +8,6 @@ tiene un pitido distinto:
 - ``dragon``: aparición del Dragón (un pitido agudo y más largo).
 - ``enemy_buy``: un rival completa un objeto (doble pitido corto).
 
-El módulo no depende de Qt, de modo que puede probarse sin interfaz.
 """
 
 from __future__ import annotations
@@ -17,8 +16,8 @@ import io
 import math
 import struct
 import threading
-import time
 import wave
+from collections import deque
 
 try:  # pragma: no cover - en Windows siempre está disponible
     import winsound
@@ -39,13 +38,10 @@ SOUND_SPECS: dict[str, tuple[tuple[int, int], ...]] = {
 
 SOUND_KINDS = tuple(SOUND_SPECS)
 
-# Intervalo mínimo entre pitidos del mismo tipo: evita ráfagas si varios
-# avisos del mismo tipo llegan en el mismo ciclo de lectura.
-MIN_INTERVAL = 0.25
-
 VOLUME_MIN = 0.0
 VOLUME_MAX = 1.0
 DEFAULT_VOLUME = 0.6
+MAX_PENDING_SOUNDS = 32
 
 
 def build_beep_wav(kind: str, volume: float = DEFAULT_VOLUME) -> bytes:
@@ -119,9 +115,12 @@ class OverlaySoundService:
         self.player = player or play_wav
         self.async_play = bool(async_play)
         self._types = {kind: True for kind in SOUND_KINDS}
-        self._last_played: dict[str, float] = {}
         self._cache: dict[tuple[str, int], bytes] = {}
         self._lock = threading.Lock()
+        self._condition = threading.Condition()
+        self._pending: deque[bytes] = deque()
+        self._worker: threading.Thread | None = None
+        self._closed = False
 
     @staticmethod
     def _clamp_volume(volume) -> float:
@@ -165,15 +164,8 @@ class OverlaySoundService:
 
     def play(self, kind: str) -> bool:
         """Reproduce el pitido de ese tipo. False si no suena."""
-        if kind not in SOUND_SPECS or not self.is_kind_enabled(kind):
+        if self._closed or kind not in SOUND_SPECS or not self.is_kind_enabled(kind):
             return False
-
-        now = time.monotonic()
-
-        if now - self._last_played.get(kind, 0.0) < MIN_INTERVAL:
-            return False
-
-        self._last_played[kind] = now
 
         try:
             data = self.wav_for(kind)
@@ -181,21 +173,54 @@ class OverlaySoundService:
             return False
 
         if self.async_play:
-            threading.Thread(
-                target=self._safe_play,
-                args=(data,),
-                daemon=True,
-            ).start()
+            with self._condition:
+                if self._closed:
+                    return False
+                if len(self._pending) >= MAX_PENDING_SOUNDS:
+                    return False
+                self._pending.append(data)
+                if self._worker is None:
+                    self._worker = threading.Thread(target=self._run, name="solralol-overlay-sound")
+                    self._worker.start()
+                self._condition.notify()
         else:
             self._safe_play(data)
 
         return True
+
+    def _run(self) -> None:
+        while True:
+            with self._condition:
+                while not self._pending and not self._closed:
+                    self._condition.wait()
+                if self._closed:
+                    return
+                data = self._pending.popleft()
+            self._safe_play(data)
 
     def _safe_play(self, data: bytes) -> None:
         try:
             self.player(data)
         except Exception:  # noqa: BLE001 - el audio nunca rompe el overlay
             pass
+
+    def close(self) -> None:
+        """Stop process-owned audio and wait briefly for sound workers to exit."""
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+            self._pending.clear()
+            self._condition.notify_all()
+            worker = self._worker
+        try:
+            import winsound
+
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except (ImportError, RuntimeError):
+            pass
+        if worker is not None and worker is not threading.current_thread():
+            worker.join(timeout=2)
 
     def play_objective_spawn(self) -> bool:
         """Grumos, Heraldo o Barón a punto de aparecer."""

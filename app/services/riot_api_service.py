@@ -380,6 +380,10 @@ class RiotApiService:
                 "No se puede solicitar una timeline sin match_id."
             )
 
+        cached_timeline = self.cache.get_timeline(match_id)
+        if cached_timeline is not None:
+            return cached_timeline
+
         cooldown = self.cache.rate_limit_remaining_seconds()
 
         if cooldown:
@@ -422,6 +426,7 @@ class RiotApiService:
                 "La timeline no contiene frames válidos."
             )
 
+        self.cache.save_timeline(match_id, result)
         return result
 
     def get_recent_matches(
@@ -473,7 +478,7 @@ class RiotApiService:
         puuid = str(account["puuid"])
 
         cached = self.cache.get_match(match_id, puuid)
-        if cached and cached.get("detail_version") == 1:
+        if cached and cached.get("detail_version") == 2:
             return cached
 
         cooldown = self.cache.rate_limit_remaining_seconds()
@@ -530,6 +535,8 @@ class RiotApiService:
         match: dict[str, Any],
         match_id: str,
         puuid: str,
+        *,
+        allow_unresolved: bool = False,
     ) -> dict[str, Any]:
         info = match.get("info", {})
         participants = info.get("participants", [])
@@ -548,12 +555,16 @@ class RiotApiService:
             ),
             None,
         )
-        if not isinstance(player, dict):
+        if not isinstance(player, dict) and not allow_unresolved:
             raise RiotApiError(
                 "No se encontró al invocador en la partida."
             )
 
-        player_team_id = int(player.get("teamId", 0))
+        player_team_id = int(player.get("teamId", 0)) if isinstance(player, dict) else None
+        team_ids = [int(team.get("teamId", 0)) for team in teams if isinstance(team, dict)]
+        if not team_ids:
+            team_ids = list(dict.fromkeys(int(item.get("teamId", 0)) for item in participants if isinstance(item, dict)))
+        first_team_id = team_ids[0] if team_ids else None
         allies = []
         enemies = []
 
@@ -566,7 +577,11 @@ class RiotApiService:
                 is_player=participant.get("puuid") == puuid,
             )
 
-            if int(participant.get("teamId", 0)) == player_team_id:
+            if player_team_id is not None and int(participant.get("teamId", 0)) == player_team_id:
+                allies.append(entry)
+            elif player_team_id is not None:
+                enemies.append(entry)
+            elif int(participant.get("teamId", 0)) == first_team_id:
                 allies.append(entry)
             else:
                 enemies.append(entry)
@@ -575,7 +590,7 @@ class RiotApiService:
             (
                 team
                 for team in teams
-                if int(team.get("teamId", 0)) == player_team_id
+                if player_team_id is not None and int(team.get("teamId", 0)) == player_team_id
             ),
             {},
         )
@@ -583,33 +598,35 @@ class RiotApiService:
             (
                 team
                 for team in teams
-                if int(team.get("teamId", 0)) != player_team_id
+                if player_team_id is not None and int(team.get("teamId", 0)) != player_team_id
             ),
             {},
         )
 
         return {
-            "detail_version": 1,
+            "detail_version": 2,
             "match_id": match_id,
             "player_puuid": puuid,
             "game_creation": info.get("gameCreation"),
             "game_duration": info.get("gameDuration"),
             "queue_id": info.get("queueId"),
             "game_mode": info.get("gameMode"),
+            "game_version": info.get("gameVersion"),
             "game_type": info.get("gameType"),
-            "champion_name": player.get("championName"),
-            "win": bool(player.get("win")),
-            "kills": int(player.get("kills", 0)),
-            "deaths": int(player.get("deaths", 0)),
-            "assists": int(player.get("assists", 0)),
+            "champion_name": player.get("championName") if isinstance(player, dict) else None,
+            "player_resolved": isinstance(player, dict),
+            "win": bool(player.get("win")) if isinstance(player, dict) else None,
+            "kills": int(player.get("kills", 0)) if isinstance(player, dict) else None,
+            "deaths": int(player.get("deaths", 0)) if isinstance(player, dict) else None,
+            "assists": int(player.get("assists", 0)) if isinstance(player, dict) else None,
             "cs": (
                 int(player.get("totalMinionsKilled", 0))
                 + int(player.get("neutralMinionsKilled", 0))
-            ),
+            ) if isinstance(player, dict) else None,
             "items": [
                 int(player.get(f"item{index}", 0))
                 for index in range(7)
-            ],
+            ] if isinstance(player, dict) else [],
             "player_team_id": player_team_id,
             "allies": allies,
             "enemies": enemies,
@@ -689,6 +706,9 @@ class RiotApiService:
         is_player: bool,
     ) -> dict[str, Any]:
         return {
+            "participant_id": participant.get("participantId"),
+            "champion_id": participant.get("championId"),
+            "team_id": participant.get("teamId"),
             "is_player": is_player,
             "riot_id_game_name": participant.get(
                 "riotIdGameName"
@@ -714,11 +734,55 @@ class RiotApiService:
             ),
             "gold_earned": int(participant.get("goldEarned", 0)),
             "vision_score": int(participant.get("visionScore", 0)),
+            "total_damage_dealt_to_champions": int(participant.get("totalDamageDealtToChampions", 0)),
+            "all_source_damage_received": int(participant.get("totalDamageTaken", 0)),
+            "damage_to_objectives": int(participant.get("damageDealtToObjectives", 0)),
+            "damage_to_epic_monsters": int(participant["damageDealtToEpicMonsters"])
+                if isinstance(participant.get("damageDealtToEpicMonsters"), (int, float)) and not isinstance(participant.get("damageDealtToEpicMonsters"), bool) else None,
+            "damage_dealt_to_buildings": int(participant["damageDealtToBuildings"])
+                if isinstance(participant.get("damageDealtToBuildings"), (int, float)) and not isinstance(participant.get("damageDealtToBuildings"), bool) else None,
+            "damage_dealt_to_turrets": int(participant["damageDealtToTurrets"])
+                if isinstance(participant.get("damageDealtToTurrets"), (int, float)) and not isinstance(participant.get("damageDealtToTurrets"), bool) else None,
+            "wards_placed": int(participant.get("wardsPlaced", 0)),
+            "wards_killed": int(participant.get("wardsKilled", 0)),
+            "detector_wards_placed": int(participant["detectorWardsPlaced"])
+                if isinstance(participant.get("detectorWardsPlaced"), (int, float)) and not isinstance(participant.get("detectorWardsPlaced"), bool) else None,
+            "total_time_spent_dead": int(participant["totalTimeSpentDead"])
+                if isinstance(participant.get("totalTimeSpentDead"), (int, float)) and not isinstance(participant.get("totalTimeSpentDead"), bool) else None,
+            "total_heal": int(participant["totalHeal"]) if isinstance(participant.get("totalHeal"), (int, float)) else None,
+            "total_heals_on_teammates": int(participant["totalHealsOnTeammates"]) if isinstance(participant.get("totalHealsOnTeammates"), (int, float)) else None,
+            "total_damage_shielded_on_teammates": int(participant["totalDamageShieldedOnTeammates"]) if isinstance(participant.get("totalDamageShieldedOnTeammates"), (int, float)) else None,
+            "time_ccing_others": int(participant["timeCCingOthers"]) if isinstance(participant.get("timeCCingOthers"), (int, float)) else None,
+            "objectives_stolen": int(participant.get("objectivesStolen"))
+                if isinstance(participant.get("objectivesStolen"), (int, float)) and not isinstance(participant.get("objectivesStolen"), bool)
+                else int((participant.get("challenges") or {}).get("objectivesStolen"))
+                if isinstance(participant.get("challenges"), dict) and isinstance(participant["challenges"].get("objectivesStolen"), (int, float)) and not isinstance(participant["challenges"].get("objectivesStolen"), bool)
+                else int((participant.get("challenges") or {}).get("epicMonsterSteals"))
+                if isinstance(participant.get("challenges"), dict) and isinstance(participant["challenges"].get("epicMonsterSteals"), (int, float)) and not isinstance(participant["challenges"].get("epicMonsterSteals"), bool) else None,
+            "epic_monster_steals": int((participant.get("challenges") or {}).get("epicMonsterSteals"))
+                if isinstance(participant.get("challenges"), dict) and isinstance(participant["challenges"].get("epicMonsterSteals"), (int, float)) and not isinstance(participant["challenges"].get("epicMonsterSteals"), bool) else None,
+            "summoner_spells": [participant.get("summoner1Id"), participant.get("summoner2Id")],
+            "runes": participant.get("perks"),
             "champ_level": int(participant.get("champLevel", 0)),
             "items": [
                 int(participant.get(f"item{index}", 0))
                 for index in range(7)
             ],
+            "achievement_availability": {
+                "kills": isinstance(participant.get("kills"), (int, float)) and not isinstance(participant.get("kills"), bool),
+                "deaths": isinstance(participant.get("deaths"), (int, float)) and not isinstance(participant.get("deaths"), bool),
+                "assists": isinstance(participant.get("assists"), (int, float)) and not isinstance(participant.get("assists"), bool),
+                "gold": isinstance(participant.get("goldEarned"), (int, float)) and not isinstance(participant.get("goldEarned"), bool),
+                "vision": isinstance(participant.get("visionScore"), (int, float)) and not isinstance(participant.get("visionScore"), bool),
+                "healing": isinstance(participant.get("totalHeal"), (int, float)) and not isinstance(participant.get("totalHeal"), bool),
+                "crowd_control": isinstance(participant.get("timeCCingOthers"), (int, float)) and not isinstance(participant.get("timeCCingOthers"), bool),
+                "wards_placed": isinstance(participant.get("wardsPlaced"), (int, float)) and not isinstance(participant.get("wardsPlaced"), bool),
+                "wards_killed": isinstance(participant.get("wardsKilled"), (int, float)) and not isinstance(participant.get("wardsKilled"), bool),
+                "control_wards": isinstance(participant.get("detectorWardsPlaced"), (int, float)) and not isinstance(participant.get("detectorWardsPlaced"), bool),
+                "total_time_spent_dead": isinstance(participant.get("totalTimeSpentDead"), (int, float)) and not isinstance(participant.get("totalTimeSpentDead"), bool),
+                "champion_damage": isinstance(participant.get("totalDamageDealtToChampions"), (int, float)) and not isinstance(participant.get("totalDamageDealtToChampions"), bool),
+                "cs": isinstance(participant.get("totalMinionsKilled"), (int, float)) and isinstance(participant.get("neutralMinionsKilled"), (int, float)),
+            },
         }
 
     @staticmethod

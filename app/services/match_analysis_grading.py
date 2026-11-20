@@ -50,7 +50,10 @@ def calcular_grados_rendimiento(puntuacion: Any) -> dict[str, Any] | None:
     Returns:
         Grado general y grados por categoría, o `None` si faltan datos fiables.
     """
-    if not isinstance(puntuacion, dict) or puntuacion.get("state") != "POSTGAME_FINAL":
+    if (not isinstance(puntuacion, dict)
+            or puntuacion.get("version") != "battlescore_v2_0"
+            or puntuacion.get("calibration_version") != "battlescore_v2_0"
+            or puntuacion.get("state") != "POSTGAME_FINAL"):
         return None
     jugador = puntuacion.get("local_player")
     if not isinstance(jugador, dict):

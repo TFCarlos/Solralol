@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import unicodedata
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -18,6 +17,7 @@ from app.services.servicio_puntuacion_rendimiento import (
     clasificar_jugadores,
 )
 from app.services.synergy_recommendation_service import SynergyRecommendationService
+from app.services.identidad_campeon import cargar_indice_campeones, normalizar_identidad_campeon
 
 
 def number(value, default=0.0):
@@ -29,22 +29,15 @@ def number(value, default=0.0):
 
 
 def canonical(value):
-    return re.sub(
-        r"[^a-z0-9]",
-        "",
-        unicodedata.normalize("NFKD", str(value))
-        .encode("ascii", "ignore")
-        .decode()
-        .lower(),
-    )
+    return normalizar_identidad_campeon(value)
 
 
 def item_ids(values):
     result = []
     for value in values if isinstance(values, list) else []:
         if isinstance(value, dict):
-            count = max(1, min(6, int(number(value.get("count", 1), 1))))
-            value = value.get("itemID", value.get("id"))
+            count = max(0, min(6, int(number(value.get("count", 1), 1))))
+            value = value.get("itemID", value.get("itemId", value.get("id")))
         else:
             count = 1
         ident = int(number(value))
@@ -131,6 +124,8 @@ class LiveRecommendationService:
         "health": {"3153", "6653"},
         "cc": {"3111", "3139", "3222"},
         "crit": {"3143"},
+        "shielding": {"6695"},
+        "burst": {"3026", "3157", "3814", "3102", "3053", "3156", "6673"},
     }
     LABELS = {
         "healing": "Curación",
@@ -141,11 +136,17 @@ class LiveRecommendationService:
         "crit": "Crítico",
         "physical": "Daño físico",
         "magic": "Daño mágico",
+        "shielding": "Escudos",
+        "burst": "Daño explosivo estimado",
     }
+    RECIPE_EQUIVALENTS = {"2422": "1001"}  # Magical Footwear pays the basic-boots recipe credit.
 
     def __init__(self, catalog=None, champions=None, strict_items=None):
         known_champions, known_items = load_knowledge()
         self.champions = champions if champions is not None else known_champions
+        self.identities = cargar_indice_campeones()
+        self._profiles_by_id = {champion_id: value for key, value in self.champions.items()
+                                if (champion_id := self.identities.resolve(key))}
         self.strict = strict_items if strict_items is not None else known_items
         raw = catalog or {}
         raw = raw.get("items", raw.get("data", raw))
@@ -153,7 +154,9 @@ class LiveRecommendationService:
         self.synergy = SynergyRecommendationService()
 
     def profile(self, name):
-        return self.champions.get(canonical(name), {})
+        key = canonical(name)
+        champion_id = self.identities.resolve(name)
+        return self.champions.get(key) or self._profiles_by_id.get(champion_id, {})
 
     def stat(self, ident, key):
         aliases = {
@@ -189,7 +192,7 @@ class LiveRecommendationService:
             bool(item)
             and item.get("gold", {}).get("purchasable") is True
             and self.cost(ident) > 0
-            and item.get("maps", {}).get(str(map_id), True)
+            and item.get("maps", {}).get(str(map_id)) is True
             and not item.get("requiredAlly")
             and not item.get("requiredChampion")
             and not item.get("inStore") is False
@@ -202,9 +205,12 @@ class LiveRecommendationService:
             ident in group and any(i in group for i in owned) for group in self.GROUPS
         )
 
+    def _recipe_pool(self, owned):
+        return Counter(self.RECIPE_EQUIVALENTS.get(ident, ident) for ident in owned)
+
     def _recipe(self, target, owned):
         """Remaining gold and consumed components, with multiset accounting and cycle guard."""
-        pool = Counter(owned)
+        pool = self._recipe_pool(owned)
         consumed = Counter()
 
         def visit(ident, ancestors):
@@ -221,13 +227,24 @@ class LiveRecommendationService:
         credit = visit(target, set())
         return max(0, self.cost(target) - credit), consumed
 
-    def purchase(self, target, owned, gold, map_id="11"):
+    def inventory_slots(self, values):
+        """Inventory stacks occupy one slot, even when their quantity is >1."""
+        occupied = 0
+        for value in values if isinstance(values, list) else []:
+            ident = str(value.get("itemID", value.get("itemId", value.get("id", "")))) if isinstance(value, dict) else str(value)
+            if not ident.isdigit() or int(ident) <= 0 or "Trinket" in self.catalog.get(ident, {}).get("tags", []):
+                continue
+            if not isinstance(value, dict) or number(value.get("count", 1)) > 0:
+                occupied += 1
+        return occupied
+
+    def purchase(self, target, owned, gold, map_id="11", *, occupied_slots=None):
         """A single feasible buy; never claims an unaffordable component is buyable."""
-        slots = sum(
+        slots = occupied_slots if occupied_slots is not None else sum(
             1 for i in owned if "Trinket" not in self.catalog.get(i, {}).get("tags", [])
         )
         candidates = []
-        pool = Counter(owned)
+        pool = self._recipe_pool(owned)
 
         def walk(ident, ancestors):
             if ident in ancestors:
@@ -399,6 +416,20 @@ class LiveRecommendationService:
                         "observed": False,
                     }
                 )
+            # Reuse cached Riot ability metadata. Enemy full rune pages and
+            # actual ability availability are not exposed by Live Client.
+            from data_dragon import get_champion_data
+            metadata = get_champion_data(champ, "", download=False)
+            shield_pattern = r"(?:otorga|obtiene|recibe|gana|gains?|grants?)\b[^.!?]{0,90}<shield>"
+            kit_shield = any(re.search(shield_pattern, str(spell.get("tooltip") or "").casefold())
+                             for spell in metadata.get("spells", []) if isinstance(spell, dict))
+            item_shield = any("<shield>" in str(self.catalog.get(ident, {}).get("description") or "").casefold() for ident in ids)
+            if kit_shield or item_shield:
+                signals.append({"kind": "shielding", "observed": item_shield,
+                                "evidence": "Efecto de escudo en inventario; activación no verificada" if item_shield else "Escudos del kit (catálogo local, no disponibilidad actual)"})
+            if profile.get("basic_info", {}).get("play_style") == "Assassin":
+                signals.append({"kind": "burst", "observed": False,
+                                "evidence": "Perfil de asesino: amenaza de ráfaga estimada, no daño medido"})
             damage = profile.get("damage_breakdown", {})
             physical = number(damage.get("physical_damage_percent"))
             magic = number(damage.get("magic_damage_percent"))
@@ -500,7 +531,7 @@ class LiveRecommendationService:
             ),
         )
 
-    def analyze(self, session: dict[str, Any]):
+    def analyze(self, session: dict[str, Any], profile_override: dict[str, Any] | None = None, *, recommendation_limit: int | None = 8):
         session = session or {}
         players, times = self.latest(session)
         local_key = session.get("local_player_key")
@@ -508,7 +539,7 @@ class LiveRecommendationService:
         champ = str(
             local.get("champion_name") or session.get("champion_name") or "Campeón"
         )
-        profile = self.profile(champ)
+        profile = profile_override if profile_override is not None else self.profile(champ)
         team = local.get("team") or session.get("local_team")
         enemies, allies = {}, {}
         for key, p in players.items():
@@ -572,7 +603,8 @@ class LiveRecommendationService:
         total = max(physical + magic, 1)
         physical_share = physical / total
         recommendations = (
-            self._rank(profile, champ, owned, threats, physical_share, map_id)
+            self._rank(profile, champ, owned, threats, physical_share, map_id,
+                       occupied_slots=self.inventory_slots(local.get("items", [])), limit=recommendation_limit)
             if profile and local
             else []
         )
@@ -632,7 +664,7 @@ class LiveRecommendationService:
 
     def _missing_parts(self, ident, owned):
         """Components still missing to finish this item (owned components are not re-bought)."""
-        pool = Counter(owned)
+        pool = self._recipe_pool(owned)
 
         def visit(node, ancestors):
             if node in ancestors:
@@ -723,34 +755,8 @@ class LiveRecommendationService:
         rows.sort(key=lambda r: (len(r["missing"]), r["cost"], r["id"]))
         return rows[:limit]
 
-    def _rank(self, profile, champ, owned, threats, physical_share, map_id):
-        if (
-            sum(
-                1
-                for i in owned
-                if "Trinket" not in self.catalog.get(i, {}).get("tags", [])
-            )
-            >= 6
-        ):
-            # Los elixires se consumen al comprarlos con el inventario lleno.
-            rows = []
-            for ident in ("2138", "2139", "2140"):
-                if not self.available(ident, map_id) or ident in owned:
-                    continue
-                rows.append(
-                    {
-                        "id": ident,
-                        "name": self.name(ident),
-                        "score": 15.0,
-                        "reasons": [
-                            "Inventario completo (6 objetos): elixir consumido al comprarlo en tienda"
-                        ],
-                        "responses": [],
-                        "cost": self.cost(ident),
-                        "invested": 0,
-                    }
-                )
-            return rows[:3]
+    def _rank(self, profile, champ, owned, threats, physical_share, map_id, *, occupied_slots=None, limit=8):
+        full = (occupied_slots if occupied_slots is not None else self.inventory_slots(owned)) >= 6
         basic = profile.get("basic_info", {})
         damage = basic.get("damage_type", "")
         style = basic.get("play_style", "")
@@ -771,6 +777,8 @@ class LiveRecommendationService:
         pool = {}
         for ident, item in self.catalog.items():
             if not self.available(ident, map_id) or not self.compatible(ident, owned):
+                continue
+            if full and not self._recipe(ident, owned)[1]:
                 continue
             strict = self.strict.get(ident, {})
             boots = "Boots" in item.get("tags", []) and ident != "1001"
@@ -828,7 +836,8 @@ class LiveRecommendationService:
             )
             if row:
                 rows.append(row)
-        return sorted(rows, key=lambda r: (-r["score"], -r["invested"], r["id"]))[:8]
+        ranked = sorted(rows, key=lambda r: (-r["score"], -r["invested"], r["id"]))
+        return ranked[:limit] if limit is not None else ranked
 
     def _score_candidate(
         self,
@@ -904,6 +913,7 @@ class LiveRecommendationService:
             "id": ident,
             "name": rec.name,
             "score": round(score, 1),
+            "synergy_score": round(rec.score, 1),
             "reasons": reasons,
             "responses": list(dict.fromkeys(responses)),
             "cost": remaining,

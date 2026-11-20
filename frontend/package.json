@@ -1,0 +1,73 @@
+{
+  "name": "solralol-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ../scripts/dev.cjs",
+    "dev:debug": "node ../scripts/dev.cjs --debug",
+    "test:home-layout": "node ./scripts/verify-home-layout.mjs",
+    "test:electron-lifecycle": "node ./scripts/test-electron-lifecycle.mjs",
+    "test:live-timeline": "node ./scripts/test-live-timeline.mjs",
+    "test:live-preparation": "node ./scripts/test-live-preparation.mjs",
+    "test:overlays": "node ./scripts/test-overlays.mjs",
+    "build": "tsc -b && vite build",
+    "desktop:dev": "node ../scripts/dev.cjs",
+    "dist:win": "npm run build && node ./scripts/build-backend.cjs && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  },
+  "main": "electron/main/bootstrap.cjs",
+  "build": {
+    "appId": "com.solralol.desktop",
+    "productName": "Solralol",
+    "asarUnpack": ["electron/main/storage-migration-worker.cjs"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "app",
+        "filter": [
+          "backend/**",
+          "app/services/**",
+          "_paths.py",
+          "data/**",
+          "!data/**/*.tmp",
+          "!data/**/*.log",
+          "!backend/dist/**",
+          "!backend/build/**"
+        ]
+      },
+      {
+        "from": "../backend/dist/SolralolBackend.exe",
+        "to": "backend/SolralolBackend.exe"
+      }
+    ],
+    "win": {
+      "icon": "../data/LogoApp.ico",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Solralol-Setup-${version}.${ext}"
+    }
+  }
+}

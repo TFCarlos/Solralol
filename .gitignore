@@ -1,13 +1,54 @@
-﻿.venv/
+# Python and local environments
+.venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
-*.log
-config.local.json
-data/item_icons/
-data/champion_icons/
-data/champion_data/*.tmp
-data/champion_metadata/
-data/rune_icons/
-data/spell_icons/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node, TypeScript, and package outputs
+node_modules/
+frontend/dist/
+frontend/release/
+frontend/*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+backend/build/
+backend/dist/
 build/
 dist/
+
+# Local diagnostics, temporary work, and agent tooling
+*.log
+*.tmp
+*.temp
+scratch/
+app/scratch/
+app/ui/
+.agents/
+.codex/
+
+# User settings, databases, recordings, and recording locks
+.env
+.env.*
+!.env.example
+config.local.json
+.solralol/
+recordings/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.mp4
+*.mkv
+*.webm
+*.lock
+
+# Downloadable caches in the source tree. Bundled Data Dragon catalogs,
+# champion data, abilities, splashes, runes, and spells remain versionable.
+data/item_icons/
+data/champion_icons/
+data/champion_metadata/

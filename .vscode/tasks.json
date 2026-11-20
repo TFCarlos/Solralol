@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Solralol: start development app (debug)",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "dev:debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "solralol-dev",
+        "pattern": { "regexp": ".*" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting Vite",
+          "endsPattern": "Solralol dev ready"
+        }
+      }
+    }
+  ]
+}

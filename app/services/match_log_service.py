@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from app.services.storage_manager import atomic_write_json, atomic_write_text, get_storage_manager
 
 
 class MatchLogService:
@@ -14,7 +15,7 @@ class MatchLogService:
     """
 
     def __init__(self) -> None:
-        self.logs_dir = Path.home() / ".solralol" / "match_logs"
+        self.logs_dir = get_storage_manager().match_logs_dir
         self.logs_dir.mkdir(parents=True, exist_ok=True)
 
     def save_match_log(self, session: dict[str, Any]) -> tuple[Path, Path]:
@@ -29,12 +30,10 @@ class MatchLogService:
         log_path = self.logs_dir / f"match_{session_id}.log"
 
         # Guardar JSON estructurado
-        with json_path.open("w", encoding="utf-8") as f:
-            json.dump(log_data, f, ensure_ascii=False, indent=2)
+        atomic_write_json(json_path, log_data)
 
         # Guardar archivo de texto plano .log
-        with log_path.open("w", encoding="utf-8") as f:
-            f.write(log_data["formatted_log_text"])
+        atomic_write_text(log_path, log_data["formatted_log_text"])
 
         # Actualizar sesión con la ruta del log
         session["match_log_json_path"] = str(json_path)
@@ -212,8 +211,19 @@ class MatchLogService:
                     "assister_keys": ev.get("assister_keys", []),
                     "item_name": ev.get("item_name"),
                     "objective": ev.get("objective"),
+                    "objective_subtype": ev.get("objective_subtype"),
+                    "objective_label": ev.get("objective_label"),
+                    "owner_team": ev.get("owner_team"),
+                    "team_source": ev.get("team_source"),
+                    "structure": ev.get("structure"),
+                    "source_reference": ev.get("source_reference"),
+                    "timestamp_ms": ev.get("timestamp_ms"),
+                    "position": ev.get("position"),
                 }
             )
+            for field in ("precision", "shutdown", "bounty", "gold_value"):
+                if ev.get(field) is not None:
+                    events_chronology[-1][field] = ev[field]
 
         events_chronology.sort(key=lambda x: (x["time_seconds"], x["order"]))
 
@@ -332,11 +342,11 @@ class MatchLogService:
             latest_snapshot_point,
             keys=("damage_dealt_to_objectives", "damage_to_structures"),
         )
-        dmg_taken = _valor_opcional(
+        all_source_damage_received = _valor_opcional(
             p_final,
             snap_stats,
             latest_snapshot_point,
-            keys=("total_damage_taken", "damage_taken"),
+            keys=("all_source_damage_received", "total_damage_taken", "damage_taken"),
         )
         dano_mitigado = _valor_opcional(
             p_final,
@@ -407,7 +417,7 @@ class MatchLogService:
                 if curacion_total is not None and curacion_aliados is not None
                 else None
             ),
-            "damage_taken": dmg_taken,
+            "all_source_damage_received": all_source_damage_received,
             "damage_self_mitigated": dano_mitigado,
             "vision_score": vision,
             "items": clean_items,
@@ -476,15 +486,15 @@ class MatchLogService:
         lines.append(f"  - Oro Ganado: {user_stats['gold']:,} oro")
         lines.append(f"  - Daño a Campeones: {user_stats['damage_to_champions']:,}")
         lines.append(f"  - Daño a Objetivos: {user_stats['damage_to_objectives']:,}")
-        dano_recibido = user_stats["damage_taken"]
+        dano_recibido_total = user_stats["all_source_damage_received"]
         dano_mitigado = user_stats["damage_self_mitigated"]
         dano_recibido_texto = (
-            f"{dano_recibido:,}" if dano_recibido is not None else "No disponible"
+            f"{dano_recibido_total:,}" if dano_recibido_total is not None else "No disponible"
         )
         dano_mitigado_texto = (
             f"{dano_mitigado:,}" if dano_mitigado is not None else "No disponible"
         )
-        lines.append(f"  - Daño Recibido: {dano_recibido_texto}")
+        lines.append(f"  - Daño total recibido (todas las fuentes): {dano_recibido_texto}")
         lines.append(f"  - Daño Mitigado (propio): {dano_mitigado_texto}")
         lines.append(f"  - Puntuación de Visión: {user_stats['vision_score']}")
         lines.append(f"  - Objetos Finales (IDs): {user_stats['items']}")

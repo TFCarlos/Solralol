@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import tempfile
 import threading
 from collections import Counter
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from app.services.storage_manager import atomic_write_json, get_storage_manager
+from app.services.live_event_normalizer import normalize_event_time, normalize_live_event
 
 logger = logging.getLogger(__name__)
 _SESSIONS_LOCK = threading.RLock()
@@ -66,8 +66,11 @@ class LiveMatchTracker:
         "dragonkill": ("dragon", "Dragón"),
         "baronkill": ("baron", "Barón"),
         "heraldkill": ("rift_herald", "Heraldo"),
+        "hordekill": ("void_grub", "Larva del Vacío"),
         "turretkilled": ("tower", "Torre"),
         "inhibkilled": ("inhibitor", "Inhibidor"),
+        "inhibrespawned": ("inhibitor_respawned", "Inhibidor reaparecido"),
+        "inhibrespawningsoon": ("inhibitor_respawning", "Inhibidor reaparecerá pronto"),
     }
 
     #: Prefijos de nombres de unidades del juego (no de jugadores) en los
@@ -120,7 +123,7 @@ class LiveMatchTracker:
         #: sesión no se escribe en disco ni genera log (la guarda el tracker
         #: principal). Evita partidas duplicadas y escrituras de sobra.
         self.persist = bool(persist)
-        self.sessions_path = Path.home() / ".solralol" / "live_match_sessions.json"
+        self.sessions_path = get_storage_manager().live_sessions_path
         self.session: dict[str, Any] | None = None
         self.last_sample_time = -1.0
         self.event_order = 0
@@ -129,6 +132,16 @@ class LiveMatchTracker:
         #: sincronización con Riot bloqueaba la interfaz varios segundos.
         self._sessions_cache: list[dict[str, Any]] | None = None
         self._sessions_cache_stamp: tuple[str, int, int] | None = None
+        self._inventory_gap = False
+        self._completed_item_ids: set[int] = set()
+        try:
+            from _paths import DATA_DIR
+            strict = json.loads((DATA_DIR / "legendary_items_strict.json").read_text(encoding="utf-8"))
+            self._completed_item_ids = {self._int(row.get("id")) for row in strict
+                                        if isinstance(row, dict) and
+                                        str((row.get("basic_info") or {}).get("tier", "")).casefold() in {"legendary", "mythic"}}
+        except (ImportError, OSError, ValueError, TypeError, AttributeError):
+            self._completed_item_ids = set()
 
     @property
     def is_tracking(self) -> bool:
@@ -267,6 +280,10 @@ class LiveMatchTracker:
     def get_live_session(self) -> dict[str, Any] | None:
         return deepcopy(self.session) if self.session else None
 
+    def mark_telemetry_gap(self) -> None:
+        """Rebaseline inventory after an API gap instead of inventing acquisitions."""
+        self._inventory_gap = True
+
     def load_saved_sessions(self) -> list[dict[str, Any]]:
         """Sesiones guardadas, leídas del disco solo si el fichero cambió.
 
@@ -286,6 +303,21 @@ class LiveMatchTracker:
             self._sessions_cache = sessions
             self._sessions_cache_stamp = stamp
             return sessions
+
+    def load_saved_sessions_checked(self) -> list[dict[str, Any]]:
+        """Read the existing repository without converting corruption to empty data.
+
+        Electron uses this for a truthful empty/error distinction. It deliberately
+        does not run retention or normalization migrations on legacy records.
+        """
+        with _sessions_lock(self.sessions_path):
+            if not self.sessions_path.exists():
+                return []
+            with self.sessions_path.open("r", encoding="utf-8") as file:
+                data = json.load(file)
+            if not isinstance(data, list):
+                raise ValueError("El repositorio de partidas guardadas no tiene un formato compatible.")
+            return data
 
     def enforce_saved_session_limit(self) -> list[dict[str, Any]]:
         """Migra el historial local a diez partidas completas, únicas y recientes."""
@@ -374,16 +406,17 @@ class LiveMatchTracker:
         if not session_id or registro.get("saved_match_id") != session_id:
             raise ValueError("El análisis no corresponde al identificador de partida.")
         validar_analisis_partida(registro.get("analysis"))
-        sesiones_guardadas = deepcopy(self.load_saved_sessions())
-        for sesion in sesiones_guardadas:
-            if str(sesion.get("session_id") or "") == session_id:
-                sesion["ai_match_analysis"] = deepcopy(registro)
-                self._save_sessions(sesiones_guardadas)
+        with _sessions_lock(self.sessions_path):
+            sesiones_guardadas = deepcopy(self.load_saved_sessions())
+            for sesion in sesiones_guardadas:
+                if str(sesion.get("session_id") or "") == session_id:
+                    sesion["ai_match_analysis"] = deepcopy(registro)
+                    self._save_sessions(sesiones_guardadas)
+                    return
+            if self.session and str(self.session.get("session_id") or "") == session_id:
+                self.session["ai_match_analysis"] = deepcopy(registro)
                 return
-        if self.session and str(self.session.get("session_id") or "") == session_id:
-            self.session["ai_match_analysis"] = deepcopy(registro)
-            return
-        raise KeyError("No existe una partida guardada con ese identificador.")
+            raise KeyError("No existe una partida guardada con ese identificador.")
 
     def guardar_revision_ia(self, session_id: str, registro: dict[str, Any]) -> None:
         """Guarda el informe IA de repaso dentro de la partida canónica.
@@ -403,13 +436,14 @@ class LiveMatchTracker:
             or int(registro.get("schema_version") or 0) not in {1, 2}
         ):
             raise ValueError("El informe IA no corresponde a una partida válida.")
-        sesiones = deepcopy(self.load_saved_sessions())
-        for sesion in sesiones:
-            if str(sesion.get("session_id") or "") == session_id:
-                sesion["ai_match_review"] = deepcopy(registro)
-                self._save_sessions(sesiones)
-                return
-        raise KeyError("No existe una partida guardada con ese identificador.")
+        with _sessions_lock(self.sessions_path):
+            sesiones = deepcopy(self.load_saved_sessions())
+            for sesion in sesiones:
+                if str(sesion.get("session_id") or "") == session_id:
+                    sesion["ai_match_review"] = deepcopy(registro)
+                    self._save_sessions(sesiones)
+                    return
+            raise KeyError("No existe una partida guardada con ese identificador.")
 
     def _index_players(self, snapshot: dict[str, Any]) -> None:
         if self.session is None:
@@ -436,6 +470,8 @@ class LiveMatchTracker:
                     "side": side,
                     "role": role,
                     "riot_id": self._display_name(player),
+                    "riot_game_name": str(player.get("riotIdGameName", "")),
+                    "riot_tag_line": str(player.get("riotIdTagLine", "")),
                     "summoner_name": str(player.get("summonerName", "")),
                     "participant_id": player.get("participantId"),
                     "puuid": player.get("puuid"),
@@ -459,6 +495,8 @@ class LiveMatchTracker:
                     "summoner_spells": player.get("summonerSpells", {}),
                     "runes": player.get("runes", {}),
                     "riot_id": self._display_name(player),
+                    "riot_game_name": str(player.get("riotIdGameName", "")),
+                    "riot_tag_line": str(player.get("riotIdTagLine", "")),
                     "summoner_name": str(player.get("summonerName", "")),
                     "participant_id": player.get("participantId"),
                     "puuid": player.get("puuid"),
@@ -526,6 +564,7 @@ class LiveMatchTracker:
             local_live_stats,
             is_local,
         )
+        inventory = player.get("items")
 
         return {
             "level": self._int(
@@ -554,6 +593,7 @@ class LiveMatchTracker:
                 )
             ),
             "items": items,
+            "inventory_available": isinstance(inventory, list),
             "live_stats": local_live_stats if is_local else {},
             "inventory_value": inventory_value,
             "current_gold": current_gold,
@@ -573,8 +613,9 @@ class LiveMatchTracker:
                     if stats["damage_to_structures"] is not None
                     else "unavailable"
                 ),
-                "damage_taken": (
-                    "api" if stats["damage_taken"] is not None else "unavailable"
+                "champion_damage_received": "unavailable",
+                "all_source_damage_received": (
+                    "api" if stats["all_source_damage_received"] is not None else "unavailable"
                 ),
                 "healing": ("api" if stats["healing"] is not None else "unavailable"),
                 "vision_score": (
@@ -592,8 +633,12 @@ class LiveMatchTracker:
 
         time_value = point.get("time", 0.0)
         previous_states = self.session["last_player_state"]
+        current_players = point.get("players", {})
+        if not isinstance(current_players, dict) or not current_players:
+            self._inventory_gap = True
+            return
 
-        for key, current in point.get("players", {}).items():
+        for key, current in current_players.items():
             previous = previous_states.get(key)
             metadata = self.session["players"].get(key, {})
             if previous is not None:
@@ -611,14 +656,11 @@ class LiveMatchTracker:
                     current,
                     time_value,
                 )
-                self._record_item_changes(
-                    key,
-                    metadata,
-                    previous,
-                    current,
-                    time_value,
-                )
+                if (not self._inventory_gap and previous.get("inventory_available")
+                        and current.get("inventory_available")):
+                    self._record_item_changes(key, metadata, previous, current, time_value)
             previous_states[key] = deepcopy(current)
+        self._inventory_gap = False
 
     def _record_counter_changes(
         self,
@@ -700,7 +742,21 @@ class LiveMatchTracker:
                 precision="observed",
                 label=f"Compra: {self._item_name(item_id)}",
                 item_id=item_id,
+                item_name=self._item_name(item_id),
             )
+            if self._is_completed_item(item_id):
+                self._append_event(
+                    time_value=time_value,
+                    event_type="completed_item_acquired",
+                    player_key=key,
+                    team=metadata.get("team", ""),
+                    role=metadata.get("role", "UNKNOWN"),
+                    precision="observed",
+                    label=f"Objeto completo detectado: {self._item_name(item_id)}",
+                    item_id=item_id,
+                    item_name=self._item_name(item_id),
+                    observed=True,
+                )
 
         for item_id in removed:
             self._append_event(
@@ -751,7 +807,10 @@ class LiveMatchTracker:
             return
 
         event_name = str(raw_event.get("EventName", "")).casefold()
-        time_value = self._float(raw_event.get("EventTime", 0))
+        normalized_time = normalize_event_time(raw_event.get("EventTime"))
+        if normalized_time is None:
+            return
+        time_value = normalized_time
         killer_name = str(raw_event.get("KillerName", ""))
         victim_name = str(raw_event.get("VictimName", ""))
         killer_key = self._event_player_key(raw_event, "killer")
@@ -763,6 +822,13 @@ class LiveMatchTracker:
             else f"{killer_key}:{victim_key}:{time_value:.3f}"
         )
         assister_keys, assist_data_complete = self._assists_from_event(raw_event)
+        killer_meta = self.session["players"].get(killer_key, {}) if killer_key else {}
+        victim_meta = self.session["players"].get(victim_key, {}) if victim_key else {}
+        actor_event = normalize_live_event(
+            raw_event,
+            str(killer_meta.get("champion_name") or ""),
+            str(victim_meta.get("champion_name") or ""),
+        )
 
         if event_name == "championkill":
             if killer_key:
@@ -787,7 +853,29 @@ class LiveMatchTracker:
                     assister_keys=assister_keys,
                     assist_data_complete=assist_data_complete,
                     event_id=exact_identity,
+                    killer_actor_type=actor_event.get("KillerActorType"),
+                    killer_actor_name=actor_event.get("KillerActorName"),
+                    victim_actor_type=actor_event.get("VictimActorType"),
+                    victim_actor_name=actor_event.get("VictimActorName"),
+                    multikill=(self._int(raw_event.get("MultiKill", raw_event.get("MultiKillCount", 0)))
+                               if self._int(raw_event.get("MultiKill", raw_event.get("MultiKillCount", 0))) >= 2 else None),
+                    shutdown_confirmed=bool(raw_event.get("Shutdown") is True or raw_event.get("IsShutdown") is True),
                 )
+
+                # Keep explicitly reported achievements in the finalized event
+                # history too; the renderer can otherwise only recover them
+                # from the volatile Live Client response.
+                if raw_event.get("IsFirstBlood") is True or raw_event.get("FirstBlood") is True:
+                    self._append_event(
+                        time_value=time_value,
+                        event_type="first_blood",
+                        player_key=killer_key,
+                        team=metadata.get("team", ""),
+                        role=metadata.get("role", "UNKNOWN"),
+                        precision="exact",
+                        label="First Blood",
+                        event_id=f"{exact_identity}:firstblood",
+                    )
 
             if victim_key:
                 metadata = self.session["players"].get(
@@ -811,6 +899,10 @@ class LiveMatchTracker:
                     assister_keys=assister_keys,
                     assist_data_complete=assist_data_complete,
                     event_id=exact_identity,
+                    killer_actor_type=actor_event.get("KillerActorType"),
+                    killer_actor_name=actor_event.get("KillerActorName"),
+                    victim_actor_type=actor_event.get("VictimActorType"),
+                    victim_actor_name=actor_event.get("VictimActorName"),
                 )
 
             for assister_key in self._assister_keys(raw_event):
@@ -838,12 +930,40 @@ class LiveMatchTracker:
                 )
             return
 
+        if event_name in {"firstblood", "first_blood"}:
+            metadata = self.session["players"].get(killer_key, {}) if killer_key else {}
+            self._append_event(time_value=time_value, event_type="first_blood", player_key=killer_key,
+                               team=metadata.get("team", ""), role=metadata.get("role", "UNKNOWN"),
+                               precision="exact", label="First Blood", event_id=exact_identity)
+            return
+
+        if event_name in {"shutdown", "bountyclaimed", "bounty_claimed"} and (
+                raw_event.get("Shutdown") is True or raw_event.get("IsShutdown") is True
+                or raw_event.get("BountyClaimed") is True):
+            metadata = self.session["players"].get(killer_key, {}) if killer_key else {}
+            self._append_event(time_value=time_value, event_type="shutdown", player_key=killer_key,
+                               team=metadata.get("team", ""), role=metadata.get("role", "UNKNOWN"),
+                               precision="exact", label="Shutdown confirmado", event_id=exact_identity)
+            return
+
+        if event_name in {"multikill", "multikillachievement"}:
+            count = self._int(raw_event.get("KillCount", raw_event.get("MultiKill", 0)))
+            if count >= 2:
+                metadata = self.session["players"].get(killer_key, {}) if killer_key else {}
+                self._append_event(time_value=time_value, event_type="multikill", player_key=killer_key,
+                                   team=metadata.get("team", ""), role=metadata.get("role", "UNKNOWN"),
+                                   precision="exact", label="Multikill confirmado", count=count,
+                                   event_id=exact_identity)
+            return
+
         objective = self.OBJECTIVE_EVENTS.get(event_name)
         if objective:
             objective_key, objective_label = objective
             structure = str(
                 raw_event.get("TurretKilled")
                 or raw_event.get("InhibKilled")
+                or raw_event.get("InhibRespawned")
+                or raw_event.get("InhibRespawningSoon")
                 or raw_event.get("BarracksKilled")
                 or ""
             )
@@ -875,7 +995,15 @@ class LiveMatchTracker:
                 ),
                 stolen=str(raw_event.get("Stolen", "")),
                 assister_keys=assisters,
+                killer_actor_type=actor_event.get("KillerActorType"),
+                killer_actor_name=actor_event.get("KillerActorName"),
+                target_actor_type=actor_event.get("TargetActorType"),
+                target_actor_name=actor_event.get("TargetActorName"),
+                event_id=exact_identity,
             )
+            return
+
+        logger.debug("Live Client event type not yet normalized: %s", event_name or "<empty>")
 
     def _objective_team(
         self,
@@ -1078,6 +1206,9 @@ class LiveMatchTracker:
 
     def _event_player_key(self, raw_event: dict[str, Any], role: str) -> str | None:
         """Resuelve IDs de participante antes de probar alias exactos del roster."""
+        raw_killer = str(raw_event.get("KillerName") or "").casefold()
+        if role == "killer" and ("turret" in raw_killer or "tower" in raw_killer):
+            return None
         fields = {
             "killer": (
                 "KillerParticipantId",
@@ -1127,6 +1258,9 @@ class LiveMatchTracker:
                     None,
                 )
             if value is not None:
+                folded = str(value).casefold()
+                if role == "killer" and ("turret" in folded or "tower" in folded):
+                    return None
                 resolved = self._key_from_identity(str(value))
                 if resolved:
                     return resolved
@@ -1208,19 +1342,32 @@ class LiveMatchTracker:
         """Resuelve IDs estables o alias exactos, rechazando nombres ambiguos."""
         if self.session is None or not identity:
             return None
-        wanted = identity.casefold()
+        wanted = identity.strip().casefold()
         matches: list[str] = []
         for key, metadata in self.session["players"].items():
+            riot_id = str(metadata.get("riot_id", "")).strip()
             candidates = {
                 str(key).casefold(),
-                str(metadata.get("riot_id", "")).casefold(),
+                riot_id.casefold(),
+                riot_id.split("#", 1)[0].casefold(),
+                str(metadata.get("riot_game_name", "")).strip().casefold(),
+                f"{metadata.get('riot_game_name', '')}#{metadata.get('riot_tag_line', '')}".strip("# ").casefold(),
                 str(metadata.get("summoner_name", "")).casefold(),
                 str(metadata.get("participant_id", "")).casefold(),
                 str(metadata.get("puuid", "")).casefold(),
             }
-            if wanted in candidates:
+            if wanted in {candidate.strip() for candidate in candidates if candidate.strip()}:
                 matches.append(str(key))
-        return matches[0] if len(matches) == 1 else None
+        if len(matches) == 1:
+            return matches[0]
+        # Some Live Client builds serialize the active player as a generic
+        # label. Resolve only those documented-style placeholders, and only
+        # when the roster has one explicitly identified local participant.
+        if wanted in {"player", "jugador", "localplayer", "local player"}:
+            local = [str(key) for key, meta in self.session["players"].items()
+                     if isinstance(meta, dict) and meta.get("is_local_player")]
+            return local[0] if len(local) == 1 else None
+        return None
 
     def _team_from_key(self, player_key: str | None) -> str:
         if self.session and player_key:
@@ -1276,6 +1423,32 @@ class LiveMatchTracker:
         item = self._catalog_item(item_id)
         return str(item.get("name", f"Objeto {item_id}"))
 
+    def _is_completed_item(self, item_id: int) -> bool:
+        item = self._catalog_item(item_id)
+        if not item:
+            return False
+        tags = {str(value).casefold() for value in item.get("tags", []) if isinstance(value, str)}
+        maps = item.get("maps") if isinstance(item.get("maps"), dict) else {}
+        if (maps.get("11") is not True or item.get("inStore") is False
+                or tags.intersection({"consumable", "trinket", "quest", "questitem"})
+                or item.get("requiredAlly") or item.get("hideFromAll")
+                or item.get("specialRecipe") or item.get("consumed")):
+            return False
+        try:
+            depth = int(item.get("depth") or 0)
+        except (TypeError, ValueError, OverflowError):
+            depth = 0
+        # Boots become complete at their first fully built tier (depth 2); the
+        # base item has no depth and is intentionally excluded. Support quest
+        # upgrades are completed at depth 2, while their starter is depthless.
+        if "boots" in tags or "goldper" in tags:
+            return depth >= 2
+        # Legendary/mythic is patch metadata, and depth is the Data Dragon
+        # recipe tier. Keep either signal so valid final items survive catalog
+        # metadata differences, while explicit consumable/starter exclusions
+        # above prevent leaf consumables from being misclassified.
+        return item_id in self._completed_item_ids or depth >= 3
+
     def _estimate_gold(
         self,
         player: dict[str, Any],
@@ -1325,7 +1498,7 @@ class LiveMatchTracker:
                     "turretDamage",
                 ),
             ),
-            "damage_taken": self._first_int(
+            "all_source_damage_received": self._first_int(
                 sources,
                 ("totalDamageTaken", "damageTaken"),
             ),
@@ -1442,28 +1615,13 @@ class LiveMatchTracker:
                     if isinstance(session, dict) and session.get("session_id")
                 }
                 combined.update(incoming)
-            retained = sorted(
-                combined.values(), key=_session_timestamp, reverse=True
-            )[: self.MAX_SAVED_SESSIONS]
-            for session in retained:
-                thin_snapshots(session)
+            # Updates to an existing saved session (sync, AI analysis, review)
+            # must not act as a migration that drops old entries or thins their
+            # telemetry. The ten-session policy is applied only when a new
+            # completed session is persisted above.
+            retained = sorted(combined.values(), key=_session_timestamp, reverse=True)
 
-            self.sessions_path.parent.mkdir(parents=True, exist_ok=True)
-            fd, temporary_name = tempfile.mkstemp(
-                prefix="live_match_sessions_",
-                suffix=".tmp",
-                dir=self.sessions_path.parent,
-            )
-            temporary_path = Path(temporary_name)
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as file:
-                    json.dump(retained, file, ensure_ascii=False, separators=(",", ":"))
-                    file.flush()
-                    os.fsync(file.fileno())
-                temporary_path.replace(self.sessions_path)
-            except Exception:
-                temporary_path.unlink(missing_ok=True)
-                raise
+            atomic_write_json(self.sessions_path, retained)
 
             self._sessions_cache = retained
             self._sessions_cache_stamp = self._path_stamp()

@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
-import tempfile
 import threading
 import unicodedata
 from collections import Counter
@@ -93,10 +93,13 @@ class HomeHistoryRepository:
 
     def __init__(self, root: Path | None = None) -> None:
         """Inicializa el almacén; root permite aislar datos en pruebas."""
-        self.root = root or (Path.home() / ".solralol" / "profiles")
+        if root is None:
+            from app.services.storage_manager import get_storage_manager
+            root = get_storage_manager().profiles_dir
+        self.root = root
 
     @staticmethod
-    def _lock_for(path: Path) -> threading.RLock:
+    def _lock_for(path: Path) -> Any:
         """Obtiene el cerrojo compartido que serializa accesos a una ruta.
 
         Args:
@@ -106,6 +109,12 @@ class HomeHistoryRepository:
             Cerrojo reentrante compartido para esa ruta.
         """
         return _HOME_HISTORY_LOCK
+
+    @staticmethod
+    def _transaction_lock_for(path: Path) -> Any:
+        """Serialize a history read/modify/write transaction across processes."""
+        from app.services.storage_manager import serialized_file_access
+        return serialized_file_access(path)
 
     @staticmethod
     def _backup_path(path: Path) -> Path:
@@ -131,20 +140,12 @@ class HomeHistoryRepository:
         Returns:
             None.
         """
-        path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, nombre_temporal = tempfile.mkstemp(
-            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-        )
-        temporal = Path(nombre_temporal)
+        from app.services.storage_manager import StorageWriteError, atomic_write_json
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as file:
-                json.dump(payload, file, ensure_ascii=False, indent=2)
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temporal, path)
-        except Exception:
-            temporal.unlink(missing_ok=True)
-            raise
+            atomic_write_json(path, payload)
+        except OSError as error:
+            logger.exception("No se pudo guardar el historial local")
+            raise StorageWriteError("No se pudo actualizar el historial local. Comprueba los permisos del directorio de datos.") from error
 
     @classmethod
     def _read_document(cls, path: Path) -> tuple[dict[str, Any], bool]:
@@ -195,7 +196,7 @@ class HomeHistoryRepository:
     @staticmethod
     def account_key(profile: dict[str, Any]) -> str:
         """Devuelve una clave estable derivada del identificador local de cuenta."""
-        stable_id = str(profile.get("puuid") or profile.get("summonerId") or "").strip()
+        stable_id = str(profile.get("riot_puuid") or profile.get("puuid") or profile.get("summonerId") or "").strip()
         if not stable_id:
             raise ValueError("El cliente no proporcionó un identificador estable.")
         return hashlib.sha256(stable_id.encode("utf-8")).hexdigest()[:24]
@@ -273,8 +274,104 @@ class HomeHistoryRepository:
             except (OSError, ValueError):
                 continue
             if isinstance(data, dict) and (data.get("puuid") or data.get("summonerId")):
+                verified = str(data.get("riot_puuid") or "").strip()
+                if verified and directory.name != self.account_key(data):
+                    # Recover migrations created by an earlier build that stored
+                    # the validated PUUID without moving its repository folder.
+                    target = self.root / self.account_key(data)
+                    target.mkdir(parents=True, exist_ok=True)
+                    for source in directory.iterdir():
+                        if source.name.startswith(".") and source.name.endswith(".lock"):
+                            continue
+                        destination = target / source.name
+                        if source.is_file() and not destination.exists():
+                            shutil.copy2(source, destination)
+                    source_history, target_history = directory / "match_history.json", target / "match_history.json"
+                    if source_history.is_file() and target_history.is_file():
+                        old_doc = json.loads(source_history.read_text(encoding="utf-8"))
+                        new_doc = json.loads(target_history.read_text(encoding="utf-8"))
+                        if isinstance(old_doc, dict) and isinstance(new_doc, dict):
+                            def entries(document: dict[str, Any], key: str) -> list[dict[str, Any]]:
+                                value = document.get(key, [])
+                                return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+                            matches = {}
+                            for item in entries(old_doc, "matches") + entries(new_doc, "matches"):
+                                key = str(item.get("stable_match_id") or item.get("game_id") or item.get("gameId") or "")
+                                if key:
+                                    matches[key] = item
+                            saved = {}
+                            for item in entries(old_doc, "saved_analyses") + entries(new_doc, "saved_analyses"):
+                                if item.get("match_id"):
+                                    saved[str(item["match_id"])] = item
+                            merged = {**old_doc, **new_doc,
+                                      "matches": sorted(matches.values(), key=lambda item: str(item.get("started_at") or ""), reverse=True),
+                                      "saved_analyses": list(saved.values())}
+                            self._write_atomic(target_history, merged)
+                    data["puuid"] = verified
+                    self._write_atomic(target / "profile.json", data)
+                    return data
                 return data
         return None
+
+    def save_verified_riot_puuid(self, profile: dict[str, Any], puuid: str) -> dict[str, Any]:
+        """Persist Account-V1 identity and safely re-key its local repository directory."""
+        puuid = str(puuid or "").strip()
+        if not puuid:
+            raise ValueError("Riot no devolvió un PUUID válido.")
+        source_directory = self.root / self.account_key(profile)
+        source_profile = source_directory / "profile.json"
+        with self._transaction_lock_for(source_profile):
+            current = json.loads(source_profile.read_text(encoding="utf-8"))
+            if not isinstance(current, dict) or self.account_key(current) != self.account_key(profile):
+                raise ValueError("El perfil cambió durante la verificación de identidad.")
+            current["puuid"] = puuid
+            current["riot_puuid"] = puuid
+            current["riot_puuid_verified_at"] = datetime.now(UTC).isoformat()
+            target_directory = self.root / self.account_key(current)
+            if target_directory != source_directory:
+                target_directory.mkdir(parents=True, exist_ok=True)
+                for source in source_directory.iterdir():
+                    # Atomic-write coordination files are process locks, not
+                    # account data. They may be exclusively locked on Windows.
+                    if source.name.startswith(".") and source.name.endswith(".lock"):
+                        continue
+                    destination = target_directory / source.name
+                    if source.is_file() and not destination.exists():
+                        shutil.copy2(source, destination)
+                source_history = source_directory / "match_history.json"
+                target_history = target_directory / "match_history.json"
+                if source_history.is_file() and target_history.is_file():
+                    old_data = json.loads(source_history.read_text(encoding="utf-8"))
+                    new_data = json.loads(target_history.read_text(encoding="utf-8"))
+                    if isinstance(old_data, dict) and isinstance(new_data, dict):
+                        matches = {}
+                        old_matches = old_data.get("matches", []) if isinstance(old_data.get("matches", []), list) else []
+                        new_matches = new_data.get("matches", []) if isinstance(new_data.get("matches", []), list) else []
+                        for item in old_matches + new_matches:
+                            if isinstance(item, dict):
+                                key = str(item.get("stable_match_id") or item.get("game_id") or item.get("gameId") or "")
+                                if key:
+                                    matches[key] = item
+                        saved = {}
+                        old_saved = old_data.get("saved_analyses", []) if isinstance(old_data.get("saved_analyses", []), list) else []
+                        new_saved = new_data.get("saved_analyses", []) if isinstance(new_data.get("saved_analyses", []), list) else []
+                        for item in old_saved + new_saved:
+                            if isinstance(item, dict) and item.get("match_id"):
+                                saved[str(item["match_id"])] = item
+                        merged = {**old_data, **new_data, "matches": sorted(matches.values(), key=lambda item: str(item.get("started_at") or ""), reverse=True),
+                                  "saved_analyses": list(saved.values())}
+                        self._write_atomic(target_history, merged)
+                target_profile = target_directory / "profile.json"
+                if target_profile.exists():
+                    existing = json.loads(target_profile.read_text(encoding="utf-8"))
+                    if isinstance(existing, dict):
+                        current = {**current, **existing, "puuid": puuid, "riot_puuid": puuid,
+                                   "riot_puuid_verified_at": datetime.now(UTC).isoformat()}
+                self._write_atomic(target_profile, current)
+                # Keep the source directory intact as a rollback copy.
+            else:
+                self._write_atomic(source_profile, current)
+        return current
 
     def merge(
         self, profile: dict[str, Any], matches: list[dict[str, Any]]
@@ -282,7 +379,7 @@ class HomeHistoryRepository:
         """Fusiona partidas por ID o huella y guarda el resultado atómicamente."""
         key = self.account_key(profile)
         path = self.root / key / "match_history.json"
-        with self._lock_for(path):
+        with self._transaction_lock_for(path):
             data = self.load(profile)
             registros_inutilizables = data.pop("_unusable_match_records", [])
             index = {
@@ -305,6 +402,11 @@ class HomeHistoryRepository:
                 previous_enrichment = previous.get("enrichment") or {}
                 incoming_participants = match.get("participants") or []
                 previous_participants = previous.get("participants") or []
+                cs_reparsed = bool(
+                    match.get("cs_source_version") == 2
+                    and incoming_participants
+                    and len(incoming_participants) >= len(previous_participants)
+                )
                 detalle_autoritativo = bool(
                     incoming_enrichment.get("detail_attempted")
                     and len(incoming_participants) > 1
@@ -329,6 +431,17 @@ class HomeHistoryRepository:
                             previous[campo] = valor
                         continue
                     if valor in (None, "", [], {}):
+                        if (
+                            campo == "cs"
+                            and valor is None
+                            and match.get("cs_source_version") == 2
+                            and previous.get("cs_source_version") != 2
+                        ):
+                            # A corrected parse may prove that a legacy value
+                            # was only a missing-field fallback, not real zero.
+                            previous["cs"] = None
+                            previous["cs_per_min"] = None
+                            previous["cs_source_version"] = 2
                         continue
                     if (
                         campo in campos_detalle
@@ -338,6 +451,7 @@ class HomeHistoryRepository:
                             or previous_enrichment.get("detail_attempted")
                         )
                         and not detalle_autoritativo
+                        and not cs_reparsed
                     ):
                         continue
                     if (
@@ -357,6 +471,25 @@ class HomeHistoryRepository:
                                 **incoming_enrichment,
                             }
                         continue
+                    if campo == "participants" and cs_reparsed:
+                        previous_cs = {
+                            (str(item.get("participant_id") or ""), str(item.get("champion_id") or ""), str(item.get("team_id") or "")): item
+                            for item in previous_participants
+                            if isinstance(item, dict)
+                            and item.get("cs_source_version") == 2
+                            and item.get("cs") is not None
+                        }
+                        valor = [
+                            ({**item, **{
+                                key: previous_cs[(str(item.get("participant_id") or ""), str(item.get("champion_id") or ""), str(item.get("team_id") or ""))][key]
+                                for key in ("cs", "cs_lane_minions", "cs_neutral_minions", "cs_source_version")
+                                if key in previous_cs[(str(item.get("participant_id") or ""), str(item.get("champion_id") or ""), str(item.get("team_id") or ""))]
+                            }} if isinstance(item, dict)
+                             and item.get("cs") is None
+                             and (str(item.get("participant_id") or ""), str(item.get("champion_id") or ""), str(item.get("team_id") or "")) in previous_cs
+                             else item)
+                            for item in valor
+                        ]
                     previous[campo] = valor
             ordenadas = sorted(
                 data["matches"],
@@ -380,7 +513,7 @@ class HomeHistoryRepository:
             return False
         key = self.account_key(profile)
         path = self.root / key / "match_history.json"
-        with self._lock_for(path):
+        with self._transaction_lock_for(path):
             data = self.load(profile)
             matches = data["matches"]
             changed = False
@@ -401,6 +534,123 @@ class HomeHistoryRepository:
             self._write_atomic(path, document)
             return True
 
+    def load_saved_analyses(self, profile: dict[str, Any]) -> list[dict[str, Any]]:
+        """Return explicitly selected SoloQ analyses stored with this profile history."""
+        value = self.load(profile).get("saved_analyses", [])
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise TypeError("La lista de análisis SoloQ está dañada; se conserva intacta.")
+        return value
+
+    def load_saved_lcu_matches(self, profile: dict[str, Any]) -> list[dict[str, Any]]:
+        """Return the lightweight LCU snapshots, separate from Riot Match-V5 analyses."""
+        value = self.load(profile).get("saved_lcu_matches", [])
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise TypeError("La biblioteca local LCU está dañada; se conserva intacta.")
+        return value
+
+    def save_lcu_match(self, profile: dict[str, Any], record: dict[str, Any], *, limit: int = 10) -> bool:
+        """Atomically store one superficial LCU match without copying Riot detail payloads."""
+        match_id = str(record.get("match_id") or "").strip()
+        if not profile or not match_id or record.get("source") != "LCU":
+            raise ValueError("La ficha local necesita un ID estable y origen LCU.")
+        path = self.root / self.account_key(profile) / "match_history.json"
+        with self._transaction_lock_for(path):
+            data = self.load(profile)
+            current = data.get("saved_lcu_matches", [])
+            if not isinstance(current, list) or any(not isinstance(item, dict) for item in current):
+                raise TypeError("La biblioteca local LCU está dañada; se conserva intacta.")
+            for index, previous in enumerate(current):
+                if str(previous.get("match_id") or "") == match_id:
+                    current[index] = record
+                    break
+            else:
+                if len(current) >= limit:
+                    return False
+                current.append(record)
+            document = {key: value for key, value in data.items() if not key.startswith("_")}
+            document["saved_lcu_matches"] = current
+            self._write_atomic(path, document)
+            return True
+
+    def delete_saved_lcu_match(self, profile: dict[str, Any], match_id: str) -> bool:
+        path = self.root / self.account_key(profile) / "match_history.json"
+        with self._transaction_lock_for(path):
+            data = self.load(profile)
+            current = data.get("saved_lcu_matches", [])
+            if not isinstance(current, list) or any(not isinstance(item, dict) for item in current):
+                raise TypeError("La biblioteca local LCU está dañada; se conserva intacta.")
+            kept = [item for item in current if str(item.get("match_id") or "") != match_id]
+            if len(kept) == len(current):
+                return False
+            document = {key: value for key, value in data.items() if not key.startswith("_")}
+            document["saved_lcu_matches"] = kept
+            self._write_atomic(path, document)
+            return True
+
+    def update_saved_lcu_match(self, profile: dict[str, Any], match_id: str, patch: dict[str, Any]) -> bool:
+        """Update the local sync state without merging Riot detail into the LCU record."""
+        path = self.root / self.account_key(profile) / "match_history.json"
+        with self._transaction_lock_for(path):
+            data = self.load(profile)
+            current = data.get("saved_lcu_matches", [])
+            if not isinstance(current, list) or any(not isinstance(item, dict) for item in current):
+                raise TypeError("La biblioteca local LCU está dañada; se conserva intacta.")
+            found = False
+            updated = []
+            for item in current:
+                if str(item.get("match_id") or "") == match_id:
+                    item = {**item, **patch}
+                    found = True
+                updated.append(item)
+            if not found:
+                return False
+            document = {key: value for key, value in data.items() if not key.startswith("_")}
+            document["saved_lcu_matches"] = updated
+            self._write_atomic(path, document)
+            return True
+
+    def save_soloq_analysis(self, profile: dict[str, Any], record: dict[str, Any]) -> None:
+        """Atomically upsert one saved Riot analysis without changing match history."""
+        path = self.root / self.account_key(profile) / "match_history.json"
+        with self._transaction_lock_for(path):
+            data = self.load(profile)
+            raw_saved = data.get("saved_analyses", [])
+            if not isinstance(raw_saved, list) or any(not isinstance(item, dict) for item in raw_saved):
+                raise TypeError("La lista de análisis SoloQ está dañada; se conserva intacta.")
+            saved = raw_saved
+            raw_lcu = data.get("saved_lcu_matches", [])
+            if not isinstance(raw_lcu, list) or any(not isinstance(item, dict) for item in raw_lcu):
+                raise TypeError("La biblioteca local LCU está dañada; se conserva intacta.")
+            match_id = str(record.get("match_id") or "")
+            if not match_id:
+                raise ValueError("Falta el identificador Riot de la partida.")
+            for index, previous in enumerate(saved):
+                if str(previous.get("match_id") or "") == match_id:
+                    saved[index] = record
+                    break
+            else:
+                saved.append(record)
+            document = {key: value for key, value in data.items() if not key.startswith("_")}
+            document["saved_analyses"] = saved
+            self._write_atomic(path, document)
+
+    def delete_soloq_analysis(self, profile: dict[str, Any], match_id: str) -> bool:
+        """Remove one explicitly saved analysis; Riot history/cache remain untouched."""
+        path = self.root / self.account_key(profile) / "match_history.json"
+        with self._transaction_lock_for(path):
+            data = self.load(profile)
+            raw_saved = data.get("saved_analyses", [])
+            if not isinstance(raw_saved, list) or any(not isinstance(item, dict) for item in raw_saved):
+                raise TypeError("La lista de análisis SoloQ está dañada; se conserva intacta.")
+            saved = raw_saved
+            kept = [item for item in saved if str(item.get("match_id") or "") != match_id]
+            if len(kept) == len(saved):
+                return False
+            document = {key: value for key, value in data.items() if not key.startswith("_")}
+            document["saved_analyses"] = kept
+            self._write_atomic(path, document)
+            return True
+
     def clear(self, profile: dict[str, Any]) -> None:
         """Elimina el historial de la cuenta indicada bajo el cerrojo de archivo.
 
@@ -411,11 +661,28 @@ class HomeHistoryRepository:
             None.
         """
         path = self.root / self.account_key(profile) / "match_history.json"
-        with self._lock_for(path):
+        with self._transaction_lock_for(path):
+            data = self.load(profile)
+            raw_saved = data.get("saved_analyses", [])
+            if not isinstance(raw_saved, list) or any(not isinstance(item, dict) for item in raw_saved):
+                raise TypeError("La lista de análisis SoloQ está dañada; se conserva intacta.")
+            saved = raw_saved
+            raw_lcu = data.get("saved_lcu_matches", [])
+            if not isinstance(raw_lcu, list) or any(not isinstance(item, dict) for item in raw_lcu):
+                raise TypeError("La biblioteca local LCU está dañada; se conserva intacta.")
             try:
                 path.unlink()
             except FileNotFoundError:
                 pass
+            if saved or raw_lcu:
+                self._write_atomic(path, {
+                    "schema_version": self.SCHEMA_VERSION,
+                    "profile_id": self.account_key(profile),
+                    "last_sync": None,
+                    "matches": [],
+                    "saved_analyses": saved,
+                    "saved_lcu_matches": raw_lcu,
+                })
 
 
 class LCUHomeProvider:
@@ -436,6 +703,15 @@ class LCUHomeProvider:
             profile.get("puuid") or profile.get("summonerId")
         ):
             raise ValueError("El cliente no devolvió un perfil reconocible.")
+        # The summoner endpoint usually omits the platform. Riot's local chat
+        # identity includes it (for example EUW1), which is required to route
+        # Match-V5 timeline requests for the exact minute-15 gold comparison.
+        try:
+            chat_identity = self._get("/lol-chat/v1/me")
+        except (RuntimeError, ConnectionError):
+            chat_identity = {}
+        if not isinstance(chat_identity, dict):
+            chat_identity = {}
         profile = {
             "puuid": str(profile.get("puuid") or ""),
             "summonerId": str(profile.get("summonerId") or ""),
@@ -446,7 +722,7 @@ class LCUHomeProvider:
             "tagLine": str(profile.get("tagLine") or ""),
             "summonerLevel": profile.get("summonerLevel"),
             "profileIconId": profile.get("profileIconId"),
-            "region": str(profile.get("region") or profile.get("platformId") or ""),
+            "region": str(profile.get("region") or profile.get("platformId") or chat_identity.get("platformId") or ""),
         }
         try:
             ranked = self._get("/lol-ranked/v1/current-ranked-stats")
@@ -789,6 +1065,9 @@ class LCUHomeProvider:
                 [
                     {
                         "champion_id": item.get("championId"),
+                        "champion_name": _local_champion_metadata().get(
+                            str(item.get("championId")), {}
+                        ).get("name") or f"Campeón {item.get('championId')}",
                         "points": LCUHomeProvider._ranked_integer(
                             item.get("championPoints")
                         )
@@ -1067,19 +1346,19 @@ class LCUHomeProvider:
             started = ""
         duration = cls._integer(game.get("gameDuration"))
         kills, deaths, assists = (
-            cls._integer(stats.get(key)) for key in ("kills", "deaths", "assists")
+            cls._integer_opcional(stats, key) for key in ("kills", "deaths", "assists")
         )
-        cs = cls._integer(stats.get("minionsKilled")) + cls._integer(
-            stats.get("neutralMinionsKilled")
-        )
+        _minion_cs, _monster_cs, cs = cls._participant_cs(stats)
+        vision_score = cls._integer_opcional(stats, "visionScore")
         items = [cls._integer(stats.get(f"item{i}")) for i in range(7)]
         lane = cls._participant_lane(player)
         normalized_participants = [
             cls._normalize_participant(
                 item,
                 identity_by_participant.get(str(item.get("participantId")), {}),
+                source_index=source_index,
             )
-            for item in participants
+            for source_index, item in enumerate(participants)
         ]
         normalized_participants = [item for item in normalized_participants if item]
         local_record = next(
@@ -1103,6 +1382,17 @@ class LCUHomeProvider:
             ),
             {},
         )
+        # Mark the local participant while the LCU identity context is available.
+        local_participant_id = str(player.get("participantId") or "")
+        for item in normalized_participants:
+            item["is_local"] = bool(
+                (local_participant_id and str(item.get("participant_id") or "") == local_participant_id)
+                or any(
+                    item.get(key)
+                    and str(item.get(key)) == str(profile.get(profile_key) or "")
+                    for key, profile_key in (("puuid", "puuid"), ("account_id", "accountId"), ("summoner_id", "summonerId"))
+                )
+            )
         local_team = local_record.get("team_id")
         teammates = []
         teammate_ids: set[str] = set()
@@ -1212,7 +1502,12 @@ class LCUHomeProvider:
             "deaths": deaths,
             "assists": assists,
             "cs": cs,
-            "cs_per_min": round(cs / (duration / 60), 1) if duration > 0 else None,
+            "cs_source_version": 2,
+            "cs_per_min": round(cs / (duration / 60), 1) if cs is not None and duration > 0 else None,
+            "total_damage_dealt_to_champions": cls._integer_opcional(
+                stats, "totalDamageDealtToChampions"
+            ),
+            "vision_score": vision_score,
             "items": [item for item in items[:6] if item],
             "trinket": items[6] or None,
             "summoner_spells": [player.get("spell1Id"), player.get("spell2Id")],
@@ -1586,31 +1881,43 @@ class LCUHomeProvider:
             lane = cls._normalize_position(value, role)
             if lane != "unknown":
                 return lane, "individualPosition", 0.95
+        role_position = cls._normalize_position(role)
+        role_token = re.sub(r"[^A-Z]", "", str(role or "").upper())
+        if role_position in {"support", "bot"}:
+            return role_position, "lane_role", 0.9
+        for value in (participant.get("position"),):
+            lane = cls._normalize_position(value)
+            if lane != "unknown":
+                return lane, "inferred", 0.78
         lane_raw = (
             timeline.get("lane")
             or participant.get("lane_raw")
             or participant.get("lane")
         )
-        if (
-            lane_raw is not None
-            and role
-            and cls._normalize_position(lane_raw) != "unknown"
-        ):
-            lane = cls._normalize_position(lane_raw, role)
-            role_lane = cls._normalize_position(role)
-            if lane != "unknown" and role_lane != "unknown":
-                return lane, "lane_role", 0.88
+        if lane_raw is not None:
+            lane_position = cls._normalize_position(lane_raw)
+            if lane_position == "jungle":
+                spells = participant.get("summoner_spells") or [
+                    participant.get("spell1Id"), participant.get("spell2Id")
+                ]
+                if any(str(spell) == "11" for spell in spells):
+                    return "jungle", "smite_and_lane", 0.92
+                # Historical LCU timeline data often marks a laner as JUNGLE.
+                # Without an authoritative position or Smite, leave it unknown.
+                return "unknown", "ambiguous_jungle_lane", 0.0
+            if lane_position == "top":
+                return "top", "timeline_lane", 0.82
+            if lane_position == "mid":
+                if role_token in {"DUO", "DUOCARRY", "DUOSUPPORT"}:
+                    return "unknown", "ambiguous_duo_lane", 0.0
+                return "mid", "timeline_lane", 0.82
+            if lane_position == "bot":
+                if role_token in {"SOLO", "DUO", "NONE", ""}:
+                    return "unknown", "ambiguous_bottom_lane", 0.0
+                return "bot", "timeline_lane", 0.78
         lane = cls._normalize_position(explicit_role)
         if lane != "unknown":
             return lane, "lane_role", 0.88
-        for value in (lane_raw, participant.get("position")):
-            lane = cls._normalize_position(value)
-            if lane != "unknown":
-                return lane, "inferred", 0.78
-        if timeline_role in {"UTILITY", "DUO_SUPPORT", "DUO_CARRY"}:
-            lane = cls._normalize_position(timeline_role)
-            if lane != "unknown":
-                return lane, "lane_role", 0.88
         spells = participant.get("summoner_spells") or [
             participant.get("spell1Id"),
             participant.get("spell2Id"),
@@ -1621,7 +1928,7 @@ class LCUHomeProvider:
 
     @classmethod
     def _normalize_participant(
-        cls, participant: dict[str, Any], identity: dict[str, Any]
+        cls, participant: dict[str, Any], identity: dict[str, Any], source_index: int | None = None
     ) -> dict[str, Any]:
         """Normaliza identidad, posición y estadísticas de un jugador LCU."""
         stats = (
@@ -1641,7 +1948,16 @@ class LCUHomeProvider:
         )
         champion_id = participant.get("championId")
         metadata = _local_champion_metadata().get(str(champion_id), {})
+        minion_cs, monster_cs, cs = cls._participant_cs(stats)
+        team_position = stats.get("teamPosition") or participant.get("teamPosition")
+        individual_position = stats.get("individualPosition") or participant.get("individualPosition")
+        timeline_lane = timeline.get("lane") or participant.get("lane")
+        timeline_role = timeline.get("role")
+        display_role = cls._explicit_participant_display_role(
+            team_position, individual_position, timeline_lane, timeline_role
+        )
         return {
+            "source_index": source_index,
             "participant_id": participant.get("participantId"),
             "team_id": participant.get("teamId")
             if participant.get("teamId") is not None
@@ -1660,23 +1976,24 @@ class LCUHomeProvider:
             "lane": cls._participant_lane(participant),
             "lane_raw": timeline.get("lane") or participant.get("lane"),
             "role": stats.get("role") or participant.get("role"),
-            "timeline_role": timeline.get("role"),
-            "team_position": stats.get("teamPosition")
-            or participant.get("teamPosition"),
-            "individual_position": stats.get("individualPosition")
-            or participant.get("individualPosition"),
+            "timeline_role": timeline_role,
+            "team_position": team_position,
+            "individual_position": individual_position,
+            "position": participant.get("position"),
+            "display_role": display_role,
             "win": stats.get("win"),
             "kills": cls._integer(stats.get("kills")),
             "deaths": cls._integer(stats.get("deaths")),
             "assists": cls._integer(stats.get("assists")),
-            "total_damage_taken": cls._integer_opcional(stats, "totalDamageTaken"),
-            "damage_taken": cls._integer_opcional(stats, "totalDamageTaken"),
+            "all_source_damage_received": cls._integer_opcional(stats, "totalDamageTaken"),
             "damage_self_mitigated": cls._integer_opcional(
                 stats, "damageSelfMitigated"
             ),
             "final_stats": cls._participant_final_stats(stats),
-            "cs": cls._integer(stats.get("minionsKilled"))
-            + cls._integer(stats.get("neutralMinionsKilled")),
+            "cs": cs,
+            "cs_lane_minions": minion_cs,
+            "cs_neutral_minions": monster_cs,
+            "cs_source_version": 2,
             "items": [cls._integer(stats.get(f"item{i}")) for i in range(7)],
             "summoner_spells": [
                 participant.get("spell1Id"),
@@ -1686,6 +2003,27 @@ class LCUHomeProvider:
                 participant.get("isBot") or player.get("isBot") or player.get("bot")
             ),
         }
+
+    @classmethod
+    def _explicit_participant_display_role(
+        cls, team_position: Any, individual_position: Any, timeline_lane: Any, timeline_role: Any
+    ) -> str:
+        """Return only role labels supported by explicit participant metadata."""
+        for value in (team_position, individual_position):
+            if value is None or str(value).strip().upper() in {"", "NONE"}:
+                continue
+            position = cls._normalize_position(value)
+            if position != "unknown":
+                return position
+        role_token = re.sub(r"[^A-Z]", "", str(timeline_role or "").upper())
+        lane_position = cls._normalize_position(timeline_lane)
+        if role_token in {"DUOSUPPORT", "SUPPORT", "SUP", "UTILITY"}:
+            return "support"
+        if role_token in {"DUOCARRY", "CARRY", "ADC", "APC"}:
+            return "bot"
+        if role_token == "SOLO" and lane_position in {"top", "mid"}:
+            return lane_position
+        return ""
 
     @classmethod
     def _participant_final_stats(cls, stats: dict[str, Any]) -> dict[str, int | None]:
@@ -1701,7 +2039,6 @@ class LCUHomeProvider:
             "kills": ("kills",),
             "deaths": ("deaths",),
             "assists": ("assists",),
-            "cs": ("minionsKilled", "neutralMinionsKilled"),
             "gold_earned": ("goldEarned",),
             "vision_score": ("visionScore",),
             "total_damage_dealt_to_champions": ("totalDamageDealtToChampions",),
@@ -1711,8 +2048,9 @@ class LCUHomeProvider:
             "objectives_stolen": ("objectivesStolen",),
             "objectives_stolen_assists": ("objectivesStolenAssists",),
             "damage_dealt_to_objectives": ("damageDealtToObjectives",),
-            "damage_taken": ("totalDamageTaken",),
+            "all_source_damage_received": ("totalDamageTaken",),
             "damage_self_mitigated": ("damageSelfMitigated",),
+            "solo_kills": ("soloKills",),
             "total_time_crowd_control_dealt": (
                 "totalTimeCrowdControlDealt",
                 "timeCCingOthers",
@@ -1737,7 +2075,29 @@ class LCUHomeProvider:
                 if valores
                 else None
             )
+        minion_cs, monster_cs, total_cs = cls._participant_cs(stats)
+        salida["cs"] = total_cs
+        salida["cs_lane_minions"] = minion_cs
+        salida["cs_neutral_minions"] = monster_cs
+        challenges = stats.get("challenges")
+        if salida.get("solo_kills") is None and isinstance(challenges, dict):
+            salida["solo_kills"] = cls._integer_opcional(challenges, "soloKills")
         return salida
+
+    @classmethod
+    def _participant_cs(
+        cls, stats: dict[str, Any]
+    ) -> tuple[int | None, int | None, int | None]:
+        """Return LCU lane CS, neutral CS, and their total when both are known."""
+        # LCU's older match-history shape uses minionsKilled; newer DTOs can
+        # expose the same lane-minion measure as totalMinionsKilled. They are
+        # aliases for the lane component, never values to add together.
+        lane_cs = cls._integer_opcional(stats, "minionsKilled")
+        if lane_cs is None:
+            lane_cs = cls._integer_opcional(stats, "totalMinionsKilled")
+        neutral_cs = cls._integer_opcional(stats, "neutralMinionsKilled")
+        total_cs = lane_cs + neutral_cs if lane_cs is not None and neutral_cs is not None else None
+        return lane_cs, neutral_cs, total_cs
 
     @staticmethod
     def _integer_opcional(datos: dict[str, Any], clave: str) -> int | None:
@@ -1779,6 +2139,269 @@ def normalizar_partidas_unicas(matches: list[dict[str, Any]]) -> list[dict[str, 
             vistos.add(identificador)
         unicas.append(match)
     return unicas
+
+
+def calculate_soloq_rolling_winrate(
+    matches: list[dict[str, Any]], window_size: int = 10
+) -> dict[str, Any]:
+    """Build an ordered, deduplicated rolling win-rate series for ranked SoloQ.
+
+    Only queue 420 records with a stable match identifier, valid result, and
+    parseable start time are eligible. Early points use a clearly reported
+    partial window until ``window_size`` matches have been recorded.
+    """
+    if isinstance(window_size, bool) or not isinstance(window_size, int) or window_size < 1:
+        raise ValueError("window_size must be a positive integer")
+
+    eligible: list[tuple[datetime, str, dict[str, Any]]] = []
+    seen_ids: set[str] = set()
+    incomplete_matches = 0
+    for match in matches:
+        if not isinstance(match, dict) or str(match.get("queue_id") or "").strip() != "420":
+            continue
+        result = str(match.get("result") or "").strip().lower()
+        id_values = [
+            str(match.get(key) or "").strip()
+            for key in ("stable_match_id", "game_id", "gameId")
+        ]
+        id_tokens = {value for value in id_values if value}
+        if id_tokens and id_tokens & seen_ids:
+            continue
+        started_at = _parse_home_match_datetime(match.get("started_at"))
+        if result not in {"victory", "defeat"} or not id_tokens or started_at is None:
+            incomplete_matches += 1
+            continue
+        seen_ids.update(id_tokens)
+        match_id = next((value for value in id_values if value), "")
+        normalized_match = dict(match)
+        normalized_match["result"] = result
+        eligible.append((started_at, match_id, normalized_match))
+
+    eligible.sort(key=lambda item: (item[0], item[1]))
+    # Inicio presents a compact evolution of the 30 newest SoloQ matches.
+    # Keep chronological order for plotting after selecting the newest sample.
+    eligible = eligible[-30:]
+    points: list[dict[str, Any]] = []
+    for index, (started_at, match_id, match) in enumerate(eligible):
+        sample = eligible[max(0, index - window_size + 1):index + 1]
+        wins = sum(item[2].get("result") == "victory" for item in sample)
+        losses = len(sample) - wins
+        points.append({
+            "position": index + 1,
+            "match_id": match_id,
+            "started_at": started_at.isoformat(),
+            "champion_name": str(match.get("champion_name") or "") or None,
+            "result": match.get("result"),
+            "window_wins": wins,
+            "window_losses": losses,
+            "sample_size": len(sample),
+            "winrate": round(100 * wins / len(sample), 1),
+        })
+
+    wins_total = sum(item[2].get("result") == "victory" for item in eligible)
+    total = len(eligible)
+    current = points[-1] if points else None
+    return {
+        "window_size": window_size,
+        "points": points,
+        "total_matches": total,
+        "wins": wins_total,
+        "losses": total - wins_total,
+        "overall_winrate": round(100 * wins_total / total, 1) if total else None,
+        "current_winrate": current["winrate"] if current else None,
+        "current_sample_size": current["sample_size"] if current else 0,
+        "incomplete_matches": incomplete_matches,
+    }
+
+
+def _parse_home_match_datetime(value: Any) -> datetime | None:
+    """Parse a recorded match timestamp into UTC without guessing missing dates."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _solo_queue_matches(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return unique, completed queue-420 games in chronological order."""
+    eligible: list[tuple[datetime, str, dict[str, Any]]] = []
+    seen_ids: set[str] = set()
+    for match in matches:
+        if not isinstance(match, dict) or str(match.get("queue_id") or "").strip() != "420":
+            continue
+        match_id = str(match.get("stable_match_id") or match.get("game_id") or match.get("gameId") or "").strip()
+        started_at = _parse_home_match_datetime(match.get("started_at"))
+        if not match_id or match_id in seen_ids or started_at is None:
+            continue
+        if match.get("result") not in {"victory", "defeat"}:
+            continue
+        seen_ids.add(match_id)
+        eligible.append((started_at, match_id, match))
+    eligible.sort(key=lambda row: (row[0], row[1]))
+    return [row[2] for row in eligible]
+
+
+def _home_number(match: dict[str, Any], key: str, *, positive: bool = False) -> float | None:
+    """Read a finite non-negative statistic, preserving absent and invalid data."""
+    value = match.get(key)
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(number) or number < 0 or (positive and number <= 0):
+        return None
+    return number
+
+
+def _aggregate_kda(matches: list[dict[str, Any]]) -> tuple[float | None, int, bool]:
+    valid = [
+        (_home_number(match, "kills"), _home_number(match, "deaths"), _home_number(match, "assists"))
+        for match in matches
+    ]
+    valid = [(kills, deaths, assists) for kills, deaths, assists in valid if None not in (kills, deaths, assists)]
+    if not valid:
+        return None, 0, False
+    kills = sum(row[0] for row in valid)
+    deaths = sum(row[1] for row in valid)
+    assists = sum(row[2] for row in valid)
+    if deaths == 0:
+        return None, len(valid), True
+    return round((kills + assists) / deaths, 2), len(valid), False
+
+
+def _recent_metric(
+    recent: list[dict[str, Any]], previous: list[dict[str, Any]], key: str,
+    *, threshold: float, full_comparison: bool,
+) -> dict[str, Any]:
+    def value_for(sample: list[dict[str, Any]]) -> tuple[float | None, int, bool]:
+        if key == "kda":
+            return _aggregate_kda(sample)
+        if key == "cs_per_min":
+            valid = [
+                (_home_number(match, "cs"), _home_number(match, "duration_seconds", positive=True))
+                for match in sample
+            ]
+            valid = [(cs, duration) for cs, duration in valid if cs is not None and duration is not None]
+            minutes = sum(duration for _, duration in valid) / 60
+            return (round(sum(cs for cs, _ in valid) / minutes, 2), len(valid), False) if minutes > 0 else (None, len(valid), False)
+        valid_vision = [score for match in sample if (score := _home_number(match, "vision_score")) is not None]
+        return (round(sum(valid_vision) / len(valid_vision), 1), len(valid_vision), False) if valid_vision else (None, 0, False)
+
+    current, current_count, current_zero_deaths = value_for(recent)
+    old, old_count, previous_zero_deaths = value_for(previous) if full_comparison else (None, 0, False)
+    delta = round(current - old, 2) if current is not None and old is not None else None
+    tone = "neutral" if delta is None or abs(delta) < threshold else "positive" if delta > 0 else "negative"
+    return {
+        "current": current,
+        "previous": old,
+        "delta": delta,
+        "trend": tone,
+        "current_sample_size": current_count,
+        "previous_sample_size": old_count,
+        "current_zero_deaths": current_zero_deaths,
+        "previous_zero_deaths": previous_zero_deaths,
+    }
+
+
+def analyze_recent_soloq_performance(matches: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compare the latest 10 completed SoloQ games with the preceding 10."""
+    ordered = _solo_queue_matches(matches)
+    recent = ordered[-10:]
+    previous = ordered[-20:-10]
+    full_comparison = len(ordered) >= 20
+    metrics = {
+        "kda": _recent_metric(recent, previous, "kda", threshold=0.25, full_comparison=full_comparison),
+        "cs_per_min": _recent_metric(recent, previous, "cs_per_min", threshold=0.3, full_comparison=full_comparison),
+        "vision": _recent_metric(recent, previous, "vision", threshold=2.0, full_comparison=full_comparison),
+    }
+    meaningful = [metric["trend"] for metric in metrics.values() if metric["trend"] != "neutral"]
+    up, down = meaningful.count("positive"), meaningful.count("negative")
+    has_comparison = any(metric["delta"] is not None for metric in metrics.values())
+    if not full_comparison:
+        trend = {"state": "insufficient", "summary": f"La comparación necesita 20 partidas SoloQ; hay {len(ordered)} registradas."}
+    elif not has_comparison:
+        trend = {"state": "insufficient", "summary": "No hay métricas completas en ambos periodos para resumir una tendencia."}
+    elif up and down:
+        trend = {"state": "mixed", "summary": "Las métricas disponibles muestran cambios mixtos frente al periodo anterior."}
+    elif up > down:
+        trend = {"state": "improving", "summary": "La mayoría de las métricas disponibles ha mejorado frente a las 10 partidas anteriores."}
+    elif down > up:
+        trend = {"state": "declining", "summary": "La mayoría de las métricas disponibles ha bajado frente a las 10 partidas anteriores."}
+    else:
+        trend = {"state": "stable", "summary": "El rendimiento se mantiene estable frente al periodo anterior."}
+    return {
+        "scope": "SoloQ (cola 420)",
+        "period_size": 10,
+        "recent_matches": len(recent),
+        "previous_matches": len(previous),
+        "comparison_available": full_comparison,
+        "metrics": metrics,
+        "trend": trend,
+    }
+
+
+def aggregate_soloq_champion_performance(
+    matches: list[dict[str, Any]], catalog: list[dict[str, Any]], limit: int = 3,
+    minimum_sample: int = 5,
+) -> list[dict[str, Any]]:
+    """Aggregate queue-420 results by canonical Riot champion ID."""
+    metadata = {
+        str(item.get("key")): item
+        for item in catalog
+        if str(item.get("key") or "").strip()
+    }
+    grouped: dict[str, dict[str, Any]] = {}
+    for match in _solo_queue_matches(matches):
+        champion_id = str(match.get("champion_id") or "").strip()
+        if not champion_id:
+            continue
+        entry = grouped.setdefault(champion_id, {"matches": 0, "wins": 0, "kills": 0.0, "deaths": 0.0, "assists": 0.0, "kda_matches": 0})
+        entry["matches"] += 1
+        entry["wins"] += match.get("result") == "victory"
+        kda, count, zero_deaths = _aggregate_kda([match])
+        if count and not zero_deaths and kda is not None:
+            entry["kills"] += _home_number(match, "kills") or 0
+            entry["deaths"] += _home_number(match, "deaths") or 0
+            entry["assists"] += _home_number(match, "assists") or 0
+            entry["kda_matches"] += 1
+        elif count and zero_deaths:
+            entry["kills"] += _home_number(match, "kills") or 0
+            entry["assists"] += _home_number(match, "assists") or 0
+            entry["kda_matches"] += 1
+
+    rows = []
+    for champion_id, values in grouped.items():
+        champion = metadata.get(champion_id, {})
+        deaths = values["deaths"]
+        kda = round((values["kills"] + values["assists"]) / deaths, 2) if deaths > 0 else None
+        rows.append({
+            "champion_id": champion.get("id") or champion_id,
+            "riot_champion_key": champion_id,
+            "champion_name": str(champion.get("name") or champion.get("id") or f"Campeón {champion_id}"),
+            "matches": values["matches"],
+            "wins": values["wins"],
+            "losses": values["matches"] - values["wins"],
+            "winrate": round(values["wins"] * 100 / values["matches"], 1),
+            "kda_ratio": kda,
+            "kda_matches": values["kda_matches"],
+            "sample_sufficient": values["matches"] >= minimum_sample,
+        })
+    established = sorted(
+        (row for row in rows if row["sample_sufficient"]),
+        key=lambda row: (-row["winrate"], -row["matches"], row["champion_id"]),
+    )
+    limited = sorted(
+        (row for row in rows if not row["sample_sufficient"]),
+        key=lambda row: (-row["matches"], -row["winrate"], row["champion_id"]),
+    )
+    return (established + limited)[:max(0, min(limit, 10))]
 
 
 def analyze_home_history(matches: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1931,30 +2554,55 @@ def _friendly_mode(match: dict[str, Any]) -> str:
 @lru_cache(maxsize=4)
 def _local_champion_metadata(root: Path | None = None) -> dict[str, dict[str, Any]]:
     """Lee nombres y clases desde los metadatos locales sin acceder a la red."""
-    directory = root or (DATA_DIR / "champion_metadata")
+    if root is None:
+        from app.services.storage_manager import get_storage_manager
+        directories = (DATA_DIR / "champion_metadata", get_storage_manager().cache_dir / "champion_metadata")
+    else:
+        directories = (root,)
     champions: dict[str, dict[str, Any]] = {}
-    try:
-        paths = tuple(directory.glob("*.json"))
-    except OSError:
-        return champions
-    for path in paths:
+    for directory in directories:
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            paths = tuple(directory.glob("*.json"))
+        except OSError:
             continue
-        records = data.get("data", {}) if isinstance(data, dict) else {}
-        if not isinstance(records, dict):
-            continue
-        for record in records.values():
-            if not isinstance(record, dict) or record.get("key") is None:
+        for path in paths:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
                 continue
-            champion_id = str(record["key"])
-            champions[champion_id] = {
-                "name": str(record.get("name") or ""),
-                "tags": [tag for tag in record.get("tags", []) if isinstance(tag, str)]
-                if isinstance(record.get("tags"), list)
-                else [],
-            }
+            records = data.get("data", {}) if isinstance(data, dict) else {}
+            if not isinstance(records, dict):
+                continue
+            for record in records.values():
+                if not isinstance(record, dict) or record.get("key") is None:
+                    continue
+                champion_id = str(record["key"])
+                champions[champion_id] = {
+                    "id": str(record.get("id") or ""),
+                    "name": str(record.get("name") or ""),
+                    "tags": [tag for tag in record.get("tags", []) if isinstance(tag, str)]
+                    if isinstance(record.get("tags"), list)
+                    else [],
+                }
+    # The distributable champion catalog is always part of the application;
+    # generated per-champion metadata is an optional richer source.
+    if root is None:
+        try:
+            catalog = json.loads((DATA_DIR / "champion_catalog.json").read_text(encoding="utf-8"))
+            records = catalog.get("data", {}) if isinstance(catalog, dict) else {}
+            if isinstance(records, dict):
+                for record in records.values():
+                    if not isinstance(record, dict) or record.get("key") is None:
+                        continue
+                    key = str(record["key"])
+                    champions.setdefault(key, {
+                        "id": str(record.get("id") or ""),
+                        "name": str(record.get("name") or ""),
+                        "tags": [tag for tag in record.get("tags", []) if isinstance(tag, str)]
+                        if isinstance(record.get("tags"), list) else [],
+                    })
+        except (OSError, ValueError, AttributeError):
+            pass
     return champions
 
 

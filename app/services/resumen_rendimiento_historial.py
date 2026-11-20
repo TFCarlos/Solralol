@@ -9,7 +9,7 @@ from app.services.servicio_puntuacion_rendimiento import (
     puntuar_sesion,
 )
 
-VERSION_CALIBRACION = "2026.10"
+VERSION_CALIBRACION = VERSION_PUNTUACION
 
 
 def puntuacion_historial_vigente(resumen: Any) -> bool:
@@ -61,6 +61,8 @@ def asegurar_puntuacion_guardada(sesion: dict[str, Any]) -> bool:
     try:
         ranking = puntuar_sesion(sesion, "postgame")
     except (ArithmeticError, KeyError, TypeError, ValueError):
+        return False
+    if ranking.get("finalization_state") != "POSTGAME_FINAL" or not ranking.get("players"):
         return False
     sesion["performance_scoring"] = {
         "version": ranking["version"],

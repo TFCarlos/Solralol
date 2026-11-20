@@ -17,6 +17,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 from _paths import DATA_DIR
+from app.services.storage_manager import get_storage_manager
 from app.services.calidad_muestra import (
     UMBRAL_MUESTRA_NORMAL,
     EstadoMuestra,
@@ -93,7 +94,18 @@ class ChampionScraperService:
         solo_rango_analisis_local: bool = False,
     ) -> None:
         """Inicializa el proveedor con su caché local, rango y modo estricto opcional; retorna None."""
-        self.champions_path = champions_path or DATA_DIR / "champion_data"
+        self.champions_path = champions_path or (get_storage_manager().cache_dir / "champions")
+        if champions_path is None:
+            try:
+                from app.services.storage_manager import atomic_write_bytes
+                self.champions_path.parent.mkdir(parents=True, exist_ok=True)
+                for name in ("champion_catalog.json", "items.json", "legendary_items_strict.json", "passive_rules.json"):
+                    source = DATA_DIR / name
+                    target = self.champions_path.parent / name
+                    if source.is_file() and not target.exists():
+                        atomic_write_bytes(target, source.read_bytes())
+            except OSError:
+                pass
         self.repositorio = RepositorioCampeones(self.champions_path)
         self.request_delay = max(0.0, request_delay)
         self.solo_rango_analisis_local = solo_rango_analisis_local

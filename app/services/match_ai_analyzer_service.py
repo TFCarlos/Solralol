@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from hashlib import sha256
 from typing import Any, ClassVar
@@ -10,6 +11,8 @@ import requests
 from app.services.match_analysis_evidence_service import MatchAnalysisEvidenceService
 from app.services.match_analysis_models import enriquecer_analisis_partida
 from app.services.match_log_service import MatchLogService
+
+logger = logging.getLogger(__name__)
 
 ESQUEMA_ANALISIS_GEMINI = {
     "type": "object",
@@ -67,6 +70,22 @@ ESQUEMA_ANALISIS_GEMINI = {
                     },
                 }
                 for clave in ("early", "mid", "late")
+            },
+        },
+        "key_events": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "event_ids": {"type": "array", "items": {"type": "string"}},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "why_it_matters": {"type": "string"},
+                    "player_contribution": {"type": "string"},
+                    "recommendation": {"type": "string"},
+                    "event_kind": {"type": "string"},
+                },
+                "required": ["event_ids", "title", "description", "why_it_matters"],
             },
         },
         **{
@@ -207,6 +226,18 @@ ESQUEMA_ANALISIS_GEMINI = {
             },
         },
         "rune_comments": {"type": "array", "items": {"type": "string"}},
+        "rune_alternatives": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "rune_id": {"type": "string"},
+                    "replaces_rune_id": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "tradeoff": {"type": "string"},
+                },
+            },
+        },
         "key_enemies": {
             "type": "array",
             "items": {
@@ -249,6 +280,7 @@ ESQUEMA_ANALISIS_GEMINI = {
         "analysis_type",
         "summary",
         "game_phases",
+        "key_events",
         "performance",
         "build_assessment",
         "itemization_notes",
@@ -309,18 +341,37 @@ class MatchAIAnalyzerService:
         # Construir evidencia reproducible antes de consultar Gemini.
         evidencia = MatchAnalysisEvidenceService().build_evidence(log_data)
         log_data["analysis_evidence"] = evidencia
+        logger.info(
+            "[AI timeline] submitting candidates: kills=%d fights=%d objectives=%d correlations=%d candidates=%d",
+            evidencia.get("coverage", {}).get("champion_kills", 0),
+            len(evidencia.get("teamfights", [])),
+            len(evidencia.get("objectives", [])),
+            len(evidencia.get("fight_objective_correlations", [])) + len(evidencia.get("kill_objective_correlations", [])),
+            len(evidencia.get("key_event_candidates", [])),
+        )
         prompt = self._build_analysis_prompt(log_data, formatted_log)
 
         # Llamar a Gemini API
         respuesta, model_used = self._call_gemini_api(prompt, api_key)
         try:
+            payload = json.loads(respuesta)
+            logger.info(
+                "[AI timeline] model response events=%d",
+                len(payload.get("key_events", []))
+                if isinstance(payload, dict) and isinstance(payload.get("key_events"), list)
+                else 0,
+            )
             contexto = {
                 **log_data,
                 "champion_name": log_data.get("metadata", {}).get("champion_name"),
                 "player_name": log_data.get("user_stats", {}).get("player_name"),
             }
-            analisis = enriquecer_analisis_partida(json.loads(respuesta), contexto)
+            analisis = enriquecer_analisis_partida(payload, contexto)
         except (json.JSONDecodeError, TypeError, ValueError) as error:
+            logger.warning(
+                "[AI timeline] response validation failed: %s",
+                type(error).__name__,
+            )
             raise ValueError(
                 f"Gemini devolvió un análisis estructurado no válido: {error}"
             ) from error
@@ -358,9 +409,13 @@ EVIDENCIA:
 
 Devuelve únicamente JSON compatible con schema_version=3 y analysis_type="general_match_analysis". El resumen debe explicar decisiones y cambios de ritmo, sin repetir KDA/CS/oro como análisis. overall_grade debe ser una valoración verbal, no una nota del motor. Si performance_scoring contiene un resultado final, consérvalo como dato separado y no lo recalcules.
 
+Python ya ha extraído globalmente los hechos de `teamfights`, `objectives`, `fight_objective_correlations` y `key_event_candidates`. Las agrupaciones de combate usan cuatro o más muertes, huecos consecutivos <30 s y duración máxima acotada; después, `personal_event_selection` conserva solo peleas con participación confirmada del jugador local. Centra cada interpretación en qué hizo el jugador, su papel (baja, asistencia o muerte), el resultado confirmado y un ajuste útil. En `key_events`, explica la contribución concreta del jugador y añade `recommendation` con un consejo personal cuando la evidencia permita recomendar una acción. No resumas actividad de aliados como contribución del jugador. Los candidatos entregados a key_events ya están filtrados por participación personal. Las conversiones positivas requieren que el jugador y quien remató el objetivo participaran en la baja vinculada; objetivos independientes solo aparecen como personales si el jugador los aseguró. También puedes recibir relaciones `player_death_to_enemy_objective`: solo están incluidas si el jugador fue víctima, el asesino o asistente enemigo compartió el mismo equipo beneficiario y ese participante aseguró después el objetivo dentro de la ventana. Para una relación negativa, explica la baja del jugador y la captura rival como secuencia confirmada; valora si fue costosa sin afirmar que la muerte causó el objetivo ni que el jugador estuviera disputándolo. Añade una recomendación futura prudente en `recommendation`, sin inventar visión, posición, apoyo o intención. Usa `event_kind="player_death_to_enemy_objective"` para ese caso. Las relaciones en `kill_objective_correlations` y `player_death_objective_correlations` ya validan participante, equipo y ventana; no infieras relaciones adicionales. Shutdown solo es válido si bounty confirma exactamente 700 de oro y el jugador consiguió o asistió la baja; no confundas esa recompensa con oro personal. No atribuyas la recompensa completa a quien asistió. No añadas frases técnicas repetitivas sobre causalidad: redacta los hechos de forma natural y neutral cuando la evidencia no sustente una interpretación. No afirmes remontadas, ventaja en oro, posiciones, intenciones ni motivos no medidos. `first_recorded_kill` no demuestra primera sangre.
+
 Incluye early, mid y late. En cada fase, cita entre 2 y 4 eventos relevantes, explica contribuciones y preocupaciones que sí se desprendan de ellos y da un ajuste concreto. No uses recuentos de eventos como evaluación.
 
+Para item_alternatives, elige solo `item_id` presentes en `item_option_catalog`, disponibles para Summoners Rift en el parche indicado. Cada sugerencia debe reemplazar un objeto de `user_stats.items`, abordar un campeon enemigo observado y explicar ventaja mecanica, situacion de uso y tradeoff; no excedas seis ranuras ni afirmes asequibilidad no registrada.
 Eval?a farming, combat, objectives, vision, survivability y decision_making con evidencia y consejos proporcionales. En build, analiza cada objeto final importante con su funci?n del catálogo y un veredicto razonado. Vincula compras con tiempos solo cuando purchase_events existan. Propón como máximo alternativas legales del catálogo; identifica una ranura/objeto que se retrasaría o cambiar?a, el beneficio y el coste de oportunidad. La cobertura gold_on_hand_available indica si la asequibilidad exacta se conoce; si es falsa, declara que la asequibilidad exacta no es confirmable. No inventes runas: si faltan, indícalo.
+Para runas, evalua la pagina realmente usada a partir de `player.runes`, el campeon, el rol, la composicion rival y la build observada. Explica si la configuracion favorece el patron de combate del campeon en esta partida. Propone una alternativa solo si puedes justificar un cambio concreto y verificar sus IDs contra las runas disponibles del mismo parche; si no puedes validar una pagina legal completa, ofrece una observacion prudente y no inventes selecciones. Distingue runas confirmadas de recomendaciones y senala si faltan los fragmentos de estadisticas o la pagina completa. `rune_comments` debe contener evaluacion estrategica contextual, no solo una descripcion generica. Si recomiendas cambiar la clave, devuelve como maximo un registro en `rune_alternatives` con `rune_id`, `replaces_rune_id`, motivo y tradeoff. Para conservar una pagina valida, recomienda solo otra clave del mismo arbol principal actual; no alteres ranuras secundarias ni inventes una pagina completa.
 
 Devuelve un análisis de cada uno de los cinco enemigos observados en key_enemies, sin excluir apoyos o frontline. Ordena por importancia, pero incluye los cinco. Para cada uno incluye campeón, rol, amenaza, KDA, por qué importó, interacciones registradas, habilidades relevantes basadas solo en ability_catalog, contrajuego específico y relación de itemizaci?n. Identifica como rival directo solo a los campeones de roles coincidentes verificados; en este caso candidatos: {json.dumps(rivales_directos, ensure_ascii=False)}. Considera kills, muertes y asistencias al estimar amenaza; no ignores alto número de asistencias.
 

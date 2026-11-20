@@ -6,7 +6,6 @@ import json
 import logging
 import re
 import unicodedata
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +15,12 @@ import requests
 from bs4 import BeautifulSoup
 
 from _paths import DATA_DIR
+from app.services.identidad_campeon import (
+    construir_indice_campeones,
+    normalizar_identidad_campeon,
+    resolver_identidad_campeon,
+)
+from app.services.storage_manager import atomic_write_bytes, atomic_write_json, get_storage_manager
 
 _REGISTRO = logging.getLogger(__name__)
 
@@ -41,7 +46,7 @@ class ServicioMeta:
 
     def __init__(self, directorio: Path | None = None) -> None:
         """Prepara rutas persistentes; recibe directorio opcional y retorna None."""
-        self.directorio = directorio or Path.home() / ".solralol" / "meta"
+        self.directorio = directorio or get_storage_manager().meta_dir
         self.directorio.mkdir(parents=True, exist_ok=True)
         self.sesion = requests.Session()
         self.sesion.headers.update(
@@ -64,9 +69,7 @@ class ServicioMeta:
     def guardar_cache(self, nombre: str, datos: dict[str, Any]) -> None:
         """Escribe caché JSON mediante reemplazo atómico; recibe nombre y datos, retorna None."""
         destino = self.directorio / nombre
-        temporal = destino.with_suffix(f".{uuid.uuid4().hex}.tmp")
-        temporal.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
-        temporal.replace(destino)
+        atomic_write_json(destino, datos)
 
     def obtener_lista_niveles(
         self, filtros: dict[str, str], forzar: bool = False
@@ -98,13 +101,18 @@ class ServicioMeta:
                 timeout=(5, 20),
             )
             self._validar_respuesta_http(respuesta_grid)
+            incidencias_grid: list[dict[str, Any]] = []
             campeones_grid, parche_grid = self._extraer_campeones_cuadricula(
-                respuesta_grid.text, normalizados
+                respuesta_grid.text, normalizados, incidencias_grid
             )
             if not parche or parche != parche_grid:
                 raise RuntimeError("LoLalytics devolvió vistas con parches distintos.")
             campeones = self._combinar_vistas(campeones_grid, detallados)
-            self._validar_ranking(campeones, normalizados, parche, len(campeones))
+            source_count = len(campeones_grid) + len(incidencias_grid)
+            self._validar_ranking(
+                campeones, normalizados, parche, source_count,
+                not incidencias_grid, incidencias_grid,
+            )
             datos = {
                 "provider": self.PROVEEDOR_TIER,
                 "filters": normalizados,
@@ -114,7 +122,9 @@ class ServicioMeta:
                 "retrieved_at": datetime.now(timezone.utc).isoformat(),
                 "source_url": respuesta_grid.url,
                 "champions": campeones,
-                "source_count": len(campeones),
+                "source_count": source_count,
+                "complete": not incidencias_grid,
+                "unresolved": incidencias_grid,
             }
             nombre_cache = self._clave_cache_tier(normalizados, parche)
             self.guardar_cache(nombre_cache, datos)
@@ -204,6 +214,8 @@ class ServicioMeta:
                 filtros,
                 str(cache.get("patch") or ""),
                 cache.get("source_count"),
+                bool(cache.get("complete", True)),
+                cache.get("unresolved", []),
             )
         except (RuntimeError, TypeError, ValueError):
             _REGISTRO.warning(
@@ -219,6 +231,8 @@ class ServicioMeta:
         filtros: dict[str, str],
         parche: str,
         cantidad_esperada: Any,
+        completo: bool = True,
+        no_resueltos: Any = None,
     ) -> None:
         """Comprueba integridad y contexto de todas las posiciones recibidas."""
         if not isinstance(campeones, list) or not campeones:
@@ -231,12 +245,14 @@ class ServicioMeta:
                 "LoLalytics publico %s posiciones; se conserva todo el ranking recibido.",
                 len(campeones),
             )
-        if (
-            isinstance(cantidad_esperada, bool)
-            or not isinstance(cantidad_esperada, int)
-            or cantidad_esperada != len(campeones)
-        ):
+        if (isinstance(cantidad_esperada, bool) or not isinstance(cantidad_esperada, int)
+                or cantidad_esperada < len(campeones)):
             raise RuntimeError("El conjunto no declara una cantidad de filas integra.")
+        no_resueltos = no_resueltos if isinstance(no_resueltos, list) else []
+        if completo and (no_resueltos or cantidad_esperada != len(campeones)):
+            raise RuntimeError("El conjunto declara una integridad incompatible.")
+        if not completo and cantidad_esperada != len(campeones) + len(no_resueltos):
+            raise RuntimeError("La tier list incompleta no conserva sus filas fuente.")
         posiciones: list[int] = []
         identidades: set[str] = set()
         for campeon in campeones:
@@ -272,7 +288,19 @@ class ServicioMeta:
                     )
             identidades.add(identificador)
             posiciones.append(posicion)
-        if sorted(posiciones) != list(range(1, len(campeones) + 1)):
+        esperadas = list(range(1, cantidad_esperada + 1))
+        posiciones_ausentes = set(esperadas) - set(posiciones)
+        posiciones_reportadas = {
+            item.get("position") for item in no_resueltos if isinstance(item, dict)
+        }
+        if len(set(posiciones)) != len(posiciones) or len(posiciones_reportadas) != len(no_resueltos):
+            raise RuntimeError("La tier list contiene puestos duplicados y huecos.")
+        ranking_integro = (
+            sorted(posiciones) == esperadas if completo
+            else posiciones_ausentes == posiciones_reportadas
+            and all(isinstance(posicion, int) and posicion in esperadas for posicion in posiciones_reportadas)
+        )
+        if not ranking_integro:
             _REGISTRO.error(
                 "LoLalytics: posiciones duplicadas o huecos en el ranking: %s",
                 posiciones,
@@ -401,7 +429,7 @@ class ServicioMeta:
         return filas, parche
 
     def _extraer_campeones_cuadricula(
-        self, html: str, filtros: dict[str, str]
+        self, html: str, filtros: dict[str, str], incidencias: list[dict[str, Any]] | None = None
     ) -> tuple[list[dict[str, Any]], str | None]:
         """Extrae posiciones Emerald+ de la vista pública de cuadrícula LoLalytics."""
         sopa = BeautifulSoup(html, "html.parser")
@@ -427,6 +455,7 @@ class ServicioMeta:
         )
         filas: list[dict[str, Any]] = []
         tarjetas_con_datos = 0
+        incidencias = incidencias if incidencias is not None else []
         for tarjeta in tarjetas:
             imagen = tarjeta.find("img", alt=True)
             columna = next(
@@ -449,15 +478,6 @@ class ServicioMeta:
                     "La tarjeta de la cuadricula no tiene estructura reconocible."
                 )
             nombre_fuente = str(imagen.get("alt", "")).strip()
-            identificador = self._resolver_campeon(nombre_fuente)
-            if not identificador:
-                _REGISTRO.warning(
-                    "LoLalytics incluyo un campeon no reconocido en la cuadricula: %s",
-                    nombre_fuente,
-                )
-                raise RuntimeError(
-                    f"No se pudo resolver el campeon LoLalytics: {nombre_fuente}"
-                )
             valores = columna.find_all("div", recursive=False)
             tier = valores[0].get_text(" ", strip=True) if len(valores) >= 4 else ""
             posicion_bloque = tarjeta.find(
@@ -465,6 +485,14 @@ class ServicioMeta:
             )
             posicion = self._entero(
                 posicion_bloque.get_text(" ", strip=True) if posicion_bloque else ""
+            )
+            enlace = tarjeta.find("a", href=True)
+            nombre_enlace = unquote(str(enlace.get("href", "")).rstrip("/").split("/")[-1]) if enlace else ""
+            fuentes_identidad = [nombre_fuente, tarjeta.get_text(" ", strip=True), nombre_enlace]
+            identificador = next(
+                (resuelto for fuente in fuentes_identidad
+                 if (resuelto := self._resolver_campeon(fuente))),
+                None,
             )
             porcentaje_win = (
                 self._porcentaje(valores[1].get_text(" ", strip=True))
@@ -497,6 +525,15 @@ class ServicioMeta:
                 raise RuntimeError(
                     f"La tarjeta de {nombre_fuente} no contiene ranking y metricas validas."
                 )
+            if not identificador:
+                incidencia = {"source_name": nombre_fuente, "position": posicion}
+                incidencias.append(incidencia)
+                _REGISTRO.error(
+                    "LoLalytics champion unresolved role=%s region=%s source_name=%r position=%s normalized=%r",
+                    filtros.get("role"), filtros.get("region"), nombre_fuente,
+                    posicion, self._normalizar_nombre(nombre_fuente),
+                )
+                continue
             filas.append(
                 {
                     "champion_id": identificador,
@@ -516,7 +553,7 @@ class ServicioMeta:
                 }
             )
         filas.sort(key=lambda campeon: int(campeon["position"]))
-        if len(filas) != tarjetas_con_datos:
+        if len(filas) + len(incidencias) != tarjetas_con_datos:
             _REGISTRO.error(
                 "LoLalytics devolvio %s filas validas de %s tarjetas con datos; el parseo esta incompleto.",
                 len(filas),
@@ -525,7 +562,7 @@ class ServicioMeta:
             raise RuntimeError(
                 "No se pudieron interpretar todas las tarjetas de LoLalytics."
             )
-        elif len(filas) < 50:
+        elif tarjetas_con_datos < 50:
             _REGISTRO.warning(
                 "La fuente LoLalytics publico solo %s posiciones para estos filtros.",
                 len(filas),
@@ -555,10 +592,7 @@ class ServicioMeta:
     @staticmethod
     def _normalizar_nombre(nombre: str) -> str:
         """Normaliza nombre/ID de Data Dragon para resolver alias sin depender de idioma."""
-        texto = unicodedata.normalize("NFKD", str(nombre))
-        return re.sub(
-            r"[^a-z0-9]", "", texto.encode("ascii", "ignore").decode().casefold()
-        )
+        return normalizar_identidad_campeon(nombre)
 
     @classmethod
     def _cargar_catalogo_campeones(cls) -> dict[str, dict[str, str]]:
@@ -569,8 +603,11 @@ class ServicioMeta:
             )
         except (OSError, json.JSONDecodeError):
             return {}
+        entradas = catalogo.get("data", {})
         resultado: dict[str, dict[str, str]] = {}
-        for entrada in catalogo.get("data", {}).values():
+        if not isinstance(entradas, dict):
+            return resultado
+        for entrada in entradas.values():
             if not isinstance(entrada, dict):
                 continue
             identificador = str(entrada.get("id") or "").strip()
@@ -583,18 +620,19 @@ class ServicioMeta:
                     resultado[cls._normalizar_nombre(clave_riot)] = valor
                 resultado[cls._normalizar_nombre(nombre)] = valor
                 resultado[cls._normalizar_nombre(identificador)] = valor
+        indice = construir_indice_campeones(entradas)
+        for alias, identificador in indice.items():
+            valor = resultado.get(normalizar_identidad_campeon(identificador))
+            if valor:
+                resultado[alias] = valor
         return resultado
 
     def _resolver_campeon(self, nombre: str) -> str | None:
         """Devuelve ID canónico Data Dragon para nombre visible o alt de retrato."""
-        nombre_normalizado = self._normalizar_nombre(nombre)
-        alias = {
-            "maestroyi": "masteryi",
-            "nunuywillump": "nunu",
-            "nunu": "nunu",
-        }.get(nombre_normalizado, nombre_normalizado)
-        valor = self._campeones.get(alias)
-        return valor["id"] if valor else None
+        valor = resolver_identidad_campeon(nombre, {
+            clave: str(dato.get("id", "")) for clave, dato in self._campeones.items()
+        })
+        return valor
 
     @staticmethod
     def _porcentaje(valor: str) -> float | None:
@@ -664,6 +702,8 @@ class ServicioMeta:
         if titulo_articulo:
             titulo = titulo_articulo.get_text(" ", strip=True)
         secciones = self._estructurar_nota(contenido, url)
+        if not secciones:
+            raise RuntimeError("La nota oficial no contiene secciones interpretables; se conserva la versión local actual.")
         imagen_url = self._buscar_imagen_resumen(contenido, url)
         imagen_local = (
             self._guardar_imagen_resumen(imagen_url, version) if imagen_url else None
@@ -683,7 +723,21 @@ class ServicioMeta:
             "sections": secciones,
         }
         self.guardar_cache("patch_notes.json", resultado)
+        self._eliminar_medios_parche_obsoletos(imagen_local)
         return {**resultado, "cached": False}
+
+    def _eliminar_medios_parche_obsoletos(self, imagen_actual: str | None) -> None:
+        """Retira solo miniaturas de parche anteriores una vez guardada la nueva nota."""
+        actual = Path(imagen_actual).resolve() if imagen_actual else None
+        for ruta in self.directorio.glob("patch_*_hero.*"):
+            if not re.fullmatch(r"patch_[0-9._]+_hero\.(?:jpg|png|webp)", ruta.name, re.I):
+                continue
+            try:
+                if actual == ruta.resolve():
+                    continue
+                ruta.unlink(missing_ok=True)
+            except OSError:
+                _REGISTRO.warning("No se pudo retirar una miniatura de parche obsoleta.")
 
     def _estructurar_nota(
         self, contenido: Any, url_articulo: str = ""
@@ -743,8 +797,14 @@ class ServicioMeta:
                     continue
                 fuente = str(elemento.get("src") or elemento.get("data-src") or "")
                 url_imagen = urljoin(url_articulo, fuente) if fuente else ""
+                host_imagen = (urlparse(url_imagen).hostname or "").casefold()
+                dominio_confiable = any(
+                    host_imagen == dominio or host_imagen.endswith("." + dominio)
+                    for dominio in ("leagueoflegends.com", "riotgames.com", "contentstack.io")
+                )
                 if (
-                    url_imagen.startswith(("https://", "http://"))
+                    urlparse(url_imagen).scheme == "https"
+                    and dominio_confiable
                     and entrada_actual
                     and not self._es_icono_data_dragon(url_imagen)
                 ):
@@ -1029,6 +1089,12 @@ class ServicioMeta:
             if not fuente or fuente.startswith("data:"):
                 continue
             fuente = urljoin(url_articulo, fuente)
+            host = (urlparse(fuente).hostname or "").casefold()
+            if urlparse(fuente).scheme != "https" or not any(
+                host == dominio or host.endswith("." + dominio)
+                for dominio in ("leagueoflegends.com", "riotgames.com", "contentstack.io")
+            ):
+                continue
             coincidencia = re.search(r"(\d{3,4})x(\d{3,4})", urlparse(fuente).path)
             if (
                 coincidencia
@@ -1059,9 +1125,7 @@ class ServicioMeta:
                 return None
             base = re.sub(r"[^0-9.]", "_", version)
             destino = self.directorio / f"patch_{base}_hero{extensiones[tipo]}"
-            temporal = destino.with_suffix(f".{uuid.uuid4().hex}.tmp")
-            temporal.write_bytes(datos)
-            temporal.replace(destino)
+            atomic_write_bytes(destino, datos)
             return str(destino)
         except (requests.RequestException, OSError):
             return None
